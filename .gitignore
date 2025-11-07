@@ -1,0 +1,33 @@
+# ===============================
+# Root-level global ignore
+# ===============================
+
+# Node modules and logs (just in case)
+node_modules/
+*.log
+*.tmp
+.DS_Store
+
+# Environment files (ignore all, except examples)
+.env
+.env.*
+!.env.example
+
+# Docker / Deployment
+docker-data/
+pgdata/
+*.pid
+*.sock
+docker-compose.override.yml
+
+# IDE / OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Reports / Exports
+reports/
+*.pdf
+*.xlsx
+*.csv

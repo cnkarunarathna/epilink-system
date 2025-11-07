@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "dev": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
