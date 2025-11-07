@@ -9,4 +9,14 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('health')
+  async checkHealth() {
+    const dbStatus = await this.appService.checkDatabaseConnection();
+    return {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+    };
+  }
 }
