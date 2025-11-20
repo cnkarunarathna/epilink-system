@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import {
   Database,
   AlertCircle,
@@ -22,39 +23,39 @@ import {
   Activity,
   Info,
   RefreshCw,
+  Brain,
 } from "lucide-react";
 
 export default function HealthPage() {
   const [healthData, setHealthData] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchHealthData = async () => {
-      try {
-        const data = await healthService.getHealth();
-        setHealthData(data);
-        setError(null);
-      } catch (err) {
-        if (axios.isAxiosError(err)) {
-          setError(
-            err.response?.data?.message ||
-              err.message ||
-              "Failed to fetch health data"
-          );
-        } else {
-          setError("Unknown error occurred");
-        }
-      } finally {
-        setLoading(false);
+  const fetchHealthData = async () => {
+    setRefreshing(true);
+    try {
+      const data = await healthService.getHealth();
+      setHealthData(data);
+      setError(null);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            "Failed to fetch health data"
+        );
+      } else {
+        setError("Unknown error occurred");
       }
-    };
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchHealthData();
-    // Refresh health data every 5 seconds
-    const interval = setInterval(fetchHealthData, 5000);
-
-    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -78,17 +79,28 @@ export default function HealthPage() {
       <div className="mx-auto max-w-6xl space-y-8">
         {/* Header */}
         <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <Activity className="h-10 w-10 text-primary" />
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight">
-                System Health Monitor
-              </h1>
-              <p className="text-muted-foreground">
-                Real-time monitoring of backend services and database
-                connectivity
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Activity className="h-10 w-10 text-primary" />
+              <div>
+                <h1 className="text-4xl font-bold tracking-tight">
+                  System Health Monitor
+                </h1>
+                <p className="text-muted-foreground">
+                  Real-time monitoring of backend services and database
+                  connectivity
+                </p>
+              </div>
             </div>
+            <Button
+              onClick={fetchHealthData}
+              disabled={refreshing}
+              size="lg"
+              className="gap-2"
+            >
+              <RefreshCw className={refreshing ? "animate-spin" : ""} />
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
           </div>
         </div>
 
@@ -216,13 +228,143 @@ export default function HealthPage() {
               </CardContent>
             </Card>
 
+            {/* Prediction Service Status Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-primary" />
+                  Prediction Service
+                </CardTitle>
+                <CardDescription>
+                  ML prediction microservice status
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2 p-4 rounded-lg border bg-card">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Status
+                    </p>
+                    <Badge
+                      variant={
+                        healthData.predictionService.status === "OK"
+                          ? "default"
+                          : "destructive"
+                      }
+                      className="text-lg font-semibold"
+                    >
+                      {healthData.predictionService.status}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2 p-4 rounded-lg border bg-card">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Service URL
+                    </p>
+                    <p className="text-lg font-semibold font-mono">
+                      {healthData.predictionService.url}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 p-4 rounded-lg border bg-card">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Connection
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-3 w-3 rounded-full ${
+                          healthData.predictionService.connected
+                            ? "bg-green-500 animate-pulse"
+                            : "bg-red-500"
+                        }`}
+                      />
+                      <p
+                        className={`text-lg font-semibold ${
+                          healthData.predictionService.connected
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}
+                      >
+                        {healthData.predictionService.connected
+                          ? "Connected"
+                          : "Disconnected"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {healthData.predictionService.connected && (
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {healthData.predictionService.responseTime !==
+                      undefined && (
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Response Time
+                        </p>
+                        <p className="text-2xl font-bold text-primary">
+                          {healthData.predictionService.responseTime}ms
+                        </p>
+                      </div>
+                    )}
+
+                    {healthData.predictionService.service && (
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Service Name
+                        </p>
+                        <p className="text-lg font-semibold">
+                          {healthData.predictionService.service}
+                        </p>
+                      </div>
+                    )}
+
+                    {healthData.predictionService.version && (
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Version
+                        </p>
+                        <p className="text-lg font-semibold font-mono">
+                          v{healthData.predictionService.version}
+                        </p>
+                      </div>
+                    )}
+
+                    {healthData.predictionService.modelLoaded !== undefined && (
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Model Status
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {healthData.predictionService.modelLoaded ? (
+                            <>
+                              <CheckCircle2 className="h-5 w-5 text-green-600" />
+                              <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                Loaded
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-5 w-5 text-red-600" />
+                              <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                                Not Loaded
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Info Card */}
             <Alert>
               <Info className="h-4 w-4" />
-              <AlertTitle>Auto-Refresh Enabled</AlertTitle>
+              <AlertTitle>Manual Refresh</AlertTitle>
               <AlertDescription>
-                This page automatically refreshes every 5 seconds to provide
-                real-time health monitoring.
+                Click the Refresh button to update the health status of all
+                services.
               </AlertDescription>
             </Alert>
 

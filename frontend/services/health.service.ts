@@ -6,10 +6,21 @@ export interface DatabaseStatus {
   connected: boolean;
 }
 
+export interface PredictionServiceStatus {
+  status: string;
+  url: string;
+  connected: boolean;
+  responseTime?: number;
+  service?: string;
+  version?: string;
+  modelLoaded?: boolean;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: string;
   database: DatabaseStatus;
+  predictionService: PredictionServiceStatus;
 }
 
 export const healthService = {
