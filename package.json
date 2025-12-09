@@ -1,6 +1,12 @@
 {
   "scripts": {
-    "start": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\""
+    "start": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\"",
+    "install:frontend": "npm install --prefix frontend",
+    "install:backend": "npm install --prefix backend",
+    "install:all": "npm run install:frontend && npm run install:backend",
+    "ci:frontend": "npm ci --prefix frontend",
+    "ci:backend": "npm ci --prefix backend",
+    "ci:all": "npm run ci:frontend && npm run ci:backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
