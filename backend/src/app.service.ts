@@ -33,4 +33,57 @@ export class AppService {
       };
     }
   }
+
+  async checkPredictionService(): Promise<{
+    status: string;
+    url: string;
+    connected: boolean;
+    responseTime?: number;
+    service?: string;
+    version?: string;
+    modelLoaded?: boolean;
+  }> {
+    const predictionServiceUrl = 'http://localhost:8000';
+    const startTime = Date.now();
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(`${predictionServiceUrl}/health`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const responseTime = Date.now() - startTime;
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          status: data.status === 'healthy' ? 'OK' : 'ERROR',
+          url: predictionServiceUrl,
+          connected: true,
+          responseTime,
+          service: data.service,
+          version: data.version,
+          modelLoaded: data.model_loaded,
+        };
+      } else {
+        return {
+          status: 'ERROR',
+          url: predictionServiceUrl,
+          connected: false,
+          responseTime,
+        };
+      }
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      return {
+        status: 'DISCONNECTED',
+        url: predictionServiceUrl,
+        connected: false,
+        responseTime,
+      };
+    }
+  }
 }

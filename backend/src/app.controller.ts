@@ -13,10 +13,19 @@ export class AppController {
   @Get('health')
   async checkHealth() {
     const dbStatus = await this.appService.checkDatabaseConnection();
+    const predictionStatus = await this.appService.checkPredictionService();
+
+    // Overall status is OK only if all services are OK
+    const overallStatus =
+      dbStatus.status === 'OK' && predictionStatus.status === 'OK'
+        ? 'OK'
+        : 'DEGRADED';
+
     return {
-      status: 'OK',
+      status: overallStatus,
       timestamp: new Date().toISOString(),
       database: dbStatus,
+      predictionService: predictionStatus,
     };
   }
 }

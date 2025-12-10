@@ -13,8 +13,8 @@ export default registerAs(
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     synchronize: process.env.NODE_ENV !== 'production', // Auto-sync in dev, disable in production
     logging: process.env.NODE_ENV === 'development',
-    ssl: {
-      rejectUnauthorized: false, // Required for Neon.tech
-    },
+    // ssl: {
+    //   rejectUnauthorized: false, // Required for Neon.tech
+    // },
   }),
 );
