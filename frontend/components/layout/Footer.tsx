@@ -7,7 +7,7 @@ export function Footer() {
 
   return (
     <footer className="w-full border-t bg-muted/30 backdrop-blur-sm">
-      <div className="container py-16">
+      <div className="container mx-auto px-4 py-16 max-w-7xl">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand Column */}
           <div className="space-y-4 md:col-span-1">
@@ -139,7 +139,7 @@ export function Footer() {
 
         <Separator className="my-8" />
 
-        <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+        <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 text-center md:text-left">
           <p className="text-sm text-muted-foreground">
             © {currentYear} EpiLink. All rights reserved.
           </p>

@@ -32,7 +32,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-lg supports-backdrop-filter:bg-background/60 shadow-sm">
-      <div className="container flex h-16 items-center justify-between">
+      <div className="container mx-auto px-4 flex h-16 items-center justify-between max-w-7xl">
         {/* Logo */}
         <Link href="/" className="flex items-center space-x-2 group">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-linear-to-br from-primary to-primary/80 shadow-lg group-hover:shadow-xl transition-shadow">
