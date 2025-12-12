@@ -133,7 +133,7 @@ export function LandingPage() {
                 className="mb-6 px-4 py-1.5 text-sm font-medium shadow-sm"
               >
                 <Sparkles className="w-4 h-4 inline mr-2" />
-                🦟 Dengue Risk Monitoring System
+                Dengue Risk Monitoring System
               </Badge>
             </motion.div>
 
@@ -639,7 +639,11 @@ export function LandingPage() {
                   "Weekly reports are generated automatically and distributed to stakeholders. Real-time alerts notify decision-makers of critical situations",
               },
             ].map((item, index) => (
-              <motion.div key={index} variants={fadeInUp} className="flex gap-4">
+              <motion.div
+                key={index}
+                variants={fadeInUp}
+                className="flex gap-4"
+              >
                 <div className="shrink-0">
                   <motion.div
                     className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold"
@@ -821,7 +825,10 @@ export function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section id="contact" className="py-20 bg-primary text-primary-foreground">
+      <section
+        id="contact"
+        className="py-20 bg-primary text-primary-foreground"
+      >
         <div className="container mx-auto px-4 max-w-7xl">
           <ScrollReveal>
             <div className="mx-auto max-w-3xl text-center">
