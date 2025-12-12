@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch(
         `${
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
-        }/auth/login`,
+        }/api/auth/login`,
         {
           method: "POST",
           headers: {

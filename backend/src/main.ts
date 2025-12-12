@@ -6,6 +6,9 @@ import { SeedService } from './seed/seed.service';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Set global API prefix
+  app.setGlobalPrefix('api');
+
   // Enable validation globally
   app.useGlobalPipes(
     new ValidationPipe({
