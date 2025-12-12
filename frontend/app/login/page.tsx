@@ -188,7 +188,8 @@ export default function LoginPage() {
                 </motion.div>
               </form>
 
-              {/* Divider */}
+              {/* Divider & Social Logins (commented out) */}
+              {/*
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />
@@ -200,7 +201,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Social Login Buttons */}
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="outline" type="button">
                   <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -234,6 +234,7 @@ export default function LoginPage() {
                   GitHub
                 </Button>
               </div>
+              */}
             </CardContent>
           </Card>
 
