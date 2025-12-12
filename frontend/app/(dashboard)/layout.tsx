@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Activity,
   LayoutDashboard,
@@ -28,6 +30,7 @@ export default function DashboardLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   // Determine user role from pathname
   const role = pathname.split("/")[1] || "admin";
@@ -86,7 +89,9 @@ export default function DashboardLayout({
             <span className="font-bold text-xl">
               Epi<span className="text-primary">Link</span>
             </span>
-            <p className="text-xs text-muted-foreground capitalize">{role}</p>
+            <p className="text-xs text-muted-foreground capitalize">
+              {user?.name || role}
+            </p>
           </div>
         </Link>
       </div>
@@ -125,10 +130,7 @@ export default function DashboardLayout({
         <Button
           variant="ghost"
           className="w-full justify-start"
-          onClick={() => {
-            // Handle logout
-            window.location.href = "/login";
-          }}
+          onClick={logout}
         >
           <LogOut className="h-5 w-5 mr-3" />
           Sign Out
@@ -138,47 +140,49 @@ export default function DashboardLayout({
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
-        <Sidebar />
-      </aside>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-background">
+        {/* Desktop Sidebar */}
+        <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
+          <Sidebar />
+        </aside>
 
-      {/* Main Content */}
-      <div className="md:pl-64">
-        {/* Header */}
-        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-          <div className="flex h-16 items-center gap-4 px-4 sm:px-6">
-            {/* Mobile Menu */}
-            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-              <SheetTrigger asChild className="md:hidden">
-                <Button variant="ghost" size="icon">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64">
-                <Sidebar mobile />
-              </SheetContent>
-            </Sheet>
+        {/* Main Content */}
+        <div className="md:pl-64">
+          {/* Header */}
+          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+            <div className="flex h-16 items-center gap-4 px-4 sm:px-6">
+              {/* Mobile Menu */}
+              <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+                <SheetTrigger asChild className="md:hidden">
+                  <Button variant="ghost" size="icon">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="p-0 w-64">
+                  <Sidebar mobile />
+                </SheetContent>
+              </Sheet>
 
-            {/* Breadcrumb/Title */}
-            <div className="flex-1">
-              <h1 className="text-xl font-semibold capitalize">
-                {pathname.split("/").pop() || role}
-              </h1>
+              {/* Breadcrumb/Title */}
+              <div className="flex-1">
+                <h1 className="text-xl font-semibold capitalize">
+                  {pathname.split("/").pop() || role}
+                </h1>
+              </div>
+
+              {/* Notifications */}
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="h-5 w-5" />
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+              </Button>
             </div>
+          </header>
 
-            {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-            </Button>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-4 sm:p-6">{children}</main>
+          {/* Page Content */}
+          <main className="p-4 sm:p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
