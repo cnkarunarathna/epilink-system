@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -29,13 +33,42 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const { login, isAuthenticated, user } = useAuth();
+  const router = useRouter();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const dashboardRoutes: Record<string, string> = {
+        admin: "/admin",
+        supervisor: "/supervisor",
+        phi: "/phi",
+        viewer: "/viewer",
+      };
+      router.push(dashboardRoutes[user.role] || "/");
+    }
+  }, [isAuthenticated, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsLoading(false);
+
+    try {
+      await login(email, password);
+      toast.success("Login successful!", {
+        description: "Redirecting to your dashboard...",
+      });
+    } catch (err: any) {
+      const errorMessage = err.message || "Login failed. Please try again.";
+      setError(errorMessage);
+      toast.error("Login failed", {
+        description: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -82,6 +115,14 @@ export default function LoginPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Error Alert */}
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Email Field */}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -179,12 +220,19 @@ export default function LoginPage() {
                   className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20"
                 >
                   <AlertCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">
+                  <div className="text-xs text-muted-foreground">
+                    <p className="font-semibold text-foreground mb-2">
                       Demo credentials:
-                    </span>{" "}
-                    Use any email and password to test the interface
-                  </p>
+                    </p>
+                    <ul className="space-y-1">
+                      <li>• Admin: admin@epilink.lk / Admin@123</li>
+                      <li>
+                        • Supervisor: supervisor@epilink.lk / Supervisor@123
+                      </li>
+                      <li>• PHI: phi@epilink.lk / PHI@123</li>
+                      <li>• Viewer: viewer@epilink.lk / Viewer@123</li>
+                    </ul>
+                  </div>
                 </motion.div>
               </form>
 
