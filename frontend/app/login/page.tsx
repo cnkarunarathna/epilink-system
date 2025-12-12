@@ -17,6 +17,7 @@ import {
 import {
   Activity,
   ArrowRight,
+  ArrowLeft,
   Mail,
   Lock,
   AlertCircle,
@@ -47,6 +48,15 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
+          {/* Back to Home */}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-6 group"
+          >
+            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
+            Back to home
+          </Link>
+
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2 mb-8">
             <motion.div
@@ -224,17 +234,6 @@ export default function LoginPage() {
                   GitHub
                 </Button>
               </div>
-
-              {/* Sign Up Link */}
-              <p className="mt-6 text-center text-sm text-muted-foreground">
-                Don't have an account?{" "}
-                <Link
-                  href="/register"
-                  className="text-primary hover:underline font-semibold"
-                >
-                  Sign up
-                </Link>
-              </p>
             </CardContent>
           </Card>
 
