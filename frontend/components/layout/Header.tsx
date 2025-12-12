@@ -63,14 +63,11 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center space-x-3">
-          <Button variant="ghost" className="hover:bg-primary/10" asChild>
-            <Link href="/login">Sign In</Link>
-          </Button>
           <Button
             className="shadow-md hover:shadow-lg transition-shadow"
             asChild
           >
-            <Link href="/register">Get Started</Link>
+            <Link href="/login">Sign In</Link>
           </Button>
         </div>
 
@@ -104,12 +101,9 @@ export function Header() {
                   {item.label}
                 </Link>
               ))}
-              <div className="pt-4 space-y-2 border-t">
-                <Button variant="ghost" className="w-full" asChild>
-                  <Link href="/login">Sign In</Link>
-                </Button>
+              <div className="pt-4 border-t">
                 <Button className="w-full" asChild>
-                  <Link href="/register">Get Started</Link>
+                  <Link href="/login">Sign In</Link>
                 </Button>
               </div>
             </nav>

@@ -173,8 +173,8 @@ export function LandingPage() {
                 className="group shadow-lg hover:shadow-xl transition-all duration-300"
                 asChild
               >
-                <Link href="/register">
-                  Get Started
+                <Link href="/login">
+                  Sign In
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
@@ -846,7 +846,7 @@ export function LandingPage() {
                   className="shadow-lg hover:shadow-xl"
                   asChild
                 >
-                  <Link href="/register">Get Started</Link>
+                  <Link href="/login">Sign In</Link>
                 </Button>
                 <Button
                   size="lg"
