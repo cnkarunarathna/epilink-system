@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { SeedModule } from './seed/seed.module';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -17,6 +18,7 @@ import databaseConfig from './config/database.config';
     DatabaseModule,
     SeedModule,
     AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
