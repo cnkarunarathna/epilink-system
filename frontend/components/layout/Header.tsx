@@ -16,11 +16,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Menu, Activity } from "lucide-react";
+import { Menu, Activity, LayoutDashboard } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false);
+  const { user } = useAuth();
 
   const navItems = [
     { label: "Home", href: "/" },
@@ -63,12 +65,24 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center space-x-3">
-          <Button
-            className="shadow-md hover:shadow-lg transition-shadow"
-            asChild
-          >
-            <Link href="/login">Sign In</Link>
-          </Button>
+          {user ? (
+            <Button
+              className="shadow-md hover:shadow-lg transition-shadow"
+              asChild
+            >
+              <Link href={`/${user.role.toLowerCase()}`}>
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                Dashboard
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              className="shadow-md hover:shadow-lg transition-shadow"
+              asChild
+            >
+              <Link href="/login">Sign In</Link>
+            </Button>
+          )}
         </div>
 
         {/* Mobile Navigation */}
@@ -102,9 +116,18 @@ export function Header() {
                 </Link>
               ))}
               <div className="pt-4 border-t">
-                <Button className="w-full" asChild>
-                  <Link href="/login">Sign In</Link>
-                </Button>
+                {user ? (
+                  <Button className="w-full" asChild>
+                    <Link href={`/${user.role.toLowerCase()}`}>
+                      <LayoutDashboard className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button className="w-full" asChild>
+                    <Link href="/login">Sign In</Link>
+                  </Button>
+                )}
               </div>
             </nav>
           </SheetContent>
