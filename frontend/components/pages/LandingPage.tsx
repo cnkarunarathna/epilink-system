@@ -36,6 +36,7 @@ import {
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Animation variants
 const fadeInUp = {
@@ -78,6 +79,8 @@ function ScrollReveal({
 }
 
 export function LandingPage() {
+  const { user } = useAuth();
+
   return (
     <>
       {/* Hero Section */}
@@ -173,10 +176,17 @@ export function LandingPage() {
                 className="group shadow-lg hover:shadow-xl transition-all duration-300"
                 asChild
               >
-                <Link href="/login">
-                  Sign In
-                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {user ? (
+                  <Link href={`/${user.role.toLowerCase()}`}>
+                    Dashboard
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                ) : (
+                  <Link href="/login">
+                    Sign In
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
               </Button>
               <Button
                 size="lg"
@@ -846,7 +856,13 @@ export function LandingPage() {
                   className="shadow-lg hover:shadow-xl"
                   asChild
                 >
-                  <Link href="/login">Sign In</Link>
+                  {user ? (
+                    <Link href={`/${user.role.toLowerCase()}`}>
+                      Go to Dashboard
+                    </Link>
+                  ) : (
+                    <Link href="/login">Sign In</Link>
+                  )}
                 </Button>
                 <Button
                   size="lg"
