@@ -40,3 +40,40 @@ export async function fetchTrends(weeks: number = 12) {
   const res = await axios.get(`${API_BASE}/analytics/trends?weeks=${weeks}`);
   return res.data;
 }
+
+export async function fetchHistoricalRange(
+  startYear?: number,
+  startWeek?: number,
+  endYear?: number,
+  endWeek?: number
+) {
+  const params = new URLSearchParams();
+  if (startYear) params.append("startYear", startYear.toString());
+  if (startWeek) params.append("startWeek", startWeek.toString());
+  if (endYear) params.append("endYear", endYear.toString());
+  if (endWeek) params.append("endWeek", endWeek.toString());
+
+  const res = await axios.get(
+    `${API_BASE}/analytics/historical/range?${params.toString()}`
+  );
+  return res.data;
+}
+
+export async function fetchCompareDistricts(districts?: string[]) {
+  const params =
+    districts && districts.length > 0
+      ? `?districts=${districts.join(",")}`
+      : "";
+  const res = await axios.get(
+    `${API_BASE}/analytics/historical/districts/compare${params}`
+  );
+  return res.data;
+}
+
+export async function fetchYearlySummary(year?: number) {
+  const params = year ? `?year=${year}` : "";
+  const res = await axios.get(
+    `${API_BASE}/analytics/historical/yearly-summary${params}`
+  );
+  return res.data;
+}

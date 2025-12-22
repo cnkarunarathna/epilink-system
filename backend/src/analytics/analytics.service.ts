@@ -249,4 +249,137 @@ export class AnalyticsService {
       avg_precipitation: row.avg_precip ? Number(row.avg_precip) : null,
     }));
   }
+
+  async getHistoricalRange(
+    startYear?: number,
+    startWeek?: number,
+    endYear?: number,
+    endWeek?: number,
+  ) {
+    const manager = this.dataSource.manager;
+
+    // Default to last year of data if no range specified
+    const defaultEnd = await manager.query(`
+      SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1
+    `);
+    const defaultStart = await manager.query(`
+      SELECT year, week FROM dengue_cases ORDER BY year ASC, week ASC LIMIT 1
+    `);
+
+    const finalStartYear = startYear || defaultStart[0]?.year;
+    const finalStartWeek = startWeek || defaultStart[0]?.week;
+    const finalEndYear = endYear || defaultEnd[0]?.year;
+    const finalEndWeek = endWeek || defaultEnd[0]?.week;
+
+    const data = await manager.query(
+      `
+      SELECT dc.year, dc.week, d.name as district, dc.cases,
+             w.temperature_2m_mean, w.precipitation_sum
+      FROM dengue_cases dc
+      JOIN districts d ON d.id = dc.district_id
+      LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
+      WHERE (dc.year > $1 OR (dc.year = $1 AND dc.week >= $2))
+        AND (dc.year < $3 OR (dc.year = $3 AND dc.week <= $4))
+      ORDER BY dc.year, dc.week, d.name
+    `,
+      [finalStartYear, finalStartWeek, finalEndYear, finalEndWeek],
+    );
+
+    return data.map((row: any) => ({
+      year: row.year,
+      week: row.week,
+      district: row.district,
+      cases: Number(row.cases) || 0,
+      temperature: row.temperature_2m_mean
+        ? Number(row.temperature_2m_mean)
+        : null,
+      precipitation: row.precipitation_sum
+        ? Number(row.precipitation_sum)
+        : null,
+    }));
+  }
+
+  async compareDistricts(districts: string[]) {
+    const manager = this.dataSource.manager;
+
+    if (districts.length === 0) {
+      // Return all districts if none specified
+      const allDistricts = await manager.query(`
+        SELECT DISTINCT d.name FROM districts d ORDER BY d.name
+      `);
+      districts = allDistricts.map((d: any) => d.name);
+    }
+
+    const placeholders = districts.map((_, i) => `$${i + 1}`).join(',');
+    const data = await manager.query(
+      `
+      SELECT dc.year, dc.week, d.name as district, dc.cases,
+             w.temperature_2m_mean, w.precipitation_sum
+      FROM dengue_cases dc
+      JOIN districts d ON d.id = dc.district_id
+      LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
+      WHERE d.name IN (${placeholders})
+      ORDER BY dc.year, dc.week, d.name
+    `,
+      districts,
+    );
+
+    return data.map((row: any) => ({
+      year: row.year,
+      week: row.week,
+      district: row.district,
+      cases: Number(row.cases) || 0,
+      temperature: row.temperature_2m_mean
+        ? Number(row.temperature_2m_mean)
+        : null,
+      precipitation: row.precipitation_sum
+        ? Number(row.precipitation_sum)
+        : null,
+    }));
+  }
+
+  async getYearlySummary(year?: number) {
+    const manager = this.dataSource.manager;
+
+    const targetYear =
+      year ||
+      (
+        await manager.query(
+          `SELECT year FROM dengue_cases ORDER BY year DESC LIMIT 1`,
+        )
+      )[0]?.year;
+
+    const summary = await manager.query(
+      `
+      WITH yearly_data AS (
+        SELECT d.name as district,
+               SUM(dc.cases) as total_cases,
+               AVG(dc.cases) as avg_cases,
+               MAX(dc.cases) as max_cases,
+               MIN(dc.cases) as min_cases,
+               COUNT(dc.cases) as week_count
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE dc.year = $1
+        GROUP BY d.name
+      )
+      SELECT district, total_cases, avg_cases, max_cases, min_cases, week_count
+      FROM yearly_data
+      ORDER BY total_cases DESC
+    `,
+      [targetYear],
+    );
+
+    return {
+      year: targetYear,
+      districts: summary.map((row: any) => ({
+        district: row.district,
+        total_cases: Number(row.total_cases) || 0,
+        avg_cases: Number(row.avg_cases) || 0,
+        max_cases: Number(row.max_cases) || 0,
+        min_cases: Number(row.min_cases) || 0,
+        week_count: Number(row.week_count) || 0,
+      })),
+    };
+  }
 }
