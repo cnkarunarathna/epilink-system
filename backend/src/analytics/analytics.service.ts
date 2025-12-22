@@ -179,7 +179,7 @@ export class AnalyticsService {
                  ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
           FROM dengue_cases dc
         ) ranked
-        WHERE ranked.rn = 1 AND ranked.cases >= 500
+        WHERE ranked.rn = 1 AND ranked.cases >= 50
       ),
       avg_temp AS (
         SELECT AVG(w.temperature_2m_mean) as avg_temp

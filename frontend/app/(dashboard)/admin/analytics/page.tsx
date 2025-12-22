@@ -138,12 +138,12 @@ export default function AnalyticsPage() {
     0
   );
 
-  // Get risk level
+  // Get risk level (data-driven thresholds based on actual case distribution)
   const getRiskLevel = (cases: number): { level: string; color: string } => {
-    if (cases >= 1000) return { level: "Very High", color: "destructive" };
-    if (cases >= 500) return { level: "High", color: "destructive" };
-    if (cases >= 200) return { level: "Medium", color: "default" };
-    if (cases >= 50) return { level: "Low", color: "secondary" };
+    if (cases >= 100) return { level: "Very High", color: "destructive" };
+    if (cases >= 50) return { level: "High", color: "destructive" };
+    if (cases >= 25) return { level: "Medium", color: "default" };
+    if (cases >= 10) return { level: "Low", color: "secondary" };
     return { level: "Very Low", color: "outline" };
   };
 
@@ -216,7 +216,7 @@ export default function AnalyticsPage() {
                 {summary.high_risk_districts}
               </div>
               <p className="text-xs text-muted-foreground">
-                Districts with ≥500 cases
+                Districts with ≥50 cases
               </p>
             </CardContent>
           </Card>

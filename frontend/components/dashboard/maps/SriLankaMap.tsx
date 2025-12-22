@@ -88,11 +88,11 @@ export default function SriLankaMap({
 
     const cases = districtData.predicted_cases;
 
-    // Color scale based on risk levels
-    if (cases >= 1000) return "#7f1d1d"; // red-900 - Very High
-    if (cases >= 500) return "#dc2626"; // red-600 - High
-    if (cases >= 200) return "#f59e0b"; // amber-500 - Medium
-    if (cases >= 50) return "#facc15"; // yellow-400 - Low
+    // Color scale based on risk levels (data-driven thresholds)
+    if (cases >= 100) return "#7f1d1d"; // red-900 - Very High
+    if (cases >= 50) return "#dc2626"; // red-600 - High
+    if (cases >= 25) return "#f59e0b"; // amber-500 - Medium
+    if (cases >= 10) return "#facc15"; // yellow-400 - Low
     return "#4ade80"; // green-400 - Very Low
   };
 
@@ -241,35 +241,35 @@ export default function SriLankaMap({
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: "#7f1d1d" }}
             ></div>
-            <span className="text-xs font-medium">Very High (1000+)</span>
+            <span className="text-xs font-medium">Very High (≥100)</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: "#dc2626" }}
             ></div>
-            <span className="text-xs font-medium">High (500-999)</span>
+            <span className="text-xs font-medium">High (50-99)</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: "#f59e0b" }}
             ></div>
-            <span className="text-xs font-medium">Medium (200-499)</span>
+            <span className="text-xs font-medium">Medium (25-49)</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: "#facc15" }}
             ></div>
-            <span className="text-xs font-medium">Low (50-199)</span>
+            <span className="text-xs font-medium">Low (10-24)</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: "#4ade80" }}
             ></div>
-            <span className="text-xs font-medium">Very Low (&lt;50)</span>
+            <span className="text-xs font-medium">Very Low (&lt;10)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-gray-200 border border-gray-300 shrink-0"></div>
