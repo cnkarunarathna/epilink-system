@@ -58,4 +58,30 @@ export class AnalyticsController {
       year ? parseInt(year) : undefined,
     );
   }
+
+  @Get('advanced/weather-correlation')
+  async weatherCorrelation() {
+    return this.analyticsService.getWeatherCorrelation();
+  }
+
+  @Get('advanced/growth-rate')
+  async growthRate(@Query('weeks') weeks?: string) {
+    const weekCount = weeks ? parseInt(weeks) : 4;
+    return this.analyticsService.getGrowthRate(weekCount);
+  }
+
+  @Get('advanced/hotspots')
+  async hotspots() {
+    return this.analyticsService.getHotspots();
+  }
+
+  @Get('advanced/outbreak-alerts')
+  async outbreakAlerts() {
+    return this.analyticsService.getOutbreakAlerts();
+  }
+
+  @Get('advanced/weekly-forecast')
+  async weeklyForecast() {
+    return this.analyticsService.getWeeklyForecast();
+  }
 }

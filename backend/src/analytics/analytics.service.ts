@@ -382,4 +382,244 @@ export class AnalyticsService {
       })),
     };
   }
+
+  async getWeatherCorrelation() {
+    const manager = this.dataSource.manager;
+
+    // Calculate correlation between weather and dengue cases
+    const data = await manager.query(`
+      SELECT 
+        d.name as district,
+        CORR(dc.cases, w.temperature_2m_mean) as temp_correlation,
+        CORR(dc.cases, w.precipitation_sum) as precip_correlation,
+        AVG(dc.cases) as avg_cases,
+        AVG(w.temperature_2m_mean) as avg_temp,
+        AVG(w.precipitation_sum) as avg_precip,
+        COUNT(*) as data_points
+      FROM dengue_cases dc
+      JOIN districts d ON d.id = dc.district_id
+      LEFT JOIN weather_data w ON w.district_id = dc.district_id 
+        AND w.year = dc.year AND w.week = dc.week
+      WHERE w.temperature_2m_mean IS NOT NULL 
+        AND w.precipitation_sum IS NOT NULL
+      GROUP BY d.name
+      HAVING COUNT(*) >= 10
+      ORDER BY ABS(CORR(dc.cases, w.temperature_2m_mean)) DESC
+    `);
+
+    return data.map((row: any) => ({
+      district: row.district,
+      temp_correlation: row.temp_correlation ? Number(row.temp_correlation) : 0,
+      precip_correlation: row.precip_correlation
+        ? Number(row.precip_correlation)
+        : 0,
+      avg_cases: Number(row.avg_cases) || 0,
+      avg_temp: Number(row.avg_temp) || 0,
+      avg_precip: Number(row.avg_precip) || 0,
+      data_points: Number(row.data_points) || 0,
+    }));
+  }
+
+  async getGrowthRate(weeks: number = 4) {
+    const manager = this.dataSource.manager;
+
+    // Calculate week-over-week growth rate per district
+    const data = await manager.query(
+      `
+      WITH recent_weeks AS (
+        SELECT dc.district_id, d.name, dc.year, dc.week, dc.cases,
+               LAG(dc.cases, 1) OVER (PARTITION BY dc.district_id ORDER BY dc.year, dc.week) as prev_week,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+      )
+      SELECT name as district,
+             AVG(CASE WHEN prev_week > 0 
+               THEN ((cases - prev_week) * 100.0 / prev_week) 
+               ELSE 0 END) as avg_growth_rate,
+             MAX(cases) as current_cases,
+             MAX(CASE WHEN rn = 2 THEN cases END) as prev_cases
+      FROM recent_weeks
+      WHERE rn <= $1
+      GROUP BY name
+      ORDER BY avg_growth_rate DESC
+    `,
+      [weeks],
+    );
+
+    return data.map((row: any) => ({
+      district: row.district,
+      avg_growth_rate: Number(row.avg_growth_rate) || 0,
+      current_cases: Number(row.current_cases) || 0,
+      prev_cases: Number(row.prev_cases) || 0,
+      trend:
+        Number(row.avg_growth_rate) > 10
+          ? 'increasing'
+          : Number(row.avg_growth_rate) < -10
+            ? 'decreasing'
+            : 'stable',
+    }));
+  }
+
+  async getHotspots() {
+    const manager = this.dataSource.manager;
+
+    // Identify hotspots based on cases, growth rate, and density
+    const data = await manager.query(`
+      WITH latest AS (
+        SELECT dc.district_id, d.name, d.latitude, d.longitude,
+               dc.cases, dc.year, dc.week,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+      ),
+      prev_week AS (
+        SELECT dc.district_id, dc.cases as prev_cases
+        FROM dengue_cases dc
+        WHERE (dc.year, dc.week) = (
+          SELECT year, week FROM dengue_cases 
+          WHERE (year, week) < (SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1)
+          ORDER BY year DESC, week DESC LIMIT 1
+        )
+      )
+      SELECT l.name as district,
+             l.cases as current_cases,
+             COALESCE(p.prev_cases, 0) as previous_cases,
+             CASE WHEN p.prev_cases > 0 
+               THEN ((l.cases - p.prev_cases) * 100.0 / p.prev_cases)
+               ELSE 0 END as growth_rate,
+             l.latitude,
+             l.longitude,
+             CASE 
+               WHEN l.cases >= 100 THEN 'critical'
+               WHEN l.cases >= 50 AND (l.cases - COALESCE(p.prev_cases, 0)) > 20 THEN 'high'
+               WHEN l.cases >= 25 THEN 'moderate'
+               ELSE 'low'
+             END as severity
+      FROM latest l
+      LEFT JOIN prev_week p ON p.district_id = l.district_id
+      WHERE l.rn = 1 AND l.cases >= 25
+      ORDER BY l.cases DESC, growth_rate DESC
+    `);
+
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current_cases) || 0,
+      previous_cases: Number(row.previous_cases) || 0,
+      growth_rate: Number(row.growth_rate) || 0,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      severity: row.severity,
+    }));
+  }
+
+  async getOutbreakAlerts() {
+    const manager = this.dataSource.manager;
+
+    // Generate alerts based on thresholds and trends
+    const data = await manager.query(`
+      WITH latest AS (
+        SELECT dc.district_id, d.name, dc.cases, dc.year, dc.week,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+      ),
+      prev_4weeks AS (
+        SELECT dc.district_id,
+               AVG(dc.cases) as avg_cases,
+               MAX(dc.cases) as max_cases
+        FROM dengue_cases dc
+        WHERE (dc.year, dc.week) IN (
+          SELECT year, week FROM dengue_cases 
+          ORDER BY year DESC, week DESC 
+          LIMIT 4 OFFSET 1
+        )
+        GROUP BY dc.district_id
+      )
+      SELECT l.name as district,
+             l.cases as current_cases,
+             p.avg_cases,
+             CASE 
+               WHEN l.cases > p.avg_cases * 2 THEN 'Outbreak Alert'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Warning'
+               WHEN l.cases >= 100 THEN 'High Cases'
+               ELSE 'Normal'
+             END as alert_level,
+             CASE 
+               WHEN l.cases > p.avg_cases * 2 THEN 'Cases doubled compared to 4-week average'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Cases 50% above average'
+               WHEN l.cases >= 100 THEN 'Very high case count'
+               ELSE 'Within normal range'
+             END as description
+      FROM latest l
+      LEFT JOIN prev_4weeks p ON p.district_id = l.district_id
+      WHERE l.rn = 1 AND (l.cases > p.avg_cases * 1.5 OR l.cases >= 50)
+      ORDER BY 
+        CASE 
+          WHEN l.cases > p.avg_cases * 2 THEN 1
+          WHEN l.cases > p.avg_cases * 1.5 THEN 2
+          ELSE 3
+        END,
+        l.cases DESC
+    `);
+
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current_cases) || 0,
+      avg_cases: Number(row.avg_cases) || 0,
+      alert_level: row.alert_level,
+      description: row.description,
+      severity:
+        row.alert_level === 'Outbreak Alert'
+          ? 'critical'
+          : row.alert_level === 'Warning'
+            ? 'high'
+            : 'moderate',
+    }));
+  }
+
+  async getWeeklyForecast() {
+    const manager = this.dataSource.manager;
+
+    // Simple forecast based on moving average and trend
+    const data = await manager.query(`
+      WITH recent AS (
+        SELECT dc.district_id, d.name, dc.year, dc.week, dc.cases,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+      ),
+      stats AS (
+        SELECT district_id, name,
+               AVG(cases) as avg_4week,
+               MAX(CASE WHEN rn = 1 THEN cases END) as current,
+               MAX(CASE WHEN rn = 2 THEN cases END) as prev1,
+               MAX(CASE WHEN rn = 3 THEN cases END) as prev2
+        FROM recent
+        WHERE rn <= 4
+        GROUP BY district_id, name
+      )
+      SELECT name as district,
+             current,
+             avg_4week,
+             ROUND(avg_4week + (current - prev1) * 0.7) as forecast,
+             CASE 
+               WHEN current > avg_4week * 1.3 THEN 'Rising'
+               WHEN current < avg_4week * 0.7 THEN 'Falling'
+               ELSE 'Stable'
+             END as trend
+      FROM stats
+      WHERE current IS NOT NULL
+      ORDER BY forecast DESC
+    `);
+
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current) || 0,
+      avg_4week: Number(row.avg_4week) || 0,
+      forecast: Number(row.forecast) || 0,
+      trend: row.trend,
+      confidence: 'medium',
+    }));
+  }
 }
