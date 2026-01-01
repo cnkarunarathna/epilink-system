@@ -11,7 +11,7 @@ export default registerAs(
     password: process.env.PGPASSWORD,
     database: process.env.PGDATABASE,
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-    synchronize: process.env.NODE_ENV !== 'production', // Auto-sync in dev, disable in production
+    synchronize: false, // Keep synchronize disabled to prevent schema conflicts
     logging: process.env.NODE_ENV === 'development',
     // ssl: {
     //   rejectUnauthorized: false, // Required for Neon.tech

@@ -13,7 +13,7 @@ export class District {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: false })
   name: string;
 
   @Column('decimal', { precision: 10, scale: 7 })
