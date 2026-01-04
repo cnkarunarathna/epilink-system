@@ -11,10 +11,12 @@ export default registerAs(
     password: process.env.PGPASSWORD,
     database: process.env.PGDATABASE,
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-    synchronize: false, // Keep synchronize disabled to prevent schema conflicts
+    migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+    migrationsRun: true, // Automatically run migrations on startup
+    synchronize: false, // Never use synchronize - use migrations instead
     logging: process.env.NODE_ENV === 'development',
-    // ssl: {
-    //   rejectUnauthorized: false, // Required for Neon.tech
-    // },
+    ssl: {
+      rejectUnauthorized: false, // Required for Neon.tech
+    },
   }),
 );
