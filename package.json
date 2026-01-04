@@ -6,9 +6,15 @@
     "install:all": "npm run install:frontend && npm run install:backend",
     "ci:frontend": "npm ci --prefix frontend",
     "ci:backend": "npm ci --prefix backend",
-    "ci:all": "npm run ci:frontend && npm run ci:backend"
+    "ci:all": "npm run ci:frontend && npm run ci:backend",
+    "test": "npm run test --prefix backend -- --passWithNoTests",
+    "build:frontend": "npm run build --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build": "npm run build:frontend && npm run build:backend",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7"
   }
 }
