@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Activity,
   LayoutDashboard,
@@ -170,6 +171,9 @@ export default function DashboardLayout({
                   {pathname.split("/").pop() || role}
                 </h1>
               </div>
+
+              {/* Theme Toggle */}
+              <ThemeToggle />
 
               {/* Notifications */}
               <Button variant="ghost" size="icon" className="relative">

@@ -217,14 +217,14 @@ export default function AnalyticsPage() {
         <TabsList className="grid w-full grid-cols-2 h-14 p-1 bg-muted/50 backdrop-blur-sm">
           <TabsTrigger
             value="predictions"
-            className="text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-md transition-all"
+            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
           >
             <Sparkles className="h-5 w-5 mr-2" />
             Current Predictions
           </TabsTrigger>
           <TabsTrigger
             value="historical"
-            className="text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-md transition-all"
+            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
           >
             <History className="h-5 w-5 mr-2" />
             Historical Analytics
@@ -279,34 +279,34 @@ export default function AnalyticsPage() {
                     <h3 className="text-xl font-semibold">Key Metrics</h3>
                   </div>
                   <div className="grid gap-6 md:grid-cols-4">
-                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 border-2 border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
-                          <div className="p-1.5 bg-blue-200 rounded-lg">
+                        <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                          <div className="p-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-lg">
                             <Activity className="h-4 w-4" />
                           </div>
                           Total Cases
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-3xl font-bold text-blue-900">
+                        <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">
                           {summary.total_cases.toLocaleString()}
                         </div>
                         <div className="flex items-center gap-1 text-xs mt-2">
                           {summary.change_percent >= 0 ? (
-                            <div className="p-1 bg-red-100 rounded-full">
-                              <TrendingUp className="h-3 w-3 text-red-600" />
+                            <div className="p-1 bg-red-100 dark:bg-red-900/50 rounded-full">
+                              <TrendingUp className="h-3 w-3 text-red-600 dark:text-red-400" />
                             </div>
                           ) : (
-                            <div className="p-1 bg-green-100 rounded-full">
-                              <TrendingDown className="h-3 w-3 text-green-600" />
+                            <div className="p-1 bg-green-100 dark:bg-green-900/50 rounded-full">
+                              <TrendingDown className="h-3 w-3 text-green-600 dark:text-green-400" />
                             </div>
                           )}
                           <span
                             className={`font-bold ${
                               summary.change_percent >= 0
-                                ? "text-red-600"
-                                : "text-green-600"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-green-600 dark:text-green-400"
                             }`}
                           >
                             {Math.abs(summary.change_percent).toFixed(1)}%
@@ -318,60 +318,60 @@ export default function AnalyticsPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-red-700 flex items-center gap-2">
-                          <div className="p-1.5 bg-red-200 rounded-lg">
+                        <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
+                          <div className="p-1.5 bg-red-200 dark:bg-red-800/50 rounded-lg">
                             <AlertTriangle className="h-4 w-4" />
                           </div>
                           High Risk Districts
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-3xl font-bold text-red-900">
+                        <div className="text-3xl font-bold text-red-900 dark:text-red-100">
                           {summary.high_risk_districts}
                         </div>
-                        <p className="text-xs text-red-700 mt-2 font-medium">
+                        <p className="text-xs text-red-700 dark:text-red-400 mt-2 font-medium">
                           Districts with ≥50 cases
                         </p>
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-green-700 flex items-center gap-2">
-                          <div className="p-1.5 bg-green-200 rounded-lg">
+                        <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-2">
+                          <div className="p-1.5 bg-green-200 dark:bg-green-800/50 rounded-lg">
                             <MapPin className="h-4 w-4" />
                           </div>
                           Districts Covered
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-3xl font-bold text-green-900">
+                        <div className="text-3xl font-bold text-green-900 dark:text-green-100">
                           {summary.district_count}
                         </div>
-                        <p className="text-xs text-green-700 mt-2 font-medium">
+                        <p className="text-xs text-green-700 dark:text-green-400 mt-2 font-medium">
                           Complete coverage
                         </p>
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-orange-700 flex items-center gap-2">
-                          <div className="p-1.5 bg-orange-200 rounded-lg">
+                        <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-center gap-2">
+                          <div className="p-1.5 bg-orange-200 dark:bg-orange-800/50 rounded-lg">
                             <Thermometer className="h-4 w-4" />
                           </div>
                           Avg Temperature
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-3xl font-bold text-orange-900">
+                        <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
                           {summary.avg_temperature
                             ? `${summary.avg_temperature.toFixed(1)}°C`
                             : "N/A"}
                         </div>
-                        <p className="text-xs text-orange-700 mt-2 font-medium">
+                        <p className="text-xs text-orange-700 dark:text-orange-400 mt-2 font-medium">
                           This week
                         </p>
                       </CardContent>
@@ -381,7 +381,7 @@ export default function AnalyticsPage() {
               )}
 
               {/* Interactive District Risk Map - Main Highlight */}
-              <Card className="border-2 border-primary/20 shadow-xl bg-gradient-to-br from-slate-50 to-white">
+              <Card className="border-2 border-primary/20 shadow-xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -417,7 +417,7 @@ export default function AnalyticsPage() {
                     </div>
                   ) : predictions.length > 0 ? (
                     <div className="grid gap-6">
-                      <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 shadow-inner">
+                      <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
                         <SriLankaMap
                           data={predictions}
                           onDistrictClick={handleDistrictClick}
@@ -426,11 +426,11 @@ export default function AnalyticsPage() {
 
                       {/* Selected District Details */}
                       {selectedDistrict && districtTimeseries.length > 0 && (
-                        <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                        <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800">
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
-                              <MapPin className="h-5 w-5 text-blue-600" />
-                              <h4 className="text-lg font-bold text-blue-900">
+                              <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100">
                                 {selectedDistrict}
                               </h4>
                             </div>
@@ -444,17 +444,17 @@ export default function AnalyticsPage() {
                                   : null;
                                 return currentData ? (
                                   <>
-                                    <div className="flex items-center justify-between p-2 bg-white/70 rounded-lg">
-                                      <span className="text-sm font-medium text-slate-600">
+                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                                         Current Forecast
                                       </span>
-                                      <span className="text-lg font-bold text-slate-900">
+                                      <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
                                         {currentData.predicted_cases.toLocaleString()}{" "}
                                         cases
                                       </span>
                                     </div>
-                                    <div className="flex items-center justify-between p-2 bg-white/70 rounded-lg">
-                                      <span className="text-sm font-medium text-slate-600">
+                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                                         Risk Level
                                       </span>
                                       <Badge variant={risk?.color as any}>
@@ -467,7 +467,7 @@ export default function AnalyticsPage() {
                             </div>
                           </div>
                           <div className="space-y-3">
-                            <h5 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <h5 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                               <Activity className="h-4 w-4" />
                               Recent Trend (Last 4 Weeks)
                             </h5>
@@ -480,21 +480,21 @@ export default function AnalyticsPage() {
                                   return (
                                     <div
                                       key={`${entry.year}-${entry.week}`}
-                                      className="flex items-center justify-between p-2 bg-white/70 rounded-lg hover:bg-white transition-colors"
+                                      className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors"
                                     >
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs font-medium text-slate-500">
+                                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                                           W{entry.week}/{entry.year}
                                         </span>
                                         {entry.temperature && (
-                                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                                          <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
                                             <Thermometer className="h-3 w-3" />
                                             {entry.temperature.toFixed(1)}°C
                                           </span>
                                         )}
                                       </div>
                                       <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-slate-900">
+                                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                           {entry.cases}
                                         </span>
                                         <Badge

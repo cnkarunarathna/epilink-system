@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Cloud, Droplets, ThermometerSun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchWeatherCorrelation } from "@/services/analytics.service";
+import { useTheme } from "next-themes";
 import {
   ResponsiveContainer,
   ScatterChart,
@@ -19,7 +20,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   Cell,
 } from "recharts";
 
@@ -36,6 +36,14 @@ interface CorrelationData {
 export default function WeatherCorrelation() {
   const [data, setData] = useState<CorrelationData[]>([]);
   const [loading, setLoading] = useState(true);
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && resolvedTheme === "dark";
 
   useEffect(() => {
     loadCorrelation();
@@ -56,7 +64,7 @@ export default function WeatherCorrelation() {
   const getCorrelationColor = (value: number) => {
     if (Math.abs(value) > 0.7) return "#dc2626"; // Strong correlation
     if (Math.abs(value) > 0.4) return "#f59e0b"; // Moderate correlation
-    return "#64748b"; // Weak correlation
+    return isDark ? "#94a3b8" : "#64748b"; // Weak correlation
   };
 
   const getCorrelationLabel = (value: number) => {
@@ -69,10 +77,10 @@ export default function WeatherCorrelation() {
   if (loading) {
     return (
       <Card className="shadow-lg border-2">
-        <CardHeader className="bg-gradient-to-r from-sky-50 to-cyan-50">
+        <CardHeader className="bg-gradient-to-r from-sky-50 to-cyan-50 dark:from-sky-950/50 dark:to-cyan-950/50">
           <CardTitle className="flex items-center gap-2">
-            <div className="p-2 bg-sky-100 rounded-lg">
-              <Cloud className="h-5 w-5 text-sky-600" />
+            <div className="p-2 bg-sky-100 dark:bg-sky-900/50 rounded-lg">
+              <Cloud className="h-5 w-5 text-sky-600 dark:text-sky-400" />
             </div>
             Weather Correlation Analysis
           </CardTitle>
@@ -82,8 +90,8 @@ export default function WeatherCorrelation() {
         </CardHeader>
         <CardContent className="pt-6">
           <div className="flex flex-col items-center justify-center h-64">
-            <div className="p-4 bg-sky-100 rounded-full animate-pulse mb-4">
-              <Cloud className="h-12 w-12 text-sky-600" />
+            <div className="p-4 bg-sky-100 dark:bg-sky-900/50 rounded-full animate-pulse mb-4">
+              <Cloud className="h-12 w-12 text-sky-600 dark:text-sky-400" />
             </div>
             <div className="text-muted-foreground font-medium">
               Analyzing correlations...
@@ -96,7 +104,7 @@ export default function WeatherCorrelation() {
 
   return (
     <Card className="shadow-lg border-2 hover:shadow-xl transition-shadow">
-      <CardHeader className="bg-gradient-to-r from-sky-50 via-cyan-50 to-blue-50">
+      <CardHeader className="bg-gradient-to-r from-sky-50 via-cyan-50 to-blue-50 dark:from-sky-950/50 dark:via-cyan-950/50 dark:to-blue-950/50">
         <CardTitle className="flex items-center gap-2">
           <div className="p-2 bg-gradient-to-br from-sky-400 to-cyan-500 rounded-lg shadow-md">
             <Cloud className="h-5 w-5 text-white" />
@@ -127,7 +135,7 @@ export default function WeatherCorrelation() {
                 .map((item) => (
                   <div
                     key={item.district}
-                    className="flex items-center justify-between p-3 rounded-lg border"
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <ThermometerSun className="h-4 w-4 text-orange-500" />
@@ -172,7 +180,7 @@ export default function WeatherCorrelation() {
                 .map((item) => (
                   <div
                     key={item.district}
-                    className="flex items-center justify-between p-3 rounded-lg border"
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <Droplets className="h-4 w-4 text-blue-500" />
@@ -211,15 +219,20 @@ export default function WeatherCorrelation() {
               <ScatterChart
                 margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={isDark ? "#374151" : "#e5e7eb"}
+                />
                 <XAxis
                   type="number"
                   dataKey="temp_correlation"
                   name="Temperature Correlation"
                   domain={[-1, 1]}
+                  tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
                   label={{
                     value: "Temperature Correlation",
                     position: "bottom",
+                    fill: isDark ? "#9ca3af" : "#6b7280",
                   }}
                 />
                 <YAxis
@@ -227,10 +240,12 @@ export default function WeatherCorrelation() {
                   dataKey="precip_correlation"
                   name="Precipitation Correlation"
                   domain={[-1, 1]}
+                  tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
                   label={{
                     value: "Precipitation Correlation",
                     angle: -90,
                     position: "left",
+                    fill: isDark ? "#9ca3af" : "#6b7280",
                   }}
                 />
                 <Tooltip
@@ -239,9 +254,15 @@ export default function WeatherCorrelation() {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload as CorrelationData;
                       return (
-                        <div className="bg-white p-3 rounded-lg border shadow-lg">
+                        <div
+                          className={`p-3 rounded-lg border shadow-lg ${
+                            isDark
+                              ? "bg-gray-800 border-gray-700"
+                              : "bg-white border-gray-200"
+                          }`}
+                        >
                           <div className="font-semibold">{data.district}</div>
-                          <div className="text-xs space-y-1 mt-1">
+                          <div className="text-xs space-y-1 mt-1 text-muted-foreground">
                             <div>
                               Temp Corr: {data.temp_correlation.toFixed(3)}
                             </div>
@@ -277,15 +298,23 @@ export default function WeatherCorrelation() {
           <div className="flex items-center justify-center gap-6 text-xs">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-red-600"></div>
-              <span>Strong (|r| &gt; 0.7)</span>
+              <span className="text-muted-foreground">
+                Strong (|r| &gt; 0.7)
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-              <span>Moderate (|r| &gt; 0.4)</span>
+              <span className="text-muted-foreground">
+                Moderate (|r| &gt; 0.4)
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-              <span>Weak</span>
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isDark ? "bg-slate-400" : "bg-gray-500"
+                }`}
+              ></div>
+              <span className="text-muted-foreground">Weak</span>
             </div>
           </div>
         </div>
