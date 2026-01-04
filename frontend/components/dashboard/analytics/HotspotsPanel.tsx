@@ -42,19 +42,6 @@ export default function HotspotsPanel() {
     }
   };
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "critical":
-        return "bg-red-100 border-red-300 text-red-900";
-      case "high":
-        return "bg-orange-100 border-orange-300 text-orange-900";
-      case "moderate":
-        return "bg-yellow-100 border-yellow-300 text-yellow-900";
-      default:
-        return "bg-gray-100 border-gray-300 text-gray-900";
-    }
-  };
-
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
       case "critical":
@@ -90,10 +77,10 @@ export default function HotspotsPanel() {
 
   return (
     <Card className="shadow-lg border-2 hover:shadow-xl transition-shadow">
-      <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50">
+      <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/50 dark:to-red-950/50">
         <CardTitle className="flex items-center gap-2">
-          <div className="p-2 bg-orange-100 rounded-lg">
-            <Flame className="h-5 w-5 text-orange-600" />
+          <div className="p-2 bg-orange-100 dark:bg-orange-900/50 rounded-lg">
+            <Flame className="h-5 w-5 text-orange-600 dark:text-orange-400" />
           </div>
           Active Hotspots
           {hotspots.length > 0 && (
@@ -109,23 +96,23 @@ export default function HotspotsPanel() {
       <CardContent className="pt-6">
         {hotspots.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <div className="p-4 bg-gray-100 rounded-full mb-3">
+            <div className="p-4 bg-muted rounded-full mb-3">
               <MapPin className="h-8 w-8" />
             </div>
             <p className="font-medium">No hotspots detected</p>
             <p className="text-sm">All districts under control</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800">
             {hotspots.map((hotspot, index) => (
               <div
                 key={hotspot.district}
                 className={`p-4 rounded-lg border-2 transition-all duration-300 hover:shadow-md hover:scale-[1.02] cursor-pointer animate-in slide-in-from-right-5 ${
                   hotspot.severity === "critical"
-                    ? "bg-gradient-to-r from-red-50 to-red-100 border-red-300 hover:from-red-100 hover:to-red-200"
+                    ? "bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-red-300 dark:border-red-800 hover:from-red-100 hover:to-red-200 dark:hover:from-red-900/50 dark:hover:to-red-800/30"
                     : hotspot.severity === "high"
-                    ? "bg-gradient-to-r from-orange-50 to-orange-100 border-orange-300 hover:from-orange-100 hover:to-orange-200"
-                    : "bg-gradient-to-r from-yellow-50 to-yellow-100 border-yellow-300 hover:from-yellow-100 hover:to-yellow-200"
+                    ? "bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-300 dark:border-orange-800 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
+                    : "bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-950/50 dark:to-yellow-900/30 border-yellow-300 dark:border-yellow-800 hover:from-yellow-100 hover:to-yellow-200 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
                 }`}
                 style={{ animationDelay: `${index * 100}ms` }}
               >
@@ -134,10 +121,10 @@ export default function HotspotsPanel() {
                     <div
                       className={`p-1.5 rounded-lg ${
                         hotspot.severity === "critical"
-                          ? "bg-red-200"
+                          ? "bg-red-200 dark:bg-red-800/50"
                           : hotspot.severity === "high"
-                          ? "bg-orange-200"
-                          : "bg-yellow-200"
+                          ? "bg-orange-200 dark:bg-orange-800/50"
+                          : "bg-yellow-200 dark:bg-yellow-800/50"
                       }`}
                     >
                       <MapPin className="h-4 w-4" />
@@ -149,7 +136,7 @@ export default function HotspotsPanel() {
                   {getSeverityBadge(hotspot.severity)}
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="text-center p-2 bg-white/60 rounded-lg">
+                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
                     <div className="text-xs text-muted-foreground mb-1">
                       Current
                     </div>
@@ -157,7 +144,7 @@ export default function HotspotsPanel() {
                       {hotspot.current_cases}
                     </div>
                   </div>
-                  <div className="text-center p-2 bg-white/60 rounded-lg">
+                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
                     <div className="text-xs text-muted-foreground mb-1">
                       Previous
                     </div>
@@ -165,15 +152,15 @@ export default function HotspotsPanel() {
                       {hotspot.previous_cases}
                     </div>
                   </div>
-                  <div className="text-center p-2 bg-white/60 rounded-lg">
+                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
                     <div className="text-xs text-muted-foreground mb-1">
                       Growth
                     </div>
                     <div
                       className={`font-bold text-lg flex items-center justify-center gap-1 ${
                         hotspot.growth_rate > 0
-                          ? "text-red-600"
-                          : "text-green-600"
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-green-600 dark:text-green-400"
                       }`}
                     >
                       {hotspot.growth_rate > 0 ? "↑" : "↓"}

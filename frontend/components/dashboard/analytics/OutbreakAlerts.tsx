@@ -82,8 +82,8 @@ export default function OutbreakAlerts() {
       <Card className="border-2 border-dashed">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <AlertTriangle className="h-5 w-5 text-green-600" />
+            <div className="p-2 bg-green-100 dark:bg-green-900/50 rounded-lg">
+              <AlertTriangle className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             Outbreak Alerts
           </CardTitle>
@@ -91,10 +91,12 @@ export default function OutbreakAlerts() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-            <div className="p-4 bg-green-50 rounded-full mb-3">
-              <Activity className="h-8 w-8 text-green-600" />
+            <div className="p-4 bg-green-50 dark:bg-green-900/30 rounded-full mb-3">
+              <Activity className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
-            <p className="font-medium text-green-700">All Clear!</p>
+            <p className="font-medium text-green-700 dark:text-green-400">
+              All Clear!
+            </p>
             <p className="text-sm">No active outbreak alerts detected</p>
           </div>
         </CardContent>
@@ -104,10 +106,10 @@ export default function OutbreakAlerts() {
 
   return (
     <Card className="shadow-lg border-2">
-      <CardHeader className="bg-gradient-to-r from-red-50 to-orange-50">
+      <CardHeader className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/50 dark:to-orange-950/50">
         <CardTitle className="flex items-center gap-2">
-          <div className="p-2 bg-red-100 rounded-lg animate-pulse">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+          <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-lg animate-pulse">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
           </div>
           Outbreak Alerts
           <Badge variant="destructive" className="ml-auto">
@@ -125,10 +127,10 @@ export default function OutbreakAlerts() {
               key={alert.district}
               className={`p-4 rounded-lg border-l-4 transition-all duration-300 hover:shadow-md hover:scale-[1.02] animate-in slide-in-from-left-5 ${
                 alert.severity === "critical"
-                  ? "border-red-500 bg-gradient-to-r from-red-50 to-red-100/50 hover:from-red-100 hover:to-red-200/50"
+                  ? "border-red-500 bg-gradient-to-r from-red-50 to-red-100/50 dark:from-red-950/50 dark:to-red-900/30 hover:from-red-100 hover:to-red-200/50 dark:hover:from-red-900/50 dark:hover:to-red-800/30"
                   : alert.severity === "high"
-                  ? "border-orange-500 bg-gradient-to-r from-orange-50 to-orange-100/50 hover:from-orange-100 hover:to-orange-200/50"
-                  : "border-yellow-500 bg-gradient-to-r from-yellow-50 to-yellow-100/50 hover:from-yellow-100 hover:to-yellow-200/50"
+                  ? "border-orange-500 bg-gradient-to-r from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 hover:from-orange-100 hover:to-orange-200/50 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
+                  : "border-yellow-500 bg-gradient-to-r from-yellow-50 to-yellow-100/50 dark:from-yellow-950/50 dark:to-yellow-900/30 hover:from-yellow-100 hover:to-yellow-200/50 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
               }`}
               style={{ animationDelay: `${index * 100}ms` }}
             >
@@ -144,7 +146,7 @@ export default function OutbreakAlerts() {
                   <div className="flex items-center gap-4 text-xs">
                     <span className="flex items-center gap-1">
                       <span className="font-medium">Current:</span>
-                      <span className="font-bold text-red-600">
+                      <span className="font-bold text-red-600 dark:text-red-400">
                         {alert.current_cases}
                       </span>
                     </span>
@@ -156,7 +158,7 @@ export default function OutbreakAlerts() {
                       {alert.current_cases > alert.avg_cases ? (
                         <>
                           <TrendingUp className="h-3 w-3 text-red-500" />
-                          <span className="text-red-600 font-medium">
+                          <span className="text-red-600 dark:text-red-400 font-medium">
                             +
                             {(
                               (alert.current_cases / alert.avg_cases - 1) *
@@ -168,7 +170,7 @@ export default function OutbreakAlerts() {
                       ) : (
                         <>
                           <TrendingDown className="h-3 w-3 text-green-500" />
-                          <span className="text-green-600 font-medium">
+                          <span className="text-green-600 dark:text-green-400 font-medium">
                             {(
                               (alert.current_cases / alert.avg_cases - 1) *
                               100

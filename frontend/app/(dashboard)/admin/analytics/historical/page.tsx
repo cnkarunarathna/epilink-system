@@ -48,6 +48,7 @@ import {
   Area,
   AreaChart,
 } from "recharts";
+import { useTheme } from "next-themes";
 
 interface HistoricalData {
   year: number;
@@ -84,6 +85,8 @@ export default function HistoricalAnalyticsPage() {
     null
   );
   const [comparisonData, setComparisonData] = useState<HistoricalData[]>([]);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   // Available years for selection
   const availableYears = [2023, 2024, 2025, 2026];
@@ -293,10 +296,22 @@ export default function HistoricalAnalyticsPage() {
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
                 <AreaChart data={yearlyTrends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="year" />
-                  <YAxis />
-                  <Tooltip />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? "#374151" : "#e5e7eb"}
+                  />
+                  <XAxis
+                    dataKey="year"
+                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
+                  />
+                  <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? "#1f2937" : "#fff",
+                      borderColor: isDark ? "#374151" : "#e5e7eb",
+                      color: isDark ? "#f3f4f6" : "#111827",
+                    }}
+                  />
                   <Legend />
                   <Area
                     type="monotone"
@@ -439,15 +454,25 @@ export default function HistoricalAnalyticsPage() {
             <CardContent>
               <ResponsiveContainer width="100%" height={500}>
                 <RechartsLine data={timeSeriesData}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? "#374151" : "#e5e7eb"}
+                  />
                   <XAxis
                     dataKey="weekLabel"
                     angle={-45}
                     textAnchor="end"
                     height={100}
+                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
                   />
-                  <YAxis />
-                  <Tooltip />
+                  <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? "#1f2937" : "#fff",
+                      borderColor: isDark ? "#374151" : "#e5e7eb",
+                      color: isDark ? "#f3f4f6" : "#111827",
+                    }}
+                  />
                   <Legend />
                   {selectedDistricts.map((district, idx) => (
                     <Line
@@ -499,15 +524,25 @@ export default function HistoricalAnalyticsPage() {
                   {/* Bar chart */}
                   <ResponsiveContainer width="100%" height={400}>
                     <RechartsBar data={yearlySummary.districts}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={isDark ? "#374151" : "#e5e7eb"}
+                      />
                       <XAxis
                         dataKey="district"
                         angle={-45}
                         textAnchor="end"
                         height={100}
+                        tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
                       />
-                      <YAxis />
-                      <Tooltip />
+                      <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: isDark ? "#1f2937" : "#fff",
+                          borderColor: isDark ? "#374151" : "#e5e7eb",
+                          color: isDark ? "#f3f4f6" : "#111827",
+                        }}
+                      />
                       <Legend />
                       <Bar
                         dataKey="total_cases"
@@ -560,7 +595,7 @@ export default function HistoricalAnalyticsPage() {
                               <td className="p-3 text-right">
                                 {district.avg_cases.toFixed(1)}
                               </td>
-                              <td className="p-3 text-right font-semibold text-red-600">
+                              <td className="p-3 text-right font-semibold text-red-600 dark:text-red-400">
                                 {district.max_cases}
                               </td>
                               <td className="p-3 text-right text-muted-foreground">
@@ -599,10 +634,22 @@ export default function HistoricalAnalyticsPage() {
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
                 <AreaChart data={seasonalPattern}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="week" />
-                  <YAxis />
-                  <Tooltip />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? "#374151" : "#e5e7eb"}
+                  />
+                  <XAxis
+                    dataKey="week"
+                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
+                  />
+                  <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? "#1f2937" : "#fff",
+                      borderColor: isDark ? "#374151" : "#e5e7eb",
+                      color: isDark ? "#f3f4f6" : "#111827",
+                    }}
+                  />
                   <Legend />
                   <Area
                     type="monotone"

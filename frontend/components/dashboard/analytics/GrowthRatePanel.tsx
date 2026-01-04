@@ -47,7 +47,7 @@ export default function GrowthRatePanel() {
       case "decreasing":
         return <TrendingDown className="h-4 w-4 text-green-500" />;
       default:
-        return <Minus className="h-4 w-4 text-gray-500" />;
+        return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -73,7 +73,9 @@ export default function GrowthRatePanel() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-64">
-            <div className="animate-pulse">Loading...</div>
+            <div className="animate-pulse text-muted-foreground">
+              Loading...
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -92,10 +94,10 @@ export default function GrowthRatePanel() {
 
   return (
     <Card className="shadow-lg border-2 hover:shadow-xl transition-shadow">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50">
         <CardTitle className="flex items-center gap-2">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <Activity className="h-5 w-5 text-blue-600" />
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
+            <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
           </div>
           Growth Rate Analysis
         </CardTitle>
@@ -109,23 +111,23 @@ export default function GrowthRatePanel() {
           {increasing.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-red-600 flex items-center gap-2">
-                  <div className="p-1.5 bg-red-100 rounded">
+                <h4 className="text-sm font-semibold text-red-600 dark:text-red-400 flex items-center gap-2">
+                  <div className="p-1.5 bg-red-100 dark:bg-red-900/50 rounded">
                     <TrendingUp className="h-4 w-4" />
                   </div>
                   Fastest Growing
                 </h4>
                 <Badge variant="destructive">{increasing.length}</Badge>
               </div>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-red-300 scrollbar-track-red-100">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-red-300 dark:scrollbar-thumb-red-800 scrollbar-track-red-100 dark:scrollbar-track-red-950">
                 {increasing.map((item, index) => (
                   <div
                     key={item.district}
-                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 hover:shadow-md hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-in slide-in-from-left-5"
+                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-md hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-in slide-in-from-left-5"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-red-200 rounded-full">
+                      <div className="p-2 bg-red-200 dark:bg-red-800/50 rounded-full">
                         {getTrendIcon(item.trend)}
                       </div>
                       <div>
@@ -144,7 +146,7 @@ export default function GrowthRatePanel() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-xl text-red-600">
+                      <div className="font-bold text-xl text-red-600 dark:text-red-400">
                         +{item.avg_growth_rate.toFixed(1)}%
                       </div>
                     </div>
@@ -158,23 +160,23 @@ export default function GrowthRatePanel() {
           {decreasing.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-green-600 flex items-center gap-2">
-                  <div className="p-1.5 bg-green-100 rounded">
+                <h4 className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-2">
+                  <div className="p-1.5 bg-green-100 dark:bg-green-900/50 rounded">
                     <TrendingDown className="h-4 w-4" />
                   </div>
                   Declining
                 </h4>
                 <Badge className="bg-green-500">{decreasing.length}</Badge>
               </div>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-green-300 scrollbar-track-green-100">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-green-300 dark:scrollbar-thumb-green-800 scrollbar-track-green-100 dark:scrollbar-track-green-950">
                 {decreasing.map((item, index) => (
                   <div
                     key={item.district}
-                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-green-50 to-green-100 border-2 border-green-200 hover:shadow-md hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-in slide-in-from-right-5"
+                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-md hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-in slide-in-from-right-5"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-green-200 rounded-full">
+                      <div className="p-2 bg-green-200 dark:bg-green-800/50 rounded-full">
                         {getTrendIcon(item.trend)}
                       </div>
                       <div>
@@ -193,7 +195,7 @@ export default function GrowthRatePanel() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-xl text-green-600">
+                      <div className="font-bold text-xl text-green-600 dark:text-green-400">
                         {item.avg_growth_rate.toFixed(1)}%
                       </div>
                     </div>
