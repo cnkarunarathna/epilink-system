@@ -77,3 +77,32 @@ export async function fetchYearlySummary(year?: number) {
   );
   return res.data;
 }
+
+export async function fetchWeatherCorrelation() {
+  const res = await axios.get(
+    `${API_BASE}/analytics/advanced/weather-correlation`
+  );
+  return res.data;
+}
+
+export async function fetchGrowthRate(weeks: number = 4) {
+  const res = await axios.get(
+    `${API_BASE}/analytics/advanced/growth-rate?weeks=${weeks}`
+  );
+  return res.data;
+}
+
+export async function fetchHotspots() {
+  const res = await axios.get(`${API_BASE}/analytics/advanced/hotspots`);
+  return res.data;
+}
+
+export async function fetchOutbreakAlerts() {
+  const res = await axios.get(`${API_BASE}/analytics/advanced/outbreak-alerts`);
+  return res.data;
+}
+
+export async function fetchWeeklyForecast() {
+  const res = await axios.get(`${API_BASE}/analytics/advanced/weekly-forecast`);
+  return res.data;
+}

@@ -22,9 +22,15 @@ import {
   Thermometer,
   History,
   Sparkles,
+  Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
+import OutbreakAlerts from "@/components/dashboard/analytics/OutbreakAlerts";
+import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
+import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
+import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -163,35 +169,81 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
-            Dengue Analytics Dashboard
-          </h2>
-          <p className="text-muted-foreground">
-            Predictions, trends, and insights for dengue case monitoring
-          </p>
+      {/* Header with Gradient Background */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-600 to-green-800 p-8 text-white shadow-xl">
+        <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,white)]"></div>
+        <div className="relative">
+          <div className="flex items-center justify-between">
+            <div className="space-y-2">
+              <h2 className="text-4xl font-bold tracking-tight flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                  <BarChart3 className="h-8 w-8" />
+                </div>
+                Dengue Analytics Dashboard
+              </h2>
+              <p className="text-green-100 text-lg">
+                Real-time predictions, trends, and insights for dengue case
+                monitoring
+              </p>
+            </div>
+            {summary && (
+              <div className="flex gap-4">
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
+                  <div className="text-sm text-green-100">Prediction Week</div>
+                  <div className="text-2xl font-bold">
+                    {summary.current_week.week}
+                  </div>
+                  <div className="text-xs text-green-200">
+                    {summary.current_week.year}
+                  </div>
+                </div>
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
+                  <div className="text-sm text-green-100">Total Cases</div>
+                  <div className="text-2xl font-bold">
+                    {summary.total_cases.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-green-200">
+                    {summary.change_percent >= 0 ? "+" : ""}
+                    {summary.change_percent.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <Tabs defaultValue="predictions" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="predictions">
-            <Sparkles className="h-4 w-4 mr-2" />
+        <TabsList className="grid w-full grid-cols-2 h-14 p-1 bg-muted/50 backdrop-blur-sm">
+          <TabsTrigger
+            value="predictions"
+            className="text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-md transition-all"
+          >
+            <Sparkles className="h-5 w-5 mr-2" />
             Current Predictions
           </TabsTrigger>
-          <TabsTrigger value="historical">
-            <History className="h-4 w-4 mr-2" />
+          <TabsTrigger
+            value="historical"
+            className="text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-md transition-all"
+          >
+            <History className="h-5 w-5 mr-2" />
             Historical Analytics
           </TabsTrigger>
         </TabsList>
 
         {/* Predictions Tab */}
-        <TabsContent value="predictions" className="space-y-6">
+        <TabsContent
+          value="predictions"
+          className="space-y-6 animate-in fade-in-50 duration-500"
+        >
           {/* Refresh Button */}
           <div className="flex justify-end">
-            <Button onClick={loadDashboardData} disabled={loading}>
+            <Button
+              onClick={loadDashboardData}
+              disabled={loading}
+              size="lg"
+              className="shadow-md"
+            >
               {loading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -200,247 +252,424 @@ export default function AnalyticsPage() {
               Refresh Data
             </Button>
           </div>
+          {/* Nested Tabs for Predictions Sections */}
+          <Tabs defaultValue="overview" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3 h-12 p-1 bg-muted/50">
+              <TabsTrigger value="overview" className="text-sm">
+                <Activity className="h-4 w-4 mr-2" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="text-sm">
+                <Zap className="h-4 w-4 mr-2" />
+                Advanced Analytics
+              </TabsTrigger>
+              <TabsTrigger value="districts" className="text-sm">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                District Analysis
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Summary Stats */}
-          {summary && (
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    Total Cases (Week {summary.current_week.week})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {summary.total_cases.toLocaleString()}
+            {/* Overview Tab */}
+            <TabsContent value="overview" className="space-y-6">
+              {/* Key Metrics */}
+              {summary && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded"></div>
+                    <h3 className="text-xl font-semibold">Key Metrics</h3>
                   </div>
-                  <div className="flex items-center gap-1 text-xs mt-1">
-                    {summary.change_percent >= 0 ? (
-                      <TrendingUp className="h-3 w-3 text-red-500" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3 text-green-500" />
-                    )}
-                    <span
-                      className={
-                        summary.change_percent >= 0
-                          ? "text-red-500"
-                          : "text-green-500"
-                      }
-                    >
-                      {Math.abs(summary.change_percent).toFixed(1)}%
-                    </span>
-                    <span className="text-muted-foreground">
-                      from last week
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    High Risk Districts
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {summary.high_risk_districts}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Districts with ≥50 cases
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Districts Covered
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {summary.district_count}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Complete coverage
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Thermometer className="h-4 w-4" />
-                    Avg Temperature
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {summary.avg_temperature
-                      ? `${summary.avg_temperature.toFixed(1)}°C`
-                      : "N/A"}
-                  </div>
-                  <p className="text-xs text-muted-foreground">This week</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Trend Chart */}
-          {trends.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>12-Week Trend</CardTitle>
-                <CardDescription>
-                  Historical dengue cases over the last 12 weeks
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64 flex items-end justify-between gap-2">
-                  {trends
-                    .filter((t) => t.year && t.week)
-                    .map((t) => {
-                      const maxCases = Math.max(
-                        ...trends.map((d) => d.total_cases)
-                      );
-                      const height = (t.total_cases / maxCases) * 100;
-                      return (
-                        <div
-                          key={`${t.year}-${t.week}`}
-                          className="flex-1 flex flex-col items-center"
-                        >
-                          <div
-                            className="w-full bg-primary rounded-t transition-all hover:bg-primary/80"
-                            style={{ height: `${height}%` }}
-                            title={`Week ${t.week}: ${t.total_cases} cases`}
-                          ></div>
-                          <span className="text-xs text-muted-foreground mt-2">
-                            W{t.week}
+                  <div className="grid gap-6 md:grid-cols-4">
+                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
+                          <div className="p-1.5 bg-blue-200 rounded-lg">
+                            <Activity className="h-4 w-4" />
+                          </div>
+                          Total Cases
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-blue-900">
+                          {summary.total_cases.toLocaleString()}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs mt-2">
+                          {summary.change_percent >= 0 ? (
+                            <div className="p-1 bg-red-100 rounded-full">
+                              <TrendingUp className="h-3 w-3 text-red-600" />
+                            </div>
+                          ) : (
+                            <div className="p-1 bg-green-100 rounded-full">
+                              <TrendingDown className="h-3 w-3 text-green-600" />
+                            </div>
+                          )}
+                          <span
+                            className={`font-bold ${
+                              summary.change_percent >= 0
+                                ? "text-red-600"
+                                : "text-green-600"
+                            }`}
+                          >
+                            {Math.abs(summary.change_percent).toFixed(1)}%
+                          </span>
+                          <span className="text-muted-foreground">
+                            from last week
                           </span>
                         </div>
-                      );
-                    })}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-red-700 flex items-center gap-2">
+                          <div className="p-1.5 bg-red-200 rounded-lg">
+                            <AlertTriangle className="h-4 w-4" />
+                          </div>
+                          High Risk Districts
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-red-900">
+                          {summary.high_risk_districts}
+                        </div>
+                        <p className="text-xs text-red-700 mt-2 font-medium">
+                          Districts with ≥50 cases
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-green-700 flex items-center gap-2">
+                          <div className="p-1.5 bg-green-200 rounded-lg">
+                            <MapPin className="h-4 w-4" />
+                          </div>
+                          Districts Covered
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-green-900">
+                          {summary.district_count}
+                        </div>
+                        <p className="text-xs text-green-700 mt-2 font-medium">
+                          Complete coverage
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-orange-700 flex items-center gap-2">
+                          <div className="p-1.5 bg-orange-200 rounded-lg">
+                            <Thermometer className="h-4 w-4" />
+                          </div>
+                          Avg Temperature
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-orange-900">
+                          {summary.avg_temperature
+                            ? `${summary.avg_temperature.toFixed(1)}°C`
+                            : "N/A"}
+                        </div>
+                        <p className="text-xs text-orange-700 mt-2 font-medium">
+                          This week
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
 
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Interactive Map */}
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  District-wise Risk Map
-                </CardTitle>
-                <CardDescription>
-                  Click on a district to view detailed trends
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex items-center justify-center h-96">
-                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                  </div>
-                ) : predictions.length > 0 ? (
-                  <div className="h-[600px] w-full">
-                    <SriLankaMap
-                      data={predictions}
-                      onDistrictClick={handleDistrictClick}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
-                    <MapPin className="h-12 w-12 mb-4" />
-                    <p>No data available</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Top Risk Districts */}
-            {predictions.length > 0 && (
-              <Card>
+              {/* Interactive District Risk Map - Main Highlight */}
+              <Card className="border-2 border-primary/20 shadow-xl bg-gradient-to-br from-slate-50 to-white">
                 <CardHeader>
-                  <CardTitle>Top Risk Districts</CardTitle>
-                  <CardDescription>
-                    Districts with highest predicted cases
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                        <MapPin className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl">
+                          Interactive Risk Map
+                        </CardTitle>
+                        <CardDescription className="text-base mt-1">
+                          Click on any district to view detailed analysis and
+                          historical trends
+                        </CardDescription>
+                      </div>
+                    </div>
+                    {selectedDistrict && (
+                      <Badge variant="default" className="text-sm px-3 py-1">
+                        Selected: {selectedDistrict}
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {topRiskDistricts.map((district, index) => {
-                      const risk = getRiskLevel(district.predicted_cases);
-                      return (
-                        <div
-                          key={district.district}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent cursor-pointer transition-colors"
-                          onClick={() => handleDistrictClick(district.district)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
-                              {index + 1}
+                  {loading ? (
+                    <div className="flex items-center justify-center h-[600px] bg-muted/30 rounded-lg">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                        <p className="text-muted-foreground font-medium">
+                          Loading map data...
+                        </p>
+                      </div>
+                    </div>
+                  ) : predictions.length > 0 ? (
+                    <div className="grid gap-6">
+                      <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 shadow-inner">
+                        <SriLankaMap
+                          data={predictions}
+                          onDistrictClick={handleDistrictClick}
+                        />
+                      </div>
+
+                      {/* Selected District Details */}
+                      {selectedDistrict && districtTimeseries.length > 0 && (
+                        <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-5 w-5 text-blue-600" />
+                              <h4 className="text-lg font-bold text-blue-900">
+                                {selectedDistrict}
+                              </h4>
                             </div>
-                            <div>
-                              <p className="font-medium">{district.district}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {district.predicted_cases.toLocaleString()}{" "}
-                                cases
-                              </p>
+                            <div className="space-y-2">
+                              {(() => {
+                                const currentData = predictions.find(
+                                  (p) => p.district === selectedDistrict
+                                );
+                                const risk = currentData
+                                  ? getRiskLevel(currentData.predicted_cases)
+                                  : null;
+                                return currentData ? (
+                                  <>
+                                    <div className="flex items-center justify-between p-2 bg-white/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600">
+                                        Current Forecast
+                                      </span>
+                                      <span className="text-lg font-bold text-slate-900">
+                                        {currentData.predicted_cases.toLocaleString()}{" "}
+                                        cases
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between p-2 bg-white/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600">
+                                        Risk Level
+                                      </span>
+                                      <Badge variant={risk?.color as any}>
+                                        {risk?.level}
+                                      </Badge>
+                                    </div>
+                                  </>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
-                          <Badge variant={risk.color as any}>
-                            {risk.level}
-                          </Badge>
+                          <div className="space-y-3">
+                            <h5 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                              <Activity className="h-4 w-4" />
+                              Recent Trend (Last 4 Weeks)
+                            </h5>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {districtTimeseries
+                                .slice(-4)
+                                .reverse()
+                                .map((entry) => {
+                                  const risk = getRiskLevel(entry.cases);
+                                  return (
+                                    <div
+                                      key={`${entry.year}-${entry.week}`}
+                                      className="flex items-center justify-between p-2 bg-white/70 rounded-lg hover:bg-white transition-colors"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-slate-500">
+                                          W{entry.week}/{entry.year}
+                                        </span>
+                                        {entry.temperature && (
+                                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                                            <Thermometer className="h-3 w-3" />
+                                            {entry.temperature.toFixed(1)}°C
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-slate-900">
+                                          {entry.cases}
+                                        </span>
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs"
+                                        >
+                                          {risk.level}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground bg-muted/30 rounded-lg">
+                      <MapPin className="h-16 w-16 mb-4 text-muted-foreground/50" />
+                      <p className="text-lg font-medium">
+                        No map data available
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
 
-            {/* District Timeline */}
-            {selectedDistrict && districtTimeseries.length > 0 && (
+              {/* 12-Week Trend Chart */}
+              {trends.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>12-Week Trend</CardTitle>
+                    <CardDescription>
+                      Historical dengue cases over the last 12 weeks
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64 flex items-end justify-between gap-2">
+                      {trends
+                        .filter((t) => t.year && t.week)
+                        .map((t) => {
+                          const maxCases = Math.max(
+                            ...trends.map((d) => d.total_cases)
+                          );
+                          const height = (t.total_cases / maxCases) * 100;
+                          return (
+                            <div
+                              key={`${t.year}-${t.week}`}
+                              className="flex-1 flex flex-col items-center"
+                            >
+                              <div
+                                className="w-full bg-primary rounded-t transition-all hover:bg-primary/80"
+                                style={{ height: `${height}%` }}
+                                title={`Week ${t.week}: ${t.total_cases} cases`}
+                              ></div>
+                              <span className="text-xs text-muted-foreground mt-2">
+                                W{t.week}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Top Risk Districts */}
+              {predictions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Top 10 Risk Districts</CardTitle>
+                    <CardDescription>
+                      Districts with highest predicted cases this week
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {topRiskDistricts.map((district, index) => {
+                        const risk = getRiskLevel(district.predicted_cases);
+                        return (
+                          <div
+                            key={district.district}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent cursor-pointer transition-colors"
+                            onClick={() =>
+                              handleDistrictClick(district.district)
+                            }
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                                {index + 1}
+                              </div>
+                              <div>
+                                <p className="font-medium">
+                                  {district.district}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {district.predicted_cases.toLocaleString()}{" "}
+                                  cases
+                                </p>
+                              </div>
+                            </div>
+                            <Badge variant={risk.color as any}>
+                              {risk.level}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            {/* Advanced Analytics Tab */}
+            <TabsContent value="advanced" className="space-y-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg shadow-lg">
+                    <Zap className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold">Advanced Analytics</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Real-time insights and outbreak detection
+                    </p>
+                  </div>
+                </div>
+
+                {/* Outbreak Alerts */}
+                <OutbreakAlerts />
+
+                {/* Hotspots and Growth Rate */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <HotspotsPanel />
+                  <GrowthRatePanel />
+                </div>
+
+                {/* Weather Correlation */}
+                <WeatherCorrelation />
+              </div>
+            </TabsContent>
+
+            {/* District Analysis Tab */}
+            <TabsContent value="districts" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>{selectedDistrict} Timeline</CardTitle>
+                  <CardTitle>All Districts - Complete Breakdown</CardTitle>
                   <CardDescription>
-                    Historical cases for the last {districtTimeseries.length}{" "}
-                    weeks
+                    Comprehensive view of predicted cases across all 25
+                    districts
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {districtTimeseries
-                      .slice(-12)
-                      .reverse()
-                      .map((entry) => {
-                        const risk = getRiskLevel(entry.cases);
+                  {predictions.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {predictions.map((district) => {
+                        const risk = getRiskLevel(district.predicted_cases);
                         return (
                           <div
-                            key={`${entry.year}-${entry.week}`}
-                            className="flex items-center justify-between p-2 rounded border"
+                            key={district.district}
+                            className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-all hover:shadow-md"
+                            onClick={() =>
+                              handleDistrictClick(district.district)
+                            }
                           >
-                            <div>
-                              <p className="text-sm font-medium">
-                                Week {entry.week}/{entry.year}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {entry.temperature
-                                  ? `${entry.temperature.toFixed(1)}°C`
-                                  : "N/A"}{" "}
-                                •{" "}
-                                {entry.precipitation
-                                  ? `${entry.precipitation.toFixed(0)}mm`
-                                  : "N/A"}
-                              </p>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium text-sm">
+                                {district.district}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-bold">
-                                {entry.cases.toLocaleString()}
+                                {district.predicted_cases.toLocaleString()}
                               </span>
                               <Badge variant="outline" className="text-xs">
                                 {risk.level}
@@ -449,47 +678,79 @@ export default function AnalyticsPage() {
                           </div>
                         );
                       })}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      No prediction data available
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
-          </div>
 
-          {/* All Districts Table */}
-          {predictions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>All Districts</CardTitle>
-                <CardDescription>Complete prediction breakdown</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {predictions.map((district) => {
-                    const risk = getRiskLevel(district.predicted_cases);
-                    return (
-                      <div
-                        key={district.district}
-                        className="flex items-center justify-between p-2 rounded border hover:bg-accent cursor-pointer"
-                        onClick={() => handleDistrictClick(district.district)}
-                      >
-                        <span className="text-sm font-medium">
-                          {district.district}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
-                            {district.predicted_cases.toLocaleString()}
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            {risk.level}
-                          </Badge>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              {/* District Comparison Chart */}
+              {predictions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>District Comparison Chart</CardTitle>
+                    <CardDescription>
+                      Visual comparison of case distribution
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {predictions
+                        .slice()
+                        .sort((a, b) => b.predicted_cases - a.predicted_cases)
+                        .map((district) => {
+                          const maxCases = Math.max(
+                            ...predictions.map((d) => d.predicted_cases)
+                          );
+                          const percentage =
+                            (district.predicted_cases / maxCases) * 100;
+                          const risk = getRiskLevel(district.predicted_cases);
+
+                          return (
+                            <div
+                              key={district.district}
+                              className="space-y-1 cursor-pointer hover:bg-accent p-2 rounded transition-colors"
+                              onClick={() =>
+                                handleDistrictClick(district.district)
+                              }
+                            >
+                              <div className="flex justify-between text-sm">
+                                <span className="font-medium">
+                                  {district.district}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {district.predicted_cases.toLocaleString()}{" "}
+                                  cases
+                                </span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    risk.level === "Very High"
+                                      ? "bg-red-600"
+                                      : risk.level === "High"
+                                      ? "bg-orange-500"
+                                      : risk.level === "Medium"
+                                      ? "bg-yellow-500"
+                                      : risk.level === "Low"
+                                      ? "bg-blue-500"
+                                      : "bg-green-500"
+                                  }`}
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>{" "}
         </TabsContent>
 
         {/* Historical Analytics Tab */}
