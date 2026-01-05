@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSocketEvent } from "@/hooks/useSocket";
 import {
   Card,
   CardContent,
@@ -103,6 +104,74 @@ export default function UsersPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // WebSocket event handlers for real-time updates
+  const handleUserCreated = useCallback((newUser: User) => {
+    setUsers((prev) => [newUser, ...prev]);
+    setStats((prev) =>
+      prev
+        ? {
+            ...prev,
+            totalUsers: prev.totalUsers + 1,
+            activeUsers: newUser.isActive
+              ? prev.activeUsers + 1
+              : prev.activeUsers,
+            usersByRole: {
+              ...prev.usersByRole,
+              [newUser.role]:
+                (prev.usersByRole[
+                  newUser.role as keyof typeof prev.usersByRole
+                ] || 0) + 1,
+            },
+          }
+        : null
+    );
+    toast.success("New user added", {
+      description: `${newUser.name} has been created`,
+    });
+  }, []);
+
+  const handleUserUpdated = useCallback((updatedUser: User) => {
+    setUsers((prev) =>
+      prev.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+    );
+  }, []);
+
+  const handleUserDeleted = useCallback(({ id }: { id: string }) => {
+    setUsers((prev) => prev.filter((user) => user.id !== id));
+    // Reload stats to get accurate counts
+    usersService.getStats().then(setStats).catch(console.error);
+  }, []);
+
+  const handleUserStatusChanged = useCallback(
+    ({ id, isActive }: { id: string; isActive: boolean }) => {
+      setUsers((prev) =>
+        prev.map((user) => (user.id === id ? { ...user, isActive } : user))
+      );
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeUsers: isActive
+                ? prev.activeUsers + 1
+                : prev.activeUsers - 1,
+              inactiveUsers: isActive
+                ? prev.inactiveUsers - 1
+                : prev.inactiveUsers + 1,
+            }
+          : null
+      );
+    },
+    []
+  );
+
+  // Subscribe to WebSocket events
+  useSocketEvent("user:created", handleUserCreated, [handleUserCreated]);
+  useSocketEvent("user:updated", handleUserUpdated, [handleUserUpdated]);
+  useSocketEvent("user:deleted", handleUserDeleted, [handleUserDeleted]);
+  useSocketEvent("user:status-changed", handleUserStatusChanged, [
+    handleUserStatusChanged,
+  ]);
 
   const loadData = async () => {
     try {

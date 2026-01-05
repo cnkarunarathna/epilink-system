@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSocketEvent } from "@/hooks/useSocket";
+import { useSocket } from "@/contexts/SocketContext";
 import {
   Card,
   CardContent,
@@ -24,6 +26,8 @@ import {
   Sparkles,
   Zap,
   AlertTriangle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -90,8 +94,46 @@ export default function AnalyticsPage() {
     TimeSeriesData[]
   >([]);
 
+  // WebSocket connection status
+  const { isConnected, connectionStatus } = useSocket();
+
+  // Ref to prevent double-fetch in StrictMode
+  const hasFetchedRef = useRef(false);
+
+  // WebSocket handler for real-time analytics updates
+  const handleAnalyticsUpdated = useCallback(
+    (data: { type: string; payload?: any }) => {
+      console.log("Analytics update received:", data.type);
+
+      // Reload data based on update type
+      switch (data.type) {
+        case "predictions":
+        case "summary":
+        case "trends":
+        case "full":
+          // Reload all dashboard data on any analytics update
+          loadDashboardData();
+          toast.info("Real-time Update", {
+            description: "New analytics data received",
+          });
+          break;
+        default:
+          // For other update types, just reload
+          loadDashboardData();
+      }
+    },
+    []
+  );
+
+  // Subscribe to analytics updates via WebSocket
+  useSocketEvent("analytics:updated", handleAnalyticsUpdated, [
+    handleAnalyticsUpdated,
+  ]);
+
   // Fetch all data on mount
   useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     loadDashboardData();
   }, []);
 
@@ -181,10 +223,30 @@ export default function AnalyticsPage() {
                 </div>
                 Dengue Analytics Dashboard
               </h2>
-              <p className="text-green-100 text-lg">
-                Real-time predictions, trends, and insights for dengue case
-                monitoring
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-green-100 text-lg">
+                  Real-time predictions, trends, and insights for dengue case
+                  monitoring
+                </p>
+                {/* Real-time connection indicator */}
+                <Badge
+                  variant={isConnected ? "default" : "secondary"}
+                  className={`flex items-center gap-1.5 px-2 py-1 ${
+                    isConnected
+                      ? "bg-green-400/20 text-green-100 border-green-400/50"
+                      : "bg-red-400/20 text-red-200 border-red-400/50"
+                  }`}
+                >
+                  {isConnected ? (
+                    <Wifi className="h-3 w-3" />
+                  ) : (
+                    <WifiOff className="h-3 w-3" />
+                  )}
+                  <span className="text-xs font-medium">
+                    {isConnected ? "Live" : "Offline"}
+                  </span>
+                </Badge>
+              </div>
             </div>
             {summary && (
               <div className="flex gap-4">
