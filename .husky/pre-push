@@ -3,12 +3,12 @@
 echo "Running pre-push checks..."
 
 # Run backend tests
-# echo "Running backend tests..."
-# cd backend && npm run test -- --passWithNoTests || {
-#   echo "Backend tests failed! Push aborted."
-#   exit 1
-# }
-# cd ..
+echo "Running backend tests..."
+cd backend && npm run test -- --passWithNoTests || {
+  echo "Backend tests failed! Push aborted."
+  exit 1
+}
+cd ..
 
 # Build frontend
 echo "Building frontend..."

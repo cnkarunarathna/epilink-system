@@ -7,6 +7,7 @@ import { UsersService } from './users.service';
 import { User, UserRole } from '../entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { EventsGateway } from '../events/events.gateway';
 
 // Mock bcrypt
 jest.mock('bcrypt');
@@ -14,6 +15,7 @@ jest.mock('bcrypt');
 describe('UsersService', () => {
   let usersService: UsersService;
   let userRepository: jest.Mocked<Repository<User>>;
+  let eventsGateway: jest.Mocked<EventsGateway>;
 
   const mockUser: Partial<User> = {
     id: 'test-uuid',
@@ -42,6 +44,17 @@ describe('UsersService', () => {
     })),
   };
 
+  const mockEventsGateway = {
+    emitUserCreated: jest.fn(),
+    emitUserUpdated: jest.fn(),
+    emitUserDeleted: jest.fn(),
+    emitUserStatusChanged: jest.fn(),
+    emitAnalyticsUpdated: jest.fn(),
+    emitNotification: jest.fn(),
+    emitToUser: jest.fn(),
+    getConnectedClients: jest.fn().mockReturnValue(0),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -52,11 +65,16 @@ describe('UsersService', () => {
           provide: getRepositoryToken(User),
           useValue: mockUserRepository,
         },
+        {
+          provide: EventsGateway,
+          useValue: mockEventsGateway,
+        },
       ],
     }).compile();
 
     usersService = module.get<UsersService>(UsersService);
     userRepository = module.get(getRepositoryToken(User));
+    eventsGateway = module.get(EventsGateway);
   });
 
   describe('create', () => {
@@ -113,6 +131,28 @@ describe('UsersService', () => {
 
       await expect(usersService.create(createUserDto)).rejects.toThrow(
         ConflictException,
+      );
+    });
+
+    it('should emit WebSocket event after user creation', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashedPassword');
+      mockUserRepository.create.mockReturnValue({
+        ...createUserDto,
+        password: 'hashedPassword',
+        id: 'new-uuid',
+      });
+      mockUserRepository.save.mockResolvedValue({
+        ...createUserDto,
+        password: 'hashedPassword',
+        id: 'new-uuid',
+      });
+
+      await usersService.create(createUserDto);
+
+      expect(mockEventsGateway.emitUserCreated).toHaveBeenCalled();
+      expect(mockEventsGateway.emitUserCreated).toHaveBeenCalledWith(
+        expect.not.objectContaining({ password: expect.any(String) }),
       );
     });
   });
@@ -208,6 +248,18 @@ describe('UsersService', () => {
 
       expect(bcrypt.hash).toHaveBeenCalledWith('newPassword123', 10);
     });
+
+    it('should emit WebSocket event after user update', async () => {
+      mockUserRepository.findOne.mockResolvedValue({ ...mockUser });
+      mockUserRepository.save.mockResolvedValue({
+        ...mockUser,
+        name: 'Updated Name',
+      });
+
+      await usersService.update('test-uuid', updateUserDto);
+
+      expect(mockEventsGateway.emitUserUpdated).toHaveBeenCalled();
+    });
   });
 
   describe('remove', () => {
@@ -225,6 +277,17 @@ describe('UsersService', () => {
 
       await expect(usersService.remove('invalid-uuid')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('should emit WebSocket event after user deletion', async () => {
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockUserRepository.remove.mockResolvedValue(mockUser);
+
+      await usersService.remove('test-uuid');
+
+      expect(mockEventsGateway.emitUserDeleted).toHaveBeenCalledWith(
+        'test-uuid',
       );
     });
   });
@@ -261,6 +324,22 @@ describe('UsersService', () => {
 
       await expect(usersService.toggleStatus('invalid-uuid')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('should emit WebSocket event after status change', async () => {
+      const activeUser = { ...mockUser, isActive: true };
+      mockUserRepository.findOne.mockResolvedValue(activeUser);
+      mockUserRepository.save.mockResolvedValue({
+        ...activeUser,
+        isActive: false,
+      });
+
+      await usersService.toggleStatus('test-uuid');
+
+      expect(mockEventsGateway.emitUserStatusChanged).toHaveBeenCalledWith(
+        'test-uuid',
+        false,
       );
     });
   });
