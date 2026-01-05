@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -90,8 +90,13 @@ export default function AnalyticsPage() {
     TimeSeriesData[]
   >([]);
 
+  // Ref to prevent double-fetch in StrictMode
+  const hasFetchedRef = useRef(false);
+
   // Fetch all data on mount
   useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     loadDashboardData();
   }, []);
 
