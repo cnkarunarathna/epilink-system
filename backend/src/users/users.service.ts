@@ -10,12 +10,14 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -41,6 +43,10 @@ export class UsersService {
 
     // Remove password from response
     const { password, ...userWithoutPassword } = savedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserCreated(userWithoutPassword);
+
     return userWithoutPassword as User;
   }
 
@@ -96,6 +102,10 @@ export class UsersService {
     const updatedUser = await this.userRepository.save(user);
 
     const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserUpdated(userWithoutPassword);
+
     return userWithoutPassword as User;
   }
 
@@ -109,6 +119,9 @@ export class UsersService {
     }
 
     await this.userRepository.remove(user);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserDeleted(id);
   }
 
   async toggleStatus(id: string): Promise<User> {
@@ -124,6 +137,10 @@ export class UsersService {
     const updatedUser = await this.userRepository.save(user);
 
     const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserStatusChanged(id, updatedUser.isActive);
+
     return userWithoutPassword as User;
   }
 

@@ -4,11 +4,15 @@ import { DataSource } from 'typeorm';
 import { DengueCase } from '../entities/dengue_case.entity';
 import { WeatherData } from '../entities/weather_data.entity';
 import { District } from '../entities/district.entity';
+import { EventsGateway } from '../events/events.gateway';
 import axios from 'axios';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private dataSource: DataSource,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   async getLatestWeekPerDistrict() {
     const manager = this.dataSource.manager;
@@ -146,6 +150,13 @@ export class AnalyticsService {
     const resp = await axios.post(`${mlUrl}/predict/bulk`, {
       districts: features,
     });
+
+    // Emit real-time update to connected clients
+    this.eventsGateway.emitAnalyticsUpdated({
+      type: 'predictions',
+      payload: { count: resp.data?.length || 0 },
+    });
+
     return resp.data;
   }
 
