@@ -76,12 +76,13 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 
 ### 1. Data Ingestion & Processing Pipeline
 
-- **PDF Scraping:** Automatic extraction from weekly epidemiological reports (Epidemiology Unit PDFs)
+- **Historical Case Data:** Dengue case data from the Epidemiology Unit (available up to March, 2025)
 - **Weather Data Integration:** Real-time weather data from Open-Meteo API
 - **Data Validation:** Cleaning, validation, and deduplication
 - **Merge Engine:** Correlate dengue cases with weather patterns (temperature, precipitation, humidity)
 - **Centralized Storage:** PostgreSQL with comprehensive logging
-- **Scheduler:** Cron-based weekly data refresh
+
+> **Note:** Due to data availability constraints from the Epidemiology Unit, automatic PDF ingestion is supplemented by an iterative prediction approach for periods beyond the available data.
 
 ### 2. ML Risk Prediction Service
 
@@ -89,10 +90,10 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - **Features:** Lagged case counts (1-4 weeks), weather variables, seasonal patterns
 - **Risk Classification:** Low (< 25 cases), Medium (25-50), High (50-100), Critical (100+)
 - **Explainability:** SHAP values showing feature contributions
-- **API:** Python FastAPI microservice with health monitoring
-- **Scheduled Predictions:** GitHub Actions cron job runs weekly to generate predictions for the upcoming week
+- **Scheduled Predictions:** GitHub Actions cron job runs every Monday (00:00 UTC) to generate predictions for the upcoming week
+- **Iterative Forecasting:** When real case data is unavailable, the system uses previous predictions as lagged features combined with real-time weather data
 - **Data Storage:** Predictions are stored directly in PostgreSQL database
-- **Accuracy Target:** ≥ 80% prediction accuracy
+- **Accuracy Target:** ≥ 80% prediction accuracy (for predictions based on actual data)
 
 ### 3. Web Dashboard (Admin & Supervisor)
 
