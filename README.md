@@ -16,6 +16,8 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Enable task assignment, field reporting, and evidence tracking for cleanup and fogging operations
 - Deliver weekly reports and alerts to support rapid response in high-risk regions
 - Provide mobile access for field officers (PHIs) to manage tasks on the go
+- Offer AI-powered chatbot for public dengue-related inquiries
+- Optimize field visit routes for PHIs to improve operational efficiency
 
 ---
 
@@ -63,6 +65,7 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Work offline and sync when connected (mobile)
 - View local area risk information
 - Receive push notifications for new assignments
+- **Route optimization** for efficient task completion
 
 ### Viewer (Read-Only)
 
@@ -70,18 +73,24 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - View national and district-level statistics
 - No access to task management or user data
 
+### Public Users (Unauthenticated)
+
+- Access AI chatbot for dengue-related questions
+- View public risk information and prevention tips
+
 ---
 
 ## System Modules & Features
 
 ### 1. Data Ingestion & Processing Pipeline
 
-- **PDF Scraping:** Automatic extraction from weekly epidemiological reports (Epidemiology Unit PDFs)
+- **Historical Case Data:** Dengue case data from the Epidemiology Unit (available up to March, 2025)
 - **Weather Data Integration:** Real-time weather data from Open-Meteo API
 - **Data Validation:** Cleaning, validation, and deduplication
 - **Merge Engine:** Correlate dengue cases with weather patterns (temperature, precipitation, humidity)
 - **Centralized Storage:** PostgreSQL with comprehensive logging
-- **Scheduler:** Cron-based weekly data refresh
+
+> **Note:** Due to data availability constraints from the Epidemiology Unit, automatic PDF ingestion is supplemented by an iterative prediction approach for periods beyond the available data.
 
 ### 2. ML Risk Prediction Service
 
@@ -89,10 +98,10 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - **Features:** Lagged case counts (1-4 weeks), weather variables, seasonal patterns
 - **Risk Classification:** Low (< 25 cases), Medium (25-50), High (50-100), Critical (100+)
 - **Explainability:** SHAP values showing feature contributions
-- **API:** Python FastAPI microservice with health monitoring
-- **Scheduled Predictions:** GitHub Actions cron job runs weekly to generate predictions for the upcoming week
+- **Scheduled Predictions:** GitHub Actions cron job runs every Monday (00:00 UTC) to generate predictions for the upcoming week
+- **Iterative Forecasting:** When real case data is unavailable, the system uses previous predictions as lagged features combined with real-time weather data
 - **Data Storage:** Predictions are stored directly in PostgreSQL database
-- **Accuracy Target:** ≥ 80% prediction accuracy
+- **Accuracy Target:** ≥ 80% prediction accuracy (for predictions based on actual data)
 
 ### 3. Web Dashboard (Admin & Supervisor)
 
@@ -181,7 +190,28 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Reminder notifications for pending tasks
 - Alert notifications for high-risk conditions
 
-### 5. Task & Evidence Management
+#### 4.7 Route Optimization
+
+- **Optimize Route Button:** One-tap optimization of daily task sequence
+- **Distance Matrix:** Calculates optimal path between assigned locations using OpenRouteService API
+- **TSP Solver:** Traveling Salesman Problem algorithm for shortest route
+- **Map Visualization:** Display optimized route on map with turn-by-turn guidance
+- **Time Estimates:** Show estimated travel time and total distance
+
+### 5. AI Chatbot (Public Access)
+
+- **RAG-Based Architecture:** Retrieval-Augmented Generation using epidemiological PDFs as knowledge base
+- **LLM Integration:** Gemini 1.5 Flash for natural language responses
+- **Vector Database:** ChromaDB for efficient document retrieval
+- **Knowledge Sources:** Epidemiology Unit reports, WHO guidelines, prevention tips
+- **No Authentication Required:** Accessible to public users
+- **Supported Queries:**
+  - Dengue symptoms and prevention
+  - Current risk levels by district
+  - Treatment guidelines
+  - Mosquito breeding prevention tips
+
+### 6. Task & Evidence Management
 
 #### 5.1 Task Lifecycle
 
@@ -205,7 +235,7 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - Timestamp validation
 - Supervisor verification workflow
 
-### 6. Alerts & Notification System
+### 7. Alerts & Notification System
 
 - **Email Alerts:** Weekly summaries, high-risk notifications
 - **Push Notifications:** Mobile alerts for PHIs
@@ -216,7 +246,7 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
   - New hotspot detected
   - Task overdue warnings
 
-### 7. Reporting & Analytics Export
+### 8. Reporting & Analytics Export
 
 - **Weekly National Report:** Auto-generated every Sunday
 - **District Reports:** For supervisor distribution
@@ -224,7 +254,7 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - **Export Formats:** PDF, Excel, CSV
 - **Scheduled Delivery:** Email distribution lists
 
-### 8. Authentication & Security
+### 9. Authentication & Security
 
 - JWT-based authentication with refresh tokens
 - Role-based access control (RBAC)
@@ -344,7 +374,7 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [ ] Supervisor task assignment workflow
 - [ ] Task verification and approval
 
-### Phase 3: PHI Mobile App
+### Phase 3: PHI Mobile App & AI Features
 
 - [ ] React Native project setup with Expo
 - [ ] Authentication flow
@@ -353,6 +383,8 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [ ] GPS location capture
 - [ ] Offline storage with SQLite
 - [ ] Push notifications setup
+- [ ] **Route optimization for PHI visits** (OpenRouteService + TSP solver)
+- [ ] **RAG-based public chatbot** (Gemini + ChromaDB)
 
 ### Phase 4: Reporting & Alerts
 
@@ -360,12 +392,12 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [ ] Email notification system
 - [ ] Custom report builder
 - [ ] Alert threshold configuration
+- [ ] Chatbot UI integration on public landing page
 
 ### Phase 5: Enhancements
 
 - [ ] Advanced ML model with ensemble methods
 - [ ] SHAP explainability visualization
-- [ ] Route optimization for PHI visits
 - [ ] Performance optimization
 - [ ] Load testing and scaling
 
