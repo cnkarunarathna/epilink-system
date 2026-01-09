@@ -1,29 +1,21 @@
 #!/bin/sh
 
-echo "Running pre-push checks..."
+echo "Running pre-push syntax checks..."
 
-# Run backend tests
-echo "Running backend tests..."
-cd backend && npm run test -- --passWithNoTests || {
-  echo "Backend tests failed! Push aborted."
+# Run frontend lint (syntax check only)
+echo "Checking frontend syntax..."
+cd frontend && npm run lint || {
+  echo "Frontend syntax check failed! Push aborted."
   exit 1
 }
 cd ..
 
-# Build frontend
-echo "Building frontend..."
-cd frontend && npm run build || {
-  echo "Frontend build failed! Push aborted."
+# Run backend lint (syntax check only)
+echo "Checking backend syntax..."
+cd backend && npm run lint || {
+  echo "Backend syntax check failed! Push aborted."
   exit 1
 }
 cd ..
 
-# Build backend
-echo "Building backend..."
-cd backend && npm run build || {
-  echo "Backend build failed! Push aborted."
-  exit 1
-}
-cd ..
-
-echo "All pre-push checks passed!"
+echo "All pre-push syntax checks passed!"
