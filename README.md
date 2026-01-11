@@ -77,6 +77,8 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 
 - Access AI chatbot for dengue-related questions
 - View public risk information and prevention tips
+- **View interactive public risk forecast map**
+- **Check district-level risk status**
 
 ---
 
@@ -135,6 +137,7 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Track task progress and status
 - Review and verify submitted evidence
 - Task completion analytics
+- **Weather-based scheduling recommendations**
 
 #### 3.5 User Management (Admin)
 
@@ -198,6 +201,14 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - **Map Visualization:** Display optimized route on map with turn-by-turn guidance
 - **Time Estimates:** Show estimated travel time and total distance
 
+#### 4.8 Weather-Based Task Scheduling
+
+- **24-Hour Forecast:** Display rain/wind forecast for task locations
+- **Fogging Window Alerts:** Indicate optimal conditions for fogging operations (no rain, low wind)
+- **Weather Warnings:** Alert when conditions are unfavorable for outdoor tasks
+- **Auto-Reschedule Suggestions:** Recommend alternative days based on weather forecast
+- **Task Priority Adjustment:** Prioritize indoor inspections during rain forecasts
+
 ### 5. AI Chatbot (Public Access)
 
 - **RAG-Based Architecture:** Retrieval-Augmented Generation using epidemiological PDFs as knowledge base
@@ -210,6 +221,37 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
   - Current risk levels by district
   - Treatment guidelines
   - Mosquito breeding prevention tips
+
+### 6. Public Risk Dashboard
+
+- **Interactive Risk Map:** Public-facing Sri Lanka map with district-level risk heatmap (no login required)
+- **District Risk Cards:** Current risk level, case trends, and weather conditions per district
+- **"Is My Area Safe?" Lookup:** Enter location to get localized risk assessment
+- **Prevention Tips:** Contextual advice based on current risk level and weather
+- **Weekly Forecast Display:** Show predicted risk for the upcoming week
+
+### 7. Management Enhancements
+
+#### 7.1 Evidence Review Queue (Supervisor)
+
+- **Pending Evidence Dashboard:** Centralized view of all evidence awaiting verification
+- **Batch Actions:** Approve/reject multiple evidence submissions at once
+- **Quick Preview:** Image thumbnails with GPS and timestamp verification
+- **Rejection Reasons:** Predefined rejection templates for faster feedback
+
+#### 7.2 PHI Workload Dashboard (Supervisor)
+
+- **Workload Heatmap:** Visual distribution of tasks across all PHIs
+- **Task Balance Indicator:** Identify overloaded or underutilized PHIs
+- **Performance Metrics:** Tasks completed, average completion time, rejection rate
+- **Availability Status:** Show PHI availability for fair task distribution
+
+#### 7.3 Bulk Task Creation (Supervisor)
+
+- **Polygon Selection:** Draw area on map to create tasks for all locations within
+- **CSV Import:** Upload spreadsheet with multiple task locations
+- **Template Application:** Apply task templates to bulk-created tasks
+- **Auto-Assignment:** Optionally auto-assign to PHIs based on area or workload
 
 ### 6. Task & Evidence Management
 
@@ -385,6 +427,12 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [ ] Push notifications setup
 - [ ] **Route optimization for PHI visits** (OpenRouteService + TSP solver)
 - [ ] **RAG-based public chatbot** (Gemini + ChromaDB)
+- [ ] **Weather-based task scheduling** (Open-Meteo forecast integration)
+- [ ] **Public risk forecast map** (Unauthenticated access)
+- [ ] **District risk cards** for public users
+- [ ] **Evidence review queue** for supervisors
+- [ ] **PHI workload dashboard** for supervisors
+- [ ] **Bulk task creation** with map selection
 
 ### Phase 4: Reporting & Alerts
 
