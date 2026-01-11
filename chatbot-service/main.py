@@ -1,5 +1,6 @@
 """EpiBot - RAG Chatbot Service for Dengue Information"""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,10 +9,30 @@ from typing import Optional
 from services import get_rag_service
 from config import HOST, PORT
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events"""
+    # Startup: Auto-ingest PDFs
+    print("🚀 Starting EpiBot RAG Service...")
+    rag_service = get_rag_service()
+    results = rag_service.ingest_all_pdfs()
+    if results:
+        print(f"📚 Auto-ingested PDFs: {results}")
+    else:
+        print("📁 No PDFs found in data directory")
+    stats = rag_service.get_collection_stats()
+    print(f"📊 Knowledge base: {stats['document_count']} document chunks")
+    yield
+    # Shutdown
+    print("👋 Shutting down EpiBot RAG Service...")
+
+
 app = FastAPI(
     title="EpiBot RAG Service",
     description="Retrieval-Augmented Generation chatbot for dengue information",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware

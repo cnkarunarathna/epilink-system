@@ -17,7 +17,7 @@ class RAGService:
         # Initialize Gemini
         if GEMINI_API_KEY:
             genai.configure(api_key=GEMINI_API_KEY)
-            self.model = genai.GenerativeModel("gemini-1.5-flash")
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
             self.embedding_model = "models/text-embedding-004"
         else:
             self.model = None
