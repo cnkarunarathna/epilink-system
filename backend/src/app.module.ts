@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { EventsModule } from './events/events.module';
+import { TasksModule } from './tasks/tasks.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -23,6 +24,7 @@ import databaseConfig from './config/database.config';
     UsersModule,
     AnalyticsModule,
     EventsModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
