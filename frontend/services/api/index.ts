@@ -9,6 +9,13 @@ import {
   PaginatedResponse,
   Notification,
 } from "@/lib/types";
+import {
+  ACCESS_TOKEN_KEY,
+  USER_STORAGE_KEY,
+  isTokenExpired,
+  clearAuthStorage,
+  dispatchLogoutEvent,
+} from "@/lib/tokenUtils";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -16,10 +23,20 @@ const API_BASE_URL =
 // Generic fetch wrapper
 async function fetchApi<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+
+    // Check token expiry before making request
+    if (token && isTokenExpired(token)) {
+      clearAuthStorage();
+      dispatchLogoutEvent();
+      return {
+        success: false,
+        error: "Session expired. Please login again.",
+      };
+    }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -31,6 +48,16 @@ async function fetchApi<T>(
     });
 
     const data = await response.json();
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      clearAuthStorage();
+      dispatchLogoutEvent();
+      return {
+        success: false,
+        error: "Session expired. Please login again.",
+      };
+    }
 
     if (!response.ok) {
       return {
@@ -55,27 +82,29 @@ async function fetchApi<T>(
 export const authService = {
   async login(
     email: string,
-    password: string
+    password: string,
   ): Promise<ApiResponse<{ user: User; token: string }>> {
     const response = await fetchApi<{ user: User; token: string }>(
       "/auth/login",
       {
         method: "POST",
         body: JSON.stringify({ email, password }),
-      }
+      },
     );
 
     if (response.success && response.data) {
-      localStorage.setItem("auth_token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+      localStorage.setItem(ACCESS_TOKEN_KEY, response.data.token);
+      localStorage.setItem(
+        USER_STORAGE_KEY,
+        JSON.stringify(response.data.user),
+      );
     }
 
     return response;
   },
 
   async logout(): Promise<void> {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user");
+    clearAuthStorage();
   },
 
   getCurrentUser(): User | null {
@@ -102,20 +131,20 @@ export const dashboardService = {
 // Predictions
 export const predictionService = {
   async getRiskPredictions(
-    districtId?: string
+    districtId?: string,
   ): Promise<ApiResponse<RiskPrediction[]>> {
     const query = districtId ? `?district=${districtId}` : "";
     return fetchApi<RiskPrediction[]>(`/predictions${query}`);
   },
 
   async getLatestPrediction(
-    districtId: string
+    districtId: string,
   ): Promise<ApiResponse<RiskPrediction>> {
     return fetchApi<RiskPrediction>(`/predictions/latest/${districtId}`);
   },
 
   async getPredictionHistory(
-    districtId: string
+    districtId: string,
   ): Promise<ApiResponse<RiskPrediction[]>> {
     return fetchApi<RiskPrediction[]>(`/predictions/history/${districtId}`);
   },
@@ -145,7 +174,7 @@ export const taskService = {
 
   async updateTask(
     id: string,
-    updates: Partial<Task>
+    updates: Partial<Task>,
   ): Promise<ApiResponse<Task>> {
     return fetchApi<Task>(`/tasks/${id}`, {
       method: "PATCH",
@@ -156,7 +185,7 @@ export const taskService = {
   async uploadEvidence(
     taskId: string,
     file: File,
-    notes?: string
+    notes?: string,
   ): Promise<ApiResponse<Task>> {
     const formData = new FormData();
     formData.append("file", file);
@@ -192,7 +221,7 @@ export const districtService = {
 
   async updateDistrict(
     id: string,
-    updates: Partial<District>
+    updates: Partial<District>,
   ): Promise<ApiResponse<District>> {
     return fetchApi<District>(`/districts/${id}`, {
       method: "PATCH",
@@ -221,7 +250,7 @@ export const userService = {
 
   async updateUser(
     id: string,
-    updates: Partial<User>
+    updates: Partial<User>,
   ): Promise<ApiResponse<User>> {
     return fetchApi<User>(`/users/${id}`, {
       method: "PATCH",
@@ -246,7 +275,7 @@ export const reportService = {
 
   async generateReport(
     weekNumber: number,
-    year: number
+    year: number,
   ): Promise<ApiResponse<WeeklyReport>> {
     return fetchApi<WeeklyReport>("/reports/generate", {
       method: "POST",
