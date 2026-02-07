@@ -62,7 +62,6 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - View assigned tasks via web and **mobile application**
 - Update task status with progress notes
 - Upload geo-tagged evidence (photos, notes, GPS coordinates)
-- Work offline and sync when connected (mobile)
 - View local area risk information
 - Receive push notifications for new assignments
 - **Route optimization** for efficient task completion
@@ -77,6 +76,8 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 
 - Access AI chatbot for dengue-related questions
 - View public risk information and prevention tips
+- **View interactive public risk forecast map**
+- **Check district-level risk status**
 
 ---
 
@@ -135,6 +136,7 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Track task progress and status
 - Review and verify submitted evidence
 - Task completion analytics
+- **Weather-based scheduling recommendations**
 
 #### 3.5 User Management (Admin)
 
@@ -171,20 +173,13 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - Add notes and observations
 - Multiple photos per task
 
-#### 4.4 Offline Support
-
-- Local SQLite database for offline storage
-- Queue system for pending uploads
-- Auto-sync when connection restored
-- Conflict resolution
-
-#### 4.5 Local Risk Information
+#### 4.4 Local Risk Information
 
 - View risk level for assigned area
 - Simple case trend visualization
 - Weather alerts for field work planning
 
-#### 4.6 Notifications
+#### 4.5 Notifications
 
 - Push notifications for new task assignments
 - Reminder notifications for pending tasks
@@ -198,6 +193,14 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
 - **Map Visualization:** Display optimized route on map with turn-by-turn guidance
 - **Time Estimates:** Show estimated travel time and total distance
 
+#### 4.8 Weather-Based Task Scheduling
+
+- **24-Hour Forecast:** Display rain/wind forecast for task locations
+- **Fogging Window Alerts:** Indicate optimal conditions for fogging operations (no rain, low wind)
+- **Weather Warnings:** Alert when conditions are unfavorable for outdoor tasks
+- **Auto-Reschedule Suggestions:** Recommend alternative days based on weather forecast
+- **Task Priority Adjustment:** Prioritize indoor inspections during rain forecasts
+
 ### 5. AI Chatbot (Public Access)
 
 - **RAG-Based Architecture:** Retrieval-Augmented Generation using epidemiological PDFs as knowledge base
@@ -210,6 +213,48 @@ EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lan
   - Current risk levels by district
   - Treatment guidelines
   - Mosquito breeding prevention tips
+
+### 6. Public Risk Dashboard
+
+- **Interactive Risk Map:** Public-facing Sri Lanka map with district-level risk heatmap (no login required)
+- **District Risk Cards:** Current risk level, case trends, and weather conditions per district
+- **"Is My Area Safe?" Lookup:** Enter location to get localized risk assessment
+- **Prevention Tips:** Contextual advice based on current risk level and weather
+- **Weekly Forecast Display:** Show predicted risk for the upcoming week
+
+### 7. Management Enhancements
+
+#### 7.1 Evidence Review Queue (Supervisor)
+
+- **Pending Evidence Dashboard:** Centralized view of all evidence awaiting verification
+- **Batch Actions:** Approve/reject multiple evidence submissions at once
+- **Quick Preview:** Image thumbnails with GPS and timestamp verification
+- **Rejection Reasons:** Predefined rejection templates for faster feedback
+
+#### 7.2 PHI Workload Dashboard (Supervisor)
+
+- **Workload Heatmap:** Visual distribution of tasks across all PHIs
+- **Task Balance Indicator:** Identify overloaded or underutilized PHIs
+- **Performance Metrics:** Tasks completed, average completion time, rejection rate
+- **Availability Status:** Show PHI availability for fair task distribution
+
+#### 7.3 Bulk Task Creation (Supervisor)
+
+- **Polygon Selection:** Draw area on map to create tasks for all locations within
+- **CSV Import:** Upload spreadsheet with multiple task locations
+- **Template Application:** Apply task templates to bulk-created tasks
+- **Auto-Assignment:** Optionally auto-assign to PHIs based on area or workload
+
+### 8. AI-Powered Features
+
+#### 8.1 AI Report Generation (Natural Language)
+
+- **Weekly Summary Reports:** LLM generates executive summaries from analytics data
+- **District Reports:** Auto-generate district-specific reports for supervisors
+- **Outbreak Briefs:** On-demand reports for emergency response situations
+- **Multi-Format Output:** Generate reports in Markdown, PDF, or email-ready format
+- **Trend Narratives:** Convert statistical trends into human-readable insights
+- **Recommendations Engine:** AI suggests priority actions based on current data
 
 ### 6. Task & Evidence Management
 
@@ -381,10 +426,16 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [ ] Task list and details view
 - [ ] Camera integration for evidence
 - [ ] GPS location capture
-- [ ] Offline storage with SQLite
 - [ ] Push notifications setup
 - [ ] **Route optimization for PHI visits** (OpenRouteService + TSP solver)
 - [ ] **RAG-based public chatbot** (Gemini + ChromaDB)
+- [ ] **Weather-based task scheduling** (Open-Meteo forecast integration)
+- [ ] **Public risk forecast map** (Unauthenticated access)
+- [ ] **District risk cards** for public users
+- [ ] **Evidence review queue** for supervisors
+- [ ] **PHI workload dashboard** for supervisors
+- [ ] **Bulk task creation** with map selection
+- [ ] **AI-powered report generation** (Natural language summaries)
 
 ### Phase 4: Reporting & Alerts
 

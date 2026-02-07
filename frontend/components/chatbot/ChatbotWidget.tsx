@@ -114,18 +114,43 @@ export function ChatbotWidget() {
     setInput("");
     setIsTyping(true);
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      // Call the RAG backend API
+      const response = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: userMessage.content }),
+      });
 
-    const botResponse: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: getMockResponse(userMessage.content),
-      timestamp: new Date(),
-    };
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
 
-    setIsTyping(false);
-    setMessages((prev) => [...prev, botResponse]);
+      const data = await response.json();
+
+      const botResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.response,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, botResponse]);
+    } catch (error) {
+      console.error("Chat API error:", error);
+      // Fallback to mock response if API is unavailable
+      const botResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: getMockResponse(userMessage.content),
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, botResponse]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
