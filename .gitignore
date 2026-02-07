@@ -34,3 +34,5 @@ reports/
 
 # DOCS
 docs/
+python-service.txt
+generate_weekly_forecast.txt

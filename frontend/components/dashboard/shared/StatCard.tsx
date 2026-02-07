@@ -37,7 +37,9 @@ export function StatCard({
         {trend && (
           <p
             className={`text-xs mt-1 ${
-              trend.value >= 0 ? "text-green-600" : "text-red-600"
+              trend.value >= 0
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400"
             }`}
           >
             {trend.value >= 0 ? "+" : ""}

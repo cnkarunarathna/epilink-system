@@ -6,6 +6,8 @@ import { DatabaseModule } from './database/database.module';
 import { SeedModule } from './seed/seed.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { EventsModule } from './events/events.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -19,6 +21,8 @@ import databaseConfig from './config/database.config';
     SeedModule,
     AuthModule,
     UsersModule,
+    AnalyticsModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

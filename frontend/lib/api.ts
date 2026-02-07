@@ -1,4 +1,10 @@
 import axios from "axios";
+import {
+  ACCESS_TOKEN_KEY,
+  isTokenExpired,
+  dispatchLogoutEvent,
+  clearAuthStorage,
+} from "./tokenUtils";
 
 // Create axios instance with default config
 const api = axios.create({
@@ -14,8 +20,15 @@ api.interceptors.request.use(
   (config) => {
     // Add auth token from localStorage
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("accessToken");
+      const token = localStorage.getItem(ACCESS_TOKEN_KEY);
       if (token) {
+        // Check if token is expired before making request
+        if (isTokenExpired(token)) {
+          // Token expired, clear storage and trigger logout
+          clearAuthStorage();
+          dispatchLogoutEvent();
+          return Promise.reject(new Error("Token expired"));
+        }
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
@@ -23,7 +36,7 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // Response interceptor
@@ -32,6 +45,12 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    // Handle 401 Unauthorized - trigger logout
+    if (error.response?.status === 401) {
+      clearAuthStorage();
+      dispatchLogoutEvent();
+    }
+
     // Handle common errors here
     if (error.response) {
       // Server responded with error status
@@ -44,7 +63,7 @@ api.interceptors.response.use(
       console.error("Error:", error.message);
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;
