@@ -51,6 +51,54 @@ export class UsersController {
     );
   }
 
+  @Patch('phis/:id')
+  @Roles(UserRole.SUPERVISOR)
+  async updatePhi(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updateData: { name?: string; email?: string; password?: string },
+  ) {
+    const supervisor = req.user;
+
+    if (!supervisor.district) {
+      throw new BadRequestException('Supervisor must have a district assigned');
+    }
+
+    return this.usersService.updatePhiForSupervisor(
+      supervisor.district,
+      id,
+      updateData,
+    );
+  }
+
+  @Delete('phis/:id')
+  @Roles(UserRole.SUPERVISOR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePhi(@Request() req, @Param('id') id: string) {
+    const supervisor = req.user;
+
+    if (!supervisor.district) {
+      throw new BadRequestException('Supervisor must have a district assigned');
+    }
+
+    return this.usersService.deletePhiForSupervisor(supervisor.district, id);
+  }
+
+  @Patch('phis/:id/toggle-status')
+  @Roles(UserRole.SUPERVISOR)
+  async togglePhiStatus(@Request() req, @Param('id') id: string) {
+    const supervisor = req.user;
+
+    if (!supervisor.district) {
+      throw new BadRequestException('Supervisor must have a district assigned');
+    }
+
+    return this.usersService.togglePhiStatusForSupervisor(
+      supervisor.district,
+      id,
+    );
+  }
+
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   async findAll() {

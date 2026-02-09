@@ -29,6 +29,11 @@ import {
   CheckCircle2,
   Clock,
   UserPlus,
+  Edit,
+  Trash2,
+  Ban,
+  CheckCircle,
+  MoreVertical,
 } from "lucide-react";
 import {
   fetchPhisByDistrict,
@@ -44,6 +49,7 @@ interface PhiWithStats {
   id: string;
   name: string;
   email: string;
+  isActive: boolean;
   tasksAssigned: number;
   tasksCompleted: number;
   tasksPending: number;
@@ -54,8 +60,16 @@ export default function PhisPage() {
   const [loading, setLoading] = useState(true);
   const [phis, setPhis] = useState<PhiWithStats[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedPhi, setSelectedPhi] = useState<PhiWithStats | null>(null);
   const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
+  const [editFormData, setEditFormData] = useState({
     name: "",
     email: "",
     password: "",
@@ -122,6 +136,86 @@ export default function PhisPage() {
       toast.error(error.response?.data?.message || "Failed to create PHI user");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleEditClick = (phi: PhiWithStats) => {
+    setSelectedPhi(phi);
+    setEditFormData({
+      name: phi.name,
+      email: phi.email,
+      password: "",
+    });
+    setOpenEditDialog(true);
+  };
+
+  const handleEditPhi = async () => {
+    if (!selectedPhi) return;
+
+    if (!editFormData.name || !editFormData.email) {
+      toast.error("Name and email are required");
+      return;
+    }
+
+    if (editFormData.password && editFormData.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const updateData: any = {
+        name: editFormData.name,
+        email: editFormData.email,
+      };
+      if (editFormData.password) {
+        updateData.password = editFormData.password;
+      }
+      await usersService.updatePhi(selectedPhi.id, updateData);
+      toast.success("PHI updated successfully");
+      setOpenEditDialog(false);
+      setSelectedPhi(null);
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to update PHI");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteClick = (phi: PhiWithStats) => {
+    setSelectedPhi(phi);
+    setOpenDeleteDialog(true);
+  };
+
+  const handleDeletePhi = async () => {
+    if (!selectedPhi) return;
+
+    try {
+      setSubmitting(true);
+      await usersService.deletePhi(selectedPhi.id);
+      toast.success("PHI deleted successfully");
+      setOpenDeleteDialog(false);
+      setSelectedPhi(null);
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to delete PHI");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (phi: PhiWithStats) => {
+    try {
+      await usersService.togglePhiStatus(phi.id);
+      toast.success(
+        `PHI ${phi.isActive ? "suspended" : "activated"} successfully`,
+      );
+      loadData();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Failed to update PHI status",
+      );
     }
   };
 
@@ -269,15 +363,48 @@ export default function PhisPage() {
                     </div>
                     <Badge
                       variant={
-                        phi.tasksPending > 5 ? "destructive" : "secondary"
+                        !phi.isActive
+                          ? "destructive"
+                          : phi.tasksPending > 5
+                            ? "destructive"
+                            : "secondary"
                       }
                     >
-                      {phi.tasksPending > 5
-                        ? "High Load"
-                        : phi.tasksPending > 0
-                          ? "Active"
-                          : "Available"}
+                      {!phi.isActive
+                        ? "Suspended"
+                        : phi.tasksPending > 5
+                          ? "High Load"
+                          : phi.tasksPending > 0
+                            ? "Active"
+                            : "Available"}
                     </Badge>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditClick(phi)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleToggleStatus(phi)}
+                      >
+                        {phi.isActive ? (
+                          <Ban className="h-4 w-4" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteClick(phi)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -369,6 +496,111 @@ export default function PhisPage() {
                 </>
               ) : (
                 "Create PHI"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit PHI Dialog */}
+      <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit PHI</DialogTitle>
+            <DialogDescription>Update PHI user details</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name *</Label>
+              <Input
+                id="edit-name"
+                placeholder="Enter full name"
+                value={editFormData.name}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email *</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                placeholder="phi@example.com"
+                value={editFormData.email}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, email: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-password">Password</Label>
+              <Input
+                id="edit-password"
+                type="password"
+                placeholder="Leave empty to keep current password"
+                value={editFormData.password}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, password: e.target.value })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Only fill this if you want to change the password
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpenEditDialog(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleEditPhi} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update PHI"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete PHI</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedPhi?.name}? This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpenDeleteDialog(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeletePhi}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete PHI"
               )}
             </Button>
           </DialogFooter>

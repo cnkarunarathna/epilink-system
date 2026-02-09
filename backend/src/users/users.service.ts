@@ -231,4 +231,118 @@ export class UsersService {
 
     return userWithoutPassword as User;
   }
+
+  async updatePhiForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+    updateData: { name?: string; email?: string; password?: string },
+  ): Promise<User> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    // Check email uniqueness if email is being updated
+    if (updateData.email && updateData.email !== phi.email) {
+      const existingUser = await this.userRepository.findOne({
+        where: { email: updateData.email },
+      });
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists');
+      }
+    }
+
+    // Hash password if provided
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    // Update PHI
+    Object.assign(phi, updateData);
+    const updatedUser = await this.userRepository.save(phi);
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserUpdated(userWithoutPassword);
+
+    return userWithoutPassword as User;
+  }
+
+  async deletePhiForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+  ): Promise<void> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    await this.userRepository.remove(phi);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserDeleted(phiId);
+  }
+
+  async togglePhiStatusForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+  ): Promise<User> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    phi.isActive = !phi.isActive;
+    const updatedUser = await this.userRepository.save(phi);
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserStatusChanged(phiId, updatedUser.isActive);
+
+    return userWithoutPassword as User;
+  }
 }

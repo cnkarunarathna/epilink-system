@@ -222,7 +222,7 @@ export async function fetchTaskStats(districtId?: number): Promise<TaskStats> {
 
 export async function fetchPhisByDistrict(
   districtName: string,
-): Promise<{ id: string; name: string; email: string }[]> {
+): Promise<{ id: string; name: string; email: string; isActive: boolean }[]> {
   const token = localStorage.getItem("accessToken");
   const res = await axios.get(
     `${API_BASE}/tasks/phis/${encodeURIComponent(districtName)}`,
