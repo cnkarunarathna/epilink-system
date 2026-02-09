@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from '../entities/user.entity';
+import { User, UserRole } from '../entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
@@ -28,6 +28,17 @@ export class UsersService {
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
+    }
+
+    // Validate that Supervisor and PHI roles must have a district assigned
+    if (
+      (createUserDto.role === UserRole.SUPERVISOR ||
+        createUserDto.role === UserRole.PHI) &&
+      !createUserDto.district
+    ) {
+      throw new BadRequestException(
+        `${createUserDto.role === UserRole.SUPERVISOR ? 'Supervisor' : 'PHI'} accounts must be assigned to a district`,
+      );
     }
 
     // Hash password
@@ -95,6 +106,22 @@ export class UsersService {
     // If password is being updated, hash it
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    // Validate that Supervisor and PHI roles must have a district
+    const finalRole = updateUserDto.role || user.role;
+    const finalDistrict =
+      updateUserDto.district !== undefined
+        ? updateUserDto.district
+        : user.district;
+
+    if (
+      (finalRole === UserRole.SUPERVISOR || finalRole === UserRole.PHI) &&
+      !finalDistrict
+    ) {
+      throw new BadRequestException(
+        `${finalRole === UserRole.SUPERVISOR ? 'Supervisor' : 'PHI'} accounts must be assigned to a district`,
+      );
     }
 
     // Update user
@@ -166,5 +193,42 @@ export class UsersService {
         return acc;
       }, {}),
     };
+  }
+
+  async createPhiForSupervisor(
+    supervisorDistrict: string,
+    phiData: { name: string; email: string; password: string },
+  ): Promise<User> {
+    // Check if user with email already exists
+    const existingUser = await this.userRepository.findOne({
+      where: { email: phiData.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(phiData.password, 10);
+
+    // Create PHI user with supervisor's district
+    const user = this.userRepository.create({
+      name: phiData.name,
+      email: phiData.email,
+      password: hashedPassword,
+      role: UserRole.PHI,
+      district: supervisorDistrict,
+      isActive: true,
+    });
+
+    const savedUser = await this.userRepository.save(user);
+
+    // Remove password from response
+    const { password, ...userWithoutPassword } = savedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserCreated(userWithoutPassword);
+
+    return userWithoutPassword as User;
   }
 }

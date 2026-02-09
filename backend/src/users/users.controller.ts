@@ -9,6 +9,8 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Request,
+  BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -27,6 +29,26 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   async create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
+  }
+
+  @Post('phis')
+  @Roles(UserRole.SUPERVISOR)
+  async createPhi(
+    @Request() req,
+    @Body() phiData: { name: string; email: string; password: string },
+  ) {
+    const supervisor = req.user;
+
+    if (!supervisor.district) {
+      throw new BadRequestException(
+        'Supervisor must have a district assigned to create PHI users',
+      );
+    }
+
+    return this.usersService.createPhiForSupervisor(
+      supervisor.district,
+      phiData,
+    );
   }
 
   @Get()

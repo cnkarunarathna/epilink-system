@@ -137,6 +137,7 @@ export interface UpdateTaskDto {
 
 // API functions
 export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
+  const token = localStorage.getItem("accessToken");
   const params = new URLSearchParams();
   if (filters?.districtId)
     params.append("districtId", filters.districtId.toString());
@@ -146,17 +147,22 @@ export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
   if (filters?.assignedPhiId)
     params.append("assignedPhiId", filters.assignedPhiId);
 
-  const res = await axios.get(`${API_BASE}/tasks?${params.toString()}`);
+  const res = await axios.get(`${API_BASE}/tasks?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data;
 }
 
 export async function fetchTask(id: string): Promise<Task> {
-  const res = await axios.get(`${API_BASE}/tasks/${id}`);
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.get(`${API_BASE}/tasks/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data;
 }
 
 export async function createTask(data: CreateTaskDto): Promise<Task> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.post(`${API_BASE}/tasks`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -167,7 +173,7 @@ export async function updateTask(
   id: string,
   data: UpdateTaskDto,
 ): Promise<Task> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(`${API_BASE}/tasks/${id}`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -179,7 +185,7 @@ export async function updateTaskStatus(
   status: TaskStatus,
   rejectionReason?: string,
 ): Promise<Task> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/status`,
     { status, rejectionReason },
@@ -189,7 +195,7 @@ export async function updateTaskStatus(
 }
 
 export async function assignTask(id: string, phiId: string): Promise<Task> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/assign`,
     { assignedPhiId: phiId },
@@ -199,30 +205,38 @@ export async function assignTask(id: string, phiId: string): Promise<Task> {
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   await axios.delete(`${API_BASE}/tasks/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 export async function fetchTaskStats(districtId?: number): Promise<TaskStats> {
+  const token = localStorage.getItem("accessToken");
   const params = districtId ? `?districtId=${districtId}` : "";
-  const res = await axios.get(`${API_BASE}/tasks/stats${params}`);
+  const res = await axios.get(`${API_BASE}/tasks/stats${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data;
 }
 
 export async function fetchPhisByDistrict(
   districtName: string,
 ): Promise<{ id: string; name: string; email: string }[]> {
+  const token = localStorage.getItem("accessToken");
   const res = await axios.get(
     `${API_BASE}/tasks/phis/${encodeURIComponent(districtName)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   return res.data;
 }
 
 // Evidence API
 export async function fetchTaskEvidence(taskId: string): Promise<Evidence[]> {
-  const res = await axios.get(`${API_BASE}/tasks/${taskId}/evidence`);
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.get(`${API_BASE}/tasks/${taskId}/evidence`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data;
 }
 
@@ -235,7 +249,7 @@ export async function addEvidence(
     longitude?: number;
   },
 ): Promise<Evidence> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.post(`${API_BASE}/tasks/${taskId}/evidence`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -247,7 +261,7 @@ export async function verifyEvidence(
   approved: boolean,
   rejectionReason?: string,
 ): Promise<Evidence> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/evidence/${evidenceId}/verify`,
     { approved, rejectionReason },

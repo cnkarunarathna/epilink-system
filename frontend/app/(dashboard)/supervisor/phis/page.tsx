@@ -10,6 +10,16 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Users,
   RefreshCw,
@@ -18,6 +28,7 @@ import {
   ClipboardList,
   CheckCircle2,
   Clock,
+  UserPlus,
 } from "lucide-react";
 import {
   fetchPhisByDistrict,
@@ -25,6 +36,7 @@ import {
   Task,
   TaskStatus,
 } from "@/services/tasks.service";
+import usersService from "@/services/users.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -41,6 +53,13 @@ export default function PhisPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [phis, setPhis] = useState<PhiWithStats[]>([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
 
   const supervisorDistrict = user?.district || "Colombo";
 
@@ -81,6 +100,31 @@ export default function PhisPage() {
     loadData();
   }, [loadData]);
 
+  const handleCreatePhi = async () => {
+    if (!formData.name || !formData.email || !formData.password) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await usersService.createPhi(formData);
+      toast.success("PHI user created successfully");
+      setOpenDialog(false);
+      setFormData({ name: "", email: "", password: "" });
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to create PHI user");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -91,13 +135,19 @@ export default function PhisPage() {
             Public Health Inspectors in {supervisorDistrict} District
           </p>
         </div>
-        <Button variant="outline" onClick={loadData} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setOpenDialog(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add PHI
+          </Button>
+          <Button variant="outline" onClick={loadData} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -243,6 +293,87 @@ export default function PhisPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create PHI Dialog */}
+      <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New PHI</DialogTitle>
+            <DialogDescription>
+              Create a new Public Health Inspector account for{" "}
+              {supervisorDistrict} district
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name *</Label>
+              <Input
+                id="name"
+                placeholder="Enter full name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="phi@example.com"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password *</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Min. 6 characters"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="district">District</Label>
+              <Input
+                id="district"
+                value={supervisorDistrict}
+                disabled
+                className="bg-muted"
+              />
+              <p className="text-xs text-muted-foreground">
+                PHI will be automatically assigned to your district
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpenDialog(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreatePhi} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create PHI"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

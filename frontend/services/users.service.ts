@@ -81,6 +81,16 @@ const usersService = {
     const response = await api.get<UserStats>("/users/stats");
     return response.data;
   },
+
+  // Create PHI user (for supervisors)
+  async createPhi(phiData: {
+    name: string;
+    email: string;
+    password: string;
+  }): Promise<User> {
+    const response = await api.post<User>("/users/phis", phiData);
+    return response.data;
+  },
 };
 
 export default usersService;

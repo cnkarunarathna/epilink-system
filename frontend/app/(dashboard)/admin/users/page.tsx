@@ -72,6 +72,7 @@ import usersService, {
   UpdateUserData,
   UserStats,
 } from "@/services/users.service";
+import { fetchLatestPerDistrict } from "@/services/analytics.service";
 
 export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -83,6 +84,7 @@ export default function UsersPage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [districts, setDistricts] = useState<string[]>([]);
 
   // Form state
   const [formData, setFormData] = useState<CreateUserData>({
@@ -103,7 +105,17 @@ export default function UsersPage() {
   // Load data on mount
   useEffect(() => {
     loadData();
+    loadDistricts();
   }, []);
+
+  const loadDistricts = async () => {
+    try {
+      const data = await fetchLatestPerDistrict();
+      setDistricts(data.map((d) => d.district));
+    } catch (error) {
+      console.error("Failed to load districts", error);
+    }
+  };
 
   // WebSocket event handlers for real-time updates
   const handleUserCreated = useCallback((newUser: User) => {
@@ -124,7 +136,7 @@ export default function UsersPage() {
                 ] || 0) + 1,
             },
           }
-        : null
+        : null,
     );
     toast.success("New user added", {
       description: `${newUser.name} has been created`,
@@ -133,7 +145,7 @@ export default function UsersPage() {
 
   const handleUserUpdated = useCallback((updatedUser: User) => {
     setUsers((prev) =>
-      prev.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+      prev.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
     );
   }, []);
 
@@ -146,7 +158,7 @@ export default function UsersPage() {
   const handleUserStatusChanged = useCallback(
     ({ id, isActive }: { id: string; isActive: boolean }) => {
       setUsers((prev) =>
-        prev.map((user) => (user.id === id ? { ...user, isActive } : user))
+        prev.map((user) => (user.id === id ? { ...user, isActive } : user)),
       );
       setStats((prev) =>
         prev
@@ -159,10 +171,10 @@ export default function UsersPage() {
                 ? prev.inactiveUsers - 1
                 : prev.inactiveUsers + 1,
             }
-          : null
+          : null,
       );
     },
-    []
+    [],
   );
 
   // Subscribe to WebSocket events
@@ -194,6 +206,17 @@ export default function UsersPage() {
   const handleCreateUser = async () => {
     if (!formData.name || !formData.email || !formData.password) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // Validate district requirement for supervisor/PHI
+    if (
+      (formData.role === "supervisor" || formData.role === "phi") &&
+      !formData.district
+    ) {
+      toast.error(
+        `District is required for ${formData.role.toUpperCase()} accounts`,
+      );
       return;
     }
 
@@ -261,7 +284,7 @@ export default function UsersPage() {
     try {
       await usersService.toggleStatus(user.id);
       toast.success(
-        `User ${user.isActive ? "deactivated" : "activated"} successfully`
+        `User ${user.isActive ? "deactivated" : "activated"} successfully`,
       );
       loadData();
     } catch (error: any) {
@@ -299,7 +322,7 @@ export default function UsersPage() {
     (user) =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchQuery.toLowerCase())
+      user.role.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -391,15 +414,33 @@ export default function UsersPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="district">District (Optional)</Label>
-                  <Input
-                    id="district"
-                    placeholder="e.g., Colombo"
-                    value={formData.district}
-                    onChange={(e) =>
-                      setFormData({ ...formData, district: e.target.value })
+                  <Label htmlFor="district">
+                    District{" "}
+                    {formData.role === "supervisor" || formData.role === "phi"
+                      ? "*"
+                      : "(Optional)"}
+                  </Label>
+                  <Select
+                    value={formData.district || "none"}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        district: value === "none" ? "" : value,
+                      })
                     }
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {districts.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <DialogFooter>
@@ -670,17 +711,34 @@ export default function UsersPage() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-district">District</Label>
-              <Input
-                id="edit-district"
-                value={editFormData.district}
-                onChange={(e) =>
+              <Label htmlFor="edit-district">
+                District{" "}
+                {editFormData.role === "supervisor" ||
+                editFormData.role === "phi"
+                  ? "*"
+                  : "(Optional)"}
+              </Label>
+              <Select
+                value={editFormData.district || "none"}
+                onValueChange={(value) =>
                   setEditFormData({
                     ...editFormData,
-                    district: e.target.value,
+                    district: value === "none" ? "" : value,
                   })
                 }
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select district" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {districts.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
