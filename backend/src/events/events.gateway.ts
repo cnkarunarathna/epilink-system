@@ -162,6 +162,72 @@ export class EventsGateway
     this.logger.debug(`Emitted ${event} to user ${userId}`);
   }
 
+  // ==================== Task Events ====================
+
+  emitTaskCreated(task: any, districtName?: string) {
+    // Emit to supervisors in the district
+    if (districtName) {
+      this.server.to(`district:${districtName}`).emit('task:created', task);
+    }
+    // Also emit to admins
+    this.server.to('role:admin').emit('task:created', task);
+    this.logger.debug(`Emitted task:created for ${task.id}`);
+  }
+
+  emitTaskUpdated(task: any, districtName?: string) {
+    if (districtName) {
+      this.server.to(`district:${districtName}`).emit('task:updated', task);
+    }
+    this.server.to('role:admin').emit('task:updated', task);
+    // Notify assigned PHI if exists
+    if (task.assignedPhiId) {
+      this.server.to(`user:${task.assignedPhiId}`).emit('task:updated', task);
+    }
+    this.logger.debug(`Emitted task:updated for ${task.id}`);
+  }
+
+  emitTaskStatusChanged(
+    task: any,
+    oldStatus: string,
+    newStatus: string,
+    districtName?: string,
+  ) {
+    const payload = { task, oldStatus, newStatus };
+    if (districtName) {
+      this.server
+        .to(`district:${districtName}`)
+        .emit('task:status-changed', payload);
+    }
+    this.server.to('role:admin').emit('task:status-changed', payload);
+    if (task.assignedPhiId) {
+      this.server
+        .to(`user:${task.assignedPhiId}`)
+        .emit('task:status-changed', payload);
+    }
+    this.logger.debug(
+      `Emitted task:status-changed for ${task.id}: ${oldStatus} -> ${newStatus}`,
+    );
+  }
+
+  emitTaskAssigned(task: any, phiId: string, districtName?: string) {
+    const payload = { task, phiId };
+    if (districtName) {
+      this.server.to(`district:${districtName}`).emit('task:assigned', payload);
+    }
+    this.server.to('role:admin').emit('task:assigned', payload);
+    // Notify the assigned PHI
+    this.server.to(`user:${phiId}`).emit('task:assigned', payload);
+    this.logger.debug(`Emitted task:assigned for ${task.id} to PHI ${phiId}`);
+  }
+
+  emitTaskDeleted(taskId: string, districtName?: string) {
+    if (districtName) {
+      this.server.to(`district:${districtName}`).emit('task:deleted', taskId);
+    }
+    this.server.to('role:admin').emit('task:deleted', taskId);
+    this.logger.debug(`Emitted task:deleted for ${taskId}`);
+  }
+
   // ==================== Stats ====================
 
   getConnectedClients(): number {

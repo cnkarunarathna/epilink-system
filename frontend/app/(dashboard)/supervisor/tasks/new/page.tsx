@@ -31,6 +31,9 @@ import {
 import { fetchLatestPerDistrict } from "@/services/analytics.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import LocationPicker, {
+  LocationPickerValue,
+} from "@/components/tasks/LocationPicker";
 
 export default function CreateTaskPage() {
   const router = useRouter();
@@ -53,11 +56,23 @@ export default function CreateTaskPage() {
     priority: TaskPriority.MEDIUM,
     description: "",
     address: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
     districtId: 0,
     assignedPhiId: "",
     dueDate: "",
     notes: "",
   });
+
+  // Location picker handler
+  const handleLocationChange = (location: LocationPickerValue) => {
+    setFormData({
+      ...formData,
+      address: location.address,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    });
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -112,6 +127,8 @@ export default function CreateTaskPage() {
         priority: formData.priority,
         description: formData.description || undefined,
         address: formData.address || undefined,
+        latitude: formData.latitude ?? undefined,
+        longitude: formData.longitude ?? undefined,
         districtId: formData.districtId,
         assignedPhiId: formData.assignedPhiId || undefined,
         dueDate: formData.dueDate || undefined,
@@ -285,14 +302,15 @@ export default function CreateTaskPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  placeholder="e.g., 123 Main Street, Colombo 01"
-                  value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
+                <Label htmlFor="address">Location</Label>
+                <LocationPicker
+                  value={{
+                    latitude: formData.latitude,
+                    longitude: formData.longitude,
+                    address: formData.address,
+                  }}
+                  onChange={handleLocationChange}
+                  height={300}
                 />
               </div>
 

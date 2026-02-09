@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { TasksService, TaskFilters } from './tasks.service';
+import { GeocodingService } from './geocoding.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import {
   UpdateTaskDto,
@@ -19,13 +20,21 @@ import {
   AssignTaskDto,
 } from './dto/update-task.dto';
 import { CreateEvidenceDto } from './dto/create-evidence.dto';
+import {
+  GeocodeAddressDto,
+  ReverseGeocodeDto,
+  SearchAddressDto,
+} from './dto/geocoding.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TaskStatus, TaskType, TaskPriority } from './entities/task.entity';
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly geocodingService: GeocodingService,
+  ) {}
 
   @Post()
   create(@Body() createTaskDto: CreateTaskDto, @Request() req) {
@@ -124,5 +133,21 @@ export class TasksController {
       req.user.id,
       body.rejectionReason,
     );
+  }
+
+  // Geocoding endpoints
+  @Post('geocode')
+  geocodeAddress(@Body() dto: GeocodeAddressDto) {
+    return this.geocodingService.geocodeAddress(dto.address);
+  }
+
+  @Post('reverse-geocode')
+  reverseGeocode(@Body() dto: ReverseGeocodeDto) {
+    return this.geocodingService.reverseGeocode(dto.latitude, dto.longitude);
+  }
+
+  @Post('search-addresses')
+  searchAddresses(@Body() dto: SearchAddressDto) {
+    return this.geocodingService.searchAddresses(dto.query, dto.limit);
   }
 }
