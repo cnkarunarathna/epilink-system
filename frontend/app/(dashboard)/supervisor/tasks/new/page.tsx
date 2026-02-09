@@ -272,9 +272,12 @@ export default function CreateTaskPage() {
               <div className="space-y-2">
                 <Label htmlFor="phi">Assign to PHI</Label>
                 <Select
-                  value={formData.assignedPhiId}
+                  value={formData.assignedPhiId || "__unassigned__"}
                   onValueChange={(v) =>
-                    setFormData({ ...formData, assignedPhiId: v })
+                    setFormData({
+                      ...formData,
+                      assignedPhiId: v === "__unassigned__" ? "" : v,
+                    })
                   }
                   disabled={loadingPhis}
                 >
@@ -286,7 +289,7 @@ export default function CreateTaskPage() {
                     )}
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
+                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
                     {phis.map((phi) => (
                       <SelectItem key={phi.id} value={phi.id}>
                         {phi.name} ({phi.email})
