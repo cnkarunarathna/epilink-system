@@ -292,10 +292,10 @@ export class TasksService {
     return this.evidenceRepository.save(evidence);
   }
 
-  // Get PHIs by district for supervisor
+  // Get PHIs by district for supervisor (including suspended)
   async getPhisByDistrict(districtName: string): Promise<User[]> {
     return this.userRepository.find({
-      where: { district: districtName, role: UserRole.PHI, isActive: true },
+      where: { district: districtName, role: UserRole.PHI },
       select: ['id', 'name', 'email', 'district', 'isActive'],
     });
   }

@@ -43,6 +43,7 @@ import {
 } from "@/services/tasks.service";
 import usersService from "@/services/users.service";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/contexts/SocketContext";
 import { toast } from "sonner";
 
 interface PhiWithStats {
@@ -57,6 +58,7 @@ interface PhiWithStats {
 
 export default function PhisPage() {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const [loading, setLoading] = useState(true);
   const [phis, setPhis] = useState<PhiWithStats[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
@@ -114,6 +116,60 @@ export default function PhisPage() {
     loadData();
   }, [loadData]);
 
+  // WebSocket event listeners for real-time updates
+  useEffect(() => {
+    if (!socket) return;
+
+    // Listen for user created events
+    socket.on("user:created", (newUser: any) => {
+      if (newUser.role === "phi" && newUser.district === supervisorDistrict) {
+        // Add new PHI to list with default stats
+        setPhis((prev) => [
+          {
+            ...newUser,
+            tasksAssigned: 0,
+            tasksCompleted: 0,
+            tasksPending: 0,
+          },
+          ...prev,
+        ]);
+      }
+    });
+
+    // Listen for user updated events
+    socket.on("user:updated", (updatedUser: any) => {
+      setPhis((prev) =>
+        prev.map((phi) =>
+          phi.id === updatedUser.id ? { ...phi, ...updatedUser } : phi,
+        ),
+      );
+    });
+
+    // Listen for user status changed events
+    socket.on(
+      "user:status-changed",
+      (data: { id: string; isActive: boolean }) => {
+        setPhis((prev) =>
+          prev.map((phi) =>
+            phi.id === data.id ? { ...phi, isActive: data.isActive } : phi,
+          ),
+        );
+      },
+    );
+
+    // Listen for user deleted events
+    socket.on("user:deleted", (userId: string) => {
+      setPhis((prev) => prev.filter((phi) => phi.id !== userId));
+    });
+
+    return () => {
+      socket.off("user:created");
+      socket.off("user:updated");
+      socket.off("user:status-changed");
+      socket.off("user:deleted");
+    };
+  }, [socket, supervisorDistrict]);
+
   const handleCreatePhi = async () => {
     if (!formData.name || !formData.email || !formData.password) {
       toast.error("Please fill in all fields");
@@ -131,7 +187,7 @@ export default function PhisPage() {
       toast.success("PHI user created successfully");
       setOpenDialog(false);
       setFormData({ name: "", email: "", password: "" });
-      loadData();
+      // No need to reload - WebSocket will update automatically
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to create PHI user");
     } finally {
@@ -175,7 +231,7 @@ export default function PhisPage() {
       toast.success("PHI updated successfully");
       setOpenEditDialog(false);
       setSelectedPhi(null);
-      loadData();
+      // No need to reload - WebSocket will update automatically
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to update PHI");
     } finally {
@@ -197,7 +253,7 @@ export default function PhisPage() {
       toast.success("PHI deleted successfully");
       setOpenDeleteDialog(false);
       setSelectedPhi(null);
-      loadData();
+      // No need to reload - WebSocket will update automatically
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to delete PHI");
     } finally {
@@ -211,7 +267,7 @@ export default function PhisPage() {
       toast.success(
         `PHI ${phi.isActive ? "suspended" : "activated"} successfully`,
       );
-      loadData();
+      // No need to reload - WebSocket will update automatically
     } catch (error: any) {
       toast.error(
         error.response?.data?.message || "Failed to update PHI status",
