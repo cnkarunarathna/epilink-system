@@ -221,7 +221,7 @@ export default function AnalyticsPage() {
                 <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                   <BarChart3 className="h-8 w-8" />
                 </div>
-                Dengue Analytics Dashboard
+                Dengue Risk Forecast
               </h2>
               <div className="flex items-center gap-3">
                 <p className="text-green-100 text-lg">

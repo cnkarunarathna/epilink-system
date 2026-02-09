@@ -81,6 +81,36 @@ const usersService = {
     const response = await api.get<UserStats>("/users/stats");
     return response.data;
   },
+
+  // Create PHI user (for supervisors)
+  async createPhi(phiData: {
+    name: string;
+    email: string;
+    password: string;
+  }): Promise<User> {
+    const response = await api.post<User>("/users/phis", phiData);
+    return response.data;
+  },
+
+  // Update PHI user (for supervisors)
+  async updatePhi(
+    id: string,
+    updateData: { name?: string; email?: string; password?: string },
+  ): Promise<User> {
+    const response = await api.patch<User>(`/users/phis/${id}`, updateData);
+    return response.data;
+  },
+
+  // Delete PHI user (for supervisors)
+  async deletePhi(id: string): Promise<void> {
+    await api.delete(`/users/phis/${id}`);
+  },
+
+  // Toggle PHI status (for supervisors)
+  async togglePhiStatus(id: string): Promise<User> {
+    const response = await api.patch<User>(`/users/phis/${id}/toggle-status`);
+    return response.data;
+  },
 };
 
 export default usersService;

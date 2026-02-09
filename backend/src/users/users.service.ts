@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from '../entities/user.entity';
+import { User, UserRole } from '../entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
@@ -28,6 +28,17 @@ export class UsersService {
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
+    }
+
+    // Validate that Supervisor and PHI roles must have a district assigned
+    if (
+      (createUserDto.role === UserRole.SUPERVISOR ||
+        createUserDto.role === UserRole.PHI) &&
+      !createUserDto.district
+    ) {
+      throw new BadRequestException(
+        `${createUserDto.role === UserRole.SUPERVISOR ? 'Supervisor' : 'PHI'} accounts must be assigned to a district`,
+      );
     }
 
     // Hash password
@@ -95,6 +106,22 @@ export class UsersService {
     // If password is being updated, hash it
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    // Validate that Supervisor and PHI roles must have a district
+    const finalRole = updateUserDto.role || user.role;
+    const finalDistrict =
+      updateUserDto.district !== undefined
+        ? updateUserDto.district
+        : user.district;
+
+    if (
+      (finalRole === UserRole.SUPERVISOR || finalRole === UserRole.PHI) &&
+      !finalDistrict
+    ) {
+      throw new BadRequestException(
+        `${finalRole === UserRole.SUPERVISOR ? 'Supervisor' : 'PHI'} accounts must be assigned to a district`,
+      );
     }
 
     // Update user
@@ -166,5 +193,156 @@ export class UsersService {
         return acc;
       }, {}),
     };
+  }
+
+  async createPhiForSupervisor(
+    supervisorDistrict: string,
+    phiData: { name: string; email: string; password: string },
+  ): Promise<User> {
+    // Check if user with email already exists
+    const existingUser = await this.userRepository.findOne({
+      where: { email: phiData.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(phiData.password, 10);
+
+    // Create PHI user with supervisor's district
+    const user = this.userRepository.create({
+      name: phiData.name,
+      email: phiData.email,
+      password: hashedPassword,
+      role: UserRole.PHI,
+      district: supervisorDistrict,
+      isActive: true,
+    });
+
+    const savedUser = await this.userRepository.save(user);
+
+    // Remove password from response
+    const { password, ...userWithoutPassword } = savedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserCreated(userWithoutPassword);
+
+    return userWithoutPassword as User;
+  }
+
+  async updatePhiForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+    updateData: { name?: string; email?: string; password?: string },
+  ): Promise<User> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    // Check email uniqueness if email is being updated
+    if (updateData.email && updateData.email !== phi.email) {
+      const existingUser = await this.userRepository.findOne({
+        where: { email: updateData.email },
+      });
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists');
+      }
+    }
+
+    // Hash password if provided
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    // Update PHI
+    Object.assign(phi, updateData);
+    const updatedUser = await this.userRepository.save(phi);
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserUpdated(userWithoutPassword);
+
+    return userWithoutPassword as User;
+  }
+
+  async deletePhiForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+  ): Promise<void> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    await this.userRepository.remove(phi);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserDeleted(phiId);
+  }
+
+  async togglePhiStatusForSupervisor(
+    supervisorDistrict: string,
+    phiId: string,
+  ): Promise<User> {
+    // Find the PHI user
+    const phi = await this.userRepository.findOne({ where: { id: phiId } });
+
+    if (!phi) {
+      throw new NotFoundException('PHI user not found');
+    }
+
+    // Validate that user is a PHI
+    if (phi.role !== UserRole.PHI) {
+      throw new BadRequestException('User is not a PHI');
+    }
+
+    // Validate that PHI belongs to supervisor's district
+    if (phi.district !== supervisorDistrict) {
+      throw new BadRequestException(
+        'You can only manage PHIs in your district',
+      );
+    }
+
+    phi.isActive = !phi.isActive;
+    const updatedUser = await this.userRepository.save(phi);
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    // Emit WebSocket event
+    this.eventsGateway.emitUserStatusChanged(phiId, updatedUser.isActive);
+
+    return userWithoutPassword as User;
   }
 }
