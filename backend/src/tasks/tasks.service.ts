@@ -237,8 +237,9 @@ export class TasksService {
     const task = await this.findOne(id);
     const districtName = task.district?.name;
     const taskId = task.id;
+    const assignedPhiId = task.assignedPhiId ?? undefined;
     await this.taskRepository.remove(task);
-    this.eventsGateway.emitTaskDeleted(taskId, districtName);
+    this.eventsGateway.emitTaskDeleted(taskId, districtName, assignedPhiId);
   }
 
   async getStats(districtId?: number): Promise<TaskStats> {

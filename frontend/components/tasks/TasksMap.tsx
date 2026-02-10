@@ -25,6 +25,7 @@ interface TasksMapProps {
   className?: string;
   height?: string | number;
   onTaskClick?: (task: Task) => void;
+  basePath?: string;
 }
 
 // Status colors for markers
@@ -62,6 +63,7 @@ export function TasksMap({
   className,
   height = 500,
   onTaskClick,
+  basePath = "/supervisor/tasks",
 }: TasksMapProps) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -194,7 +196,7 @@ export function TasksMap({
                 </div>
 
                 <div className="mt-3 pt-2 border-t">
-                  <Link href={`/supervisor/tasks/${task.id}`}>
+                  <Link href={`${basePath}/${task.id}`}>
                     <Button
                       size="sm"
                       variant="outline"
