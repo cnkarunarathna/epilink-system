@@ -1,7 +1,16 @@
 import axios from "axios";
+import { ACCESS_TOKEN_KEY } from "@/lib/tokenUtils";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_BASE = RAW_BASE.endsWith("/api") ? RAW_BASE : `${RAW_BASE}/api`;
+
+function getAuthHeaders() {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem(ACCESS_TOKEN_KEY)
+      : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export interface DistrictLatest {
   district: string;
@@ -15,29 +24,38 @@ export interface DistrictLatest {
 }
 
 export async function fetchLatestPerDistrict(): Promise<DistrictLatest[]> {
-  const res = await axios.get(`${API_BASE}/analytics/districts/latest`);
+  const res = await axios.get(`${API_BASE}/analytics/districts/latest`, {
+    headers: getAuthHeaders(),
+  });
   return res.data;
 }
 
 export async function fetchTimeseries(district: string) {
   const res = await axios.get(
-    `${API_BASE}/analytics/districts/${encodeURIComponent(district)}/timeseries`
+    `${API_BASE}/analytics/districts/${encodeURIComponent(district)}/timeseries`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
 
 export async function fetchBulkPredictions() {
-  const res = await axios.get(`${API_BASE}/analytics/predict/bulk`);
+  const res = await axios.get(`${API_BASE}/analytics/predict/bulk`, {
+    headers: getAuthHeaders(),
+  });
   return res.data;
 }
 
 export async function fetchDashboardSummary() {
-  const res = await axios.get(`${API_BASE}/analytics/summary`);
+  const res = await axios.get(`${API_BASE}/analytics/summary`, {
+    headers: getAuthHeaders(),
+  });
   return res.data;
 }
 
 export async function fetchTrends(weeks: number = 12) {
-  const res = await axios.get(`${API_BASE}/analytics/trends?weeks=${weeks}`);
+  const res = await axios.get(`${API_BASE}/analytics/trends?weeks=${weeks}`, {
+    headers: getAuthHeaders(),
+  });
   return res.data;
 }
 
@@ -45,7 +63,7 @@ export async function fetchHistoricalRange(
   startYear?: number,
   startWeek?: number,
   endYear?: number,
-  endWeek?: number
+  endWeek?: number,
 ) {
   const params = new URLSearchParams();
   if (startYear) params.append("startYear", startYear.toString());
@@ -54,7 +72,8 @@ export async function fetchHistoricalRange(
   if (endWeek) params.append("endWeek", endWeek.toString());
 
   const res = await axios.get(
-    `${API_BASE}/analytics/historical/range?${params.toString()}`
+    `${API_BASE}/analytics/historical/range?${params.toString()}`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
@@ -65,7 +84,8 @@ export async function fetchCompareDistricts(districts?: string[]) {
       ? `?districts=${districts.join(",")}`
       : "";
   const res = await axios.get(
-    `${API_BASE}/analytics/historical/districts/compare${params}`
+    `${API_BASE}/analytics/historical/districts/compare${params}`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
@@ -73,36 +93,47 @@ export async function fetchCompareDistricts(districts?: string[]) {
 export async function fetchYearlySummary(year?: number) {
   const params = year ? `?year=${year}` : "";
   const res = await axios.get(
-    `${API_BASE}/analytics/historical/yearly-summary${params}`
+    `${API_BASE}/analytics/historical/yearly-summary${params}`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
 
 export async function fetchWeatherCorrelation() {
   const res = await axios.get(
-    `${API_BASE}/analytics/advanced/weather-correlation`
+    `${API_BASE}/analytics/advanced/weather-correlation`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
 
 export async function fetchGrowthRate(weeks: number = 4) {
   const res = await axios.get(
-    `${API_BASE}/analytics/advanced/growth-rate?weeks=${weeks}`
+    `${API_BASE}/analytics/advanced/growth-rate?weeks=${weeks}`,
+    { headers: getAuthHeaders() },
   );
   return res.data;
 }
 
 export async function fetchHotspots() {
-  const res = await axios.get(`${API_BASE}/analytics/advanced/hotspots`);
+  const res = await axios.get(`${API_BASE}/analytics/advanced/hotspots`, {
+    headers: getAuthHeaders(),
+  });
   return res.data;
 }
 
 export async function fetchOutbreakAlerts() {
-  const res = await axios.get(`${API_BASE}/analytics/advanced/outbreak-alerts`);
+  const res = await axios.get(
+    `${API_BASE}/analytics/advanced/outbreak-alerts`,
+    { headers: getAuthHeaders() },
+  );
   return res.data;
 }
 
 export async function fetchWeeklyForecast() {
-  const res = await axios.get(`${API_BASE}/analytics/advanced/weekly-forecast`);
+  const res = await axios.get(
+    `${API_BASE}/analytics/advanced/weekly-forecast`,
+    { headers: getAuthHeaders() },
+  );
   return res.data;
 }

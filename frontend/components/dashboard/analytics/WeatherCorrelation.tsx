@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Cloud, Droplets, ThermometerSun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchWeatherCorrelation } from "@/services/analytics.service";
+import { fetchPublicWeatherCorrelation } from "@/services/public-analytics.service";
 import { useTheme } from "next-themes";
 import {
   ResponsiveContainer,
@@ -33,7 +34,11 @@ interface CorrelationData {
   data_points: number;
 }
 
-export default function WeatherCorrelation() {
+export default function WeatherCorrelation({
+  usePublicApi = false,
+}: {
+  usePublicApi?: boolean;
+}) {
   const [data, setData] = useState<CorrelationData[]>([]);
   const [loading, setLoading] = useState(true);
   const { resolvedTheme } = useTheme();
@@ -52,7 +57,9 @@ export default function WeatherCorrelation() {
   const loadCorrelation = async () => {
     try {
       setLoading(true);
-      const result = await fetchWeatherCorrelation();
+      const result = usePublicApi
+        ? await fetchPublicWeatherCorrelation()
+        : await fetchWeatherCorrelation();
       setData(result);
     } catch (error) {
       console.error("Failed to load weather correlation:", error);
@@ -129,7 +136,7 @@ export default function WeatherCorrelation() {
               {[...data]
                 .sort(
                   (a, b) =>
-                    Math.abs(b.temp_correlation) - Math.abs(a.temp_correlation)
+                    Math.abs(b.temp_correlation) - Math.abs(a.temp_correlation),
                 )
                 .slice(0, 5)
                 .map((item) => (
@@ -174,7 +181,7 @@ export default function WeatherCorrelation() {
                 .sort(
                   (a, b) =>
                     Math.abs(b.precip_correlation) -
-                    Math.abs(a.precip_correlation)
+                    Math.abs(a.precip_correlation),
                 )
                 .slice(0, 5)
                 .map((item) => (
@@ -284,8 +291,8 @@ export default function WeatherCorrelation() {
                       fill={getCorrelationColor(
                         Math.max(
                           Math.abs(entry.temp_correlation),
-                          Math.abs(entry.precip_correlation)
-                        )
+                          Math.abs(entry.precip_correlation),
+                        ),
                       )}
                     />
                   ))}

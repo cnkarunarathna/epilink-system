@@ -33,11 +33,11 @@ import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
 import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
 import {
-  fetchLatestPerDistrict,
-  fetchTimeseries,
-  fetchDashboardSummary,
-  fetchTrends,
-} from "@/services/analytics.service";
+  fetchPublicLatestPerDistrict,
+  fetchPublicTimeseries,
+  fetchPublicDashboardSummary,
+  fetchPublicTrends,
+} from "@/services/public-analytics.service";
 
 interface DistrictPrediction {
   district: string;
@@ -93,9 +93,9 @@ export default function PublicRiskMapPage() {
       setLoading(true);
 
       const [latestData, summaryData, trendsData] = await Promise.all([
-        fetchLatestPerDistrict(),
-        fetchDashboardSummary(),
-        fetchTrends(12),
+        fetchPublicLatestPerDistrict(),
+        fetchPublicDashboardSummary(),
+        fetchPublicTrends(12),
       ]);
 
       const preds = latestData
@@ -128,7 +128,7 @@ export default function PublicRiskMapPage() {
     }
 
     try {
-      const ts = await fetchTimeseries(district);
+      const ts = await fetchPublicTimeseries(district);
       setDistrictTimeseries(ts || []);
     } catch (error: any) {
       console.error("Failed to load timeseries:", error);
@@ -601,12 +601,12 @@ export default function PublicRiskMapPage() {
             )}
 
             {/* Outbreak Alerts */}
-            <OutbreakAlerts />
+            <OutbreakAlerts usePublicApi />
 
             {/* Hotspots and Growth Rate */}
             <div className="grid gap-4 md:grid-cols-2">
-              <HotspotsPanel />
-              <GrowthRatePanel />
+              <HotspotsPanel usePublicApi />
+              <GrowthRatePanel usePublicApi />
             </div>
           </TabsContent>
 
@@ -616,7 +616,7 @@ export default function PublicRiskMapPage() {
             className="space-y-6 animate-in fade-in-50 duration-500"
           >
             {/* Weather Correlation */}
-            <WeatherCorrelation />
+            <WeatherCorrelation usePublicApi />
 
             {/* All Districts Breakdown */}
             {predictions.length > 0 && (

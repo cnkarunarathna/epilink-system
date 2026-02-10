@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchGrowthRate } from "@/services/analytics.service";
+import { fetchPublicGrowthRate } from "@/services/public-analytics.service";
 
 interface GrowthData {
   district: string;
@@ -20,7 +21,11 @@ interface GrowthData {
   trend: string;
 }
 
-export default function GrowthRatePanel() {
+export default function GrowthRatePanel({
+  usePublicApi = false,
+}: {
+  usePublicApi?: boolean;
+}) {
   const [growthData, setGrowthData] = useState<GrowthData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,7 +36,9 @@ export default function GrowthRatePanel() {
   const loadGrowthRate = async () => {
     try {
       setLoading(true);
-      const data = await fetchGrowthRate(4);
+      const data = usePublicApi
+        ? await fetchPublicGrowthRate(4)
+        : await fetchGrowthRate(4);
       setGrowthData(data);
     } catch (error) {
       console.error("Failed to load growth rate:", error);
