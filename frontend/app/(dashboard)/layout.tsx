@@ -63,7 +63,8 @@ export default function DashboardLayout({
         ];
       case "phi":
         return [
-          { label: "My Tasks", href: "/phi", icon: ClipboardCheck },
+          { label: "Dashboard", href: "/phi", icon: LayoutDashboard },
+          { label: "My Tasks", href: "/phi/tasks", icon: ClipboardCheck },
           { label: "Map View", href: "/phi/map", icon: MapPin },
           { label: "History", href: "/phi/history", icon: FileText },
         ];
