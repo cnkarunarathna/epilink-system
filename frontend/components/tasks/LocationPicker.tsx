@@ -106,6 +106,31 @@ export function LocationPicker({
   const [showResults, setShowResults] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoLocated = useRef(false);
+
+  // Auto-center map on user's location on mount
+  useEffect(() => {
+    if (hasAutoLocated.current) return;
+    if (value?.latitude && value?.longitude) return; // Don't override if value already set
+
+    if ("geolocation" in navigator) {
+      hasAutoLocated.current = true;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { longitude: lng, latitude: lat } = pos.coords;
+          mapRef.current?.flyTo({
+            center: [lng, lat],
+            zoom: 13,
+            duration: 1000,
+          });
+        },
+        (error) => {
+          console.log("Auto-locate skipped:", error.message);
+        },
+        { timeout: 5000, maximumAge: 300000 }, // 5s timeout, cache for 5 min
+      );
+    }
+  }, [value?.latitude, value?.longitude]);
 
   // Sync external value with internal state
   useEffect(() => {
