@@ -169,7 +169,8 @@ export class EventsGateway
     if (districtName) {
       this.server.to(`district:${districtName}`).emit('task:created', task);
     }
-    // Also emit to admins
+    // Also emit to all supervisors and admins
+    this.server.to('role:supervisor').emit('task:created', task);
     this.server.to('role:admin').emit('task:created', task);
     this.logger.debug(`Emitted task:created for ${task.id}`);
   }
@@ -178,6 +179,7 @@ export class EventsGateway
     if (districtName) {
       this.server.to(`district:${districtName}`).emit('task:updated', task);
     }
+    this.server.to('role:supervisor').emit('task:updated', task);
     this.server.to('role:admin').emit('task:updated', task);
     // Notify assigned PHI if exists
     if (task.assignedPhiId) {
@@ -198,6 +200,7 @@ export class EventsGateway
         .to(`district:${districtName}`)
         .emit('task:status-changed', payload);
     }
+    this.server.to('role:supervisor').emit('task:status-changed', payload);
     this.server.to('role:admin').emit('task:status-changed', payload);
     if (task.assignedPhiId) {
       this.server
@@ -214,6 +217,7 @@ export class EventsGateway
     if (districtName) {
       this.server.to(`district:${districtName}`).emit('task:assigned', payload);
     }
+    this.server.to('role:supervisor').emit('task:assigned', payload);
     this.server.to('role:admin').emit('task:assigned', payload);
     // Notify the assigned PHI
     this.server.to(`user:${phiId}`).emit('task:assigned', payload);
@@ -221,10 +225,12 @@ export class EventsGateway
   }
 
   emitTaskDeleted(taskId: string, districtName?: string) {
+    const payload = { taskId };
     if (districtName) {
-      this.server.to(`district:${districtName}`).emit('task:deleted', taskId);
+      this.server.to(`district:${districtName}`).emit('task:deleted', payload);
     }
-    this.server.to('role:admin').emit('task:deleted', taskId);
+    this.server.to('role:supervisor').emit('task:deleted', payload);
+    this.server.to('role:admin').emit('task:deleted', payload);
     this.logger.debug(`Emitted task:deleted for ${taskId}`);
   }
 
