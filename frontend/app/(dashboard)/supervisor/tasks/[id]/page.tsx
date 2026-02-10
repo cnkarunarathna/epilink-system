@@ -24,6 +24,7 @@ import {
   XCircle,
   AlertTriangle,
   ImageIcon,
+  Navigation,
 } from "lucide-react";
 import {
   fetchTask,
@@ -38,6 +39,13 @@ import {
   getPriorityColor,
 } from "@/services/tasks.service";
 import { toast } from "sonner";
+import {
+  Map,
+  MapMarker,
+  MarkerContent,
+  MapControls,
+} from "@/components/ui/map";
+import { useSocketEvent } from "@/hooks/useSocket";
 
 export default function TaskDetailPage() {
   const params = useParams();
@@ -70,6 +78,45 @@ export default function TaskDetailPage() {
   useEffect(() => {
     loadTaskData();
   }, [loadTaskData]);
+
+  // WebSocket: listen for real-time updates to this task
+  const handleTaskUpdated = useCallback(
+    (updatedTask: Task) => {
+      if (updatedTask.id === taskId) {
+        setTask(updatedTask);
+        toast.info("Task updated in real-time");
+      }
+    },
+    [taskId],
+  );
+
+  const handleTaskStatusChanged = useCallback(
+    (data: { task: Task; oldStatus: string; newStatus: string }) => {
+      if (data.task.id === taskId) {
+        setTask(data.task);
+        toast.info(
+          `Task status changed: ${data.oldStatus.replace("_", " ")} → ${data.newStatus.replace("_", " ")}`,
+        );
+      }
+    },
+    [taskId],
+  );
+
+  const handleTaskAssigned = useCallback(
+    (data: { task: Task }) => {
+      if (data.task.id === taskId) {
+        setTask(data.task);
+        toast.info(`Task assigned to ${data.task.assignedPhi?.name || "PHI"}`);
+      }
+    },
+    [taskId],
+  );
+
+  useSocketEvent("task:updated", handleTaskUpdated, [handleTaskUpdated]);
+  useSocketEvent("task:status-changed", handleTaskStatusChanged, [
+    handleTaskStatusChanged,
+  ]);
+  useSocketEvent("task:assigned", handleTaskAssigned, [handleTaskAssigned]);
 
   const handleStatusUpdate = async (
     newStatus: TaskStatus,
@@ -308,6 +355,60 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Location Map */}
+      {task.latitude && task.longitude && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Location</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  window.open(
+                    `https://www.google.com/maps?q=${task.latitude},${task.longitude}`,
+                    "_blank",
+                  )
+                }
+              >
+                <Navigation className="mr-2 h-3 w-3" />
+                Open in Google Maps
+              </Button>
+            </div>
+            {task.address && (
+              <CardDescription className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {task.address}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div
+              className="rounded-lg overflow-hidden border"
+              style={{ height: 300 }}
+            >
+              <Map
+                center={[Number(task.longitude), Number(task.latitude)]}
+                zoom={15}
+                minZoom={6}
+                maxZoom={18}
+              >
+                <MapMarker
+                  longitude={Number(task.longitude)}
+                  latitude={Number(task.latitude)}
+                  anchor="bottom"
+                >
+                  <MarkerContent>
+                    <MapPin className="h-8 w-8 text-primary fill-primary/20" />
+                  </MarkerContent>
+                </MapMarker>
+                <MapControls position="bottom-right" showZoom />
+              </Map>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Evidence Section */}
       <Card>

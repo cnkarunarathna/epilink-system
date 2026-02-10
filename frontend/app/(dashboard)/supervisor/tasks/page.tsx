@@ -48,6 +48,7 @@ import {
 } from "@/services/tasks.service";
 import { toast } from "sonner";
 import TasksMap from "@/components/tasks/TasksMap";
+import { useSocketEvent } from "@/hooks/useSocket";
 
 export default function TasksListPage() {
   const [loading, setLoading] = useState(true);
@@ -76,6 +77,50 @@ export default function TasksListPage() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  // ==================== WebSocket: Real-time task updates ====================
+
+  const handleTaskCreated = useCallback((newTask: Task) => {
+    setTasks((prev) => [newTask, ...prev]);
+    toast.success(`New task created: ${newTask.title}`);
+  }, []);
+
+  const handleTaskUpdated = useCallback((updatedTask: Task) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
+    );
+  }, []);
+
+  const handleTaskStatusChanged = useCallback(
+    (data: { task: Task; oldStatus: string; newStatus: string }) => {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === data.task.id ? data.task : t)),
+      );
+      toast.info(
+        `Task "${data.task.title}" status: ${data.newStatus.replace("_", " ")}`,
+      );
+    },
+    [],
+  );
+
+  const handleTaskAssigned = useCallback((data: { task: Task }) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === data.task.id ? data.task : t)),
+    );
+  }, []);
+
+  const handleTaskDeleted = useCallback((data: { taskId: string }) => {
+    setTasks((prev) => prev.filter((t) => t.id !== data.taskId));
+    toast.info("A task was deleted");
+  }, []);
+
+  useSocketEvent("task:created", handleTaskCreated, [handleTaskCreated]);
+  useSocketEvent("task:updated", handleTaskUpdated, [handleTaskUpdated]);
+  useSocketEvent("task:status-changed", handleTaskStatusChanged, [
+    handleTaskStatusChanged,
+  ]);
+  useSocketEvent("task:assigned", handleTaskAssigned, [handleTaskAssigned]);
+  useSocketEvent("task:deleted", handleTaskDeleted, [handleTaskDeleted]);
 
   // Filter by search query
   const filteredTasks = tasks.filter(
