@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Flame, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchHotspots } from "@/services/analytics.service";
+import { fetchPublicHotspots } from "@/services/public-analytics.service";
 
 interface Hotspot {
   district: string;
@@ -22,7 +23,11 @@ interface Hotspot {
   severity: string;
 }
 
-export default function HotspotsPanel() {
+export default function HotspotsPanel({
+  usePublicApi = false,
+}: {
+  usePublicApi?: boolean;
+}) {
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +38,9 @@ export default function HotspotsPanel() {
   const loadHotspots = async () => {
     try {
       setLoading(true);
-      const data = await fetchHotspots();
+      const data = usePublicApi
+        ? await fetchPublicHotspots()
+        : await fetchHotspots();
       setHotspots(data);
     } catch (error) {
       console.error("Failed to load hotspots:", error);
@@ -111,8 +118,8 @@ export default function HotspotsPanel() {
                   hotspot.severity === "critical"
                     ? "bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-red-300 dark:border-red-800 hover:from-red-100 hover:to-red-200 dark:hover:from-red-900/50 dark:hover:to-red-800/30"
                     : hotspot.severity === "high"
-                    ? "bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-300 dark:border-orange-800 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
-                    : "bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-950/50 dark:to-yellow-900/30 border-yellow-300 dark:border-yellow-800 hover:from-yellow-100 hover:to-yellow-200 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
+                      ? "bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-300 dark:border-orange-800 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
+                      : "bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-950/50 dark:to-yellow-900/30 border-yellow-300 dark:border-yellow-800 hover:from-yellow-100 hover:to-yellow-200 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
                 }`}
                 style={{ animationDelay: `${index * 100}ms` }}
               >
@@ -123,8 +130,8 @@ export default function HotspotsPanel() {
                         hotspot.severity === "critical"
                           ? "bg-red-200 dark:bg-red-800/50"
                           : hotspot.severity === "high"
-                          ? "bg-orange-200 dark:bg-orange-800/50"
-                          : "bg-yellow-200 dark:bg-yellow-800/50"
+                            ? "bg-orange-200 dark:bg-orange-800/50"
+                            : "bg-yellow-200 dark:bg-yellow-800/50"
                       }`}
                     >
                       <MapPin className="h-4 w-4" />
