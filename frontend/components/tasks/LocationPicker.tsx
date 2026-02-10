@@ -354,11 +354,10 @@ export function LocationPicker({
               latitude={markerPosition.lat}
               draggable={!disabled}
               onDragEnd={handleMarkerDragEnd}
+              anchor="bottom"
             >
               <MarkerContent>
-                <div className="relative">
-                  <MapPin className="h-8 w-8 text-primary fill-primary/20 -translate-x-1/2 -translate-y-full" />
-                </div>
+                <MapPin className="h-8 w-8 text-primary fill-primary/20" />
               </MarkerContent>
             </MapMarker>
           )}
