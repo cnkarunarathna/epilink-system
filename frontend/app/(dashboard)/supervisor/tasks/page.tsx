@@ -34,6 +34,8 @@ import {
   Loader2,
   Filter,
   ChevronRight,
+  List,
+  MapIcon,
 } from "lucide-react";
 import {
   fetchTasks,
@@ -45,6 +47,7 @@ import {
   getPriorityColor,
 } from "@/services/tasks.service";
 import { toast } from "sonner";
+import TasksMap from "@/components/tasks/TasksMap";
 
 export default function TasksListPage() {
   const [loading, setLoading] = useState(true);
@@ -52,6 +55,7 @@ export default function TasksListPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<TaskType | "all">("all");
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
   const loadTasks = useCallback(async () => {
     try {
@@ -170,82 +174,123 @@ export default function TasksListPage() {
                 <RefreshCw className="h-4 w-4" />
               )}
             </Button>
+            <div className="flex border rounded-md">
+              <Button
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setViewMode("list")}
+                className="rounded-r-none"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "map" ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setViewMode("map")}
+                className="rounded-l-none"
+              >
+                <MapIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tasks Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Tasks</CardTitle>
-          <CardDescription>
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}{" "}
-            found
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredTasks.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTasks.map((task) => (
-                  <TableRow
-                    key={task.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                  >
-                    <TableCell className="font-medium">{task.title}</TableCell>
-                    <TableCell className="capitalize">{task.type}</TableCell>
-                    <TableCell>
-                      {task.assignedPhi?.name || "Unassigned"}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`capitalize font-medium ${getPriorityColor(task.priority)}`}
-                      >
-                        {task.priority}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(task.status)}>
-                        {task.status.replace("_", " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(task.dueDate)}</TableCell>
-                    <TableCell>
-                      <Link href={`/supervisor/tasks/${task.id}`}>
-                        <Button variant="ghost" size="icon">
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </TableCell>
+      {/* Tasks View */}
+      {viewMode === "map" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Tasks Map</CardTitle>
+            <CardDescription>
+              {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}{" "}
+              shown on map
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <TasksMap tasks={filteredTasks} height={500} />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>All Tasks</CardTitle>
+            <CardDescription>
+              {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}{" "}
+              found
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredTasks.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Assigned To</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No tasks found</p>
-              <p className="text-sm mt-1">
-                Try adjusting your filters or create a new task
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {filteredTasks.map((task) => (
+                    <TableRow
+                      key={task.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium">
+                        {task.title}
+                      </TableCell>
+                      <TableCell className="capitalize">{task.type}</TableCell>
+                      <TableCell>
+                        {task.assignedPhi?.name || "Unassigned"}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`capitalize font-medium ${getPriorityColor(task.priority)}`}
+                        >
+                          {task.priority}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(task.status)}>
+                          {task.status.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(task.dueDate)}</TableCell>
+                      <TableCell>
+                        <Link href={`/supervisor/tasks/${task.id}`}>
+                          <Button variant="ghost" size="icon">
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No tasks found</p>
+                <p className="text-sm mt-1">
+                  Try adjusting your filters or create a new task
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

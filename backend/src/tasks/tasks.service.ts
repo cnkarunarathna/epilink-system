@@ -21,6 +21,7 @@ import {
 } from './dto/update-task.dto';
 import { CreateEvidenceDto } from './dto/create-evidence.dto';
 import { User, UserRole } from '../entities/user.entity';
+import { EventsGateway } from '../events/events.gateway';
 
 export interface TaskFilters {
   districtId?: number;
@@ -51,6 +52,7 @@ export class TasksService {
     private evidenceRepository: Repository<Evidence>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private eventsGateway: EventsGateway,
   ) {}
 
   async create(
@@ -77,7 +79,16 @@ export class TasksService {
     task.assignedPhiId = createTaskDto.assignedPhiId ?? null;
     task.assignedAt = createTaskDto.assignedPhiId ? new Date() : null;
 
-    return this.taskRepository.save(task);
+    const savedTask = await this.taskRepository.save(task);
+
+    // Fetch with relations for WebSocket
+    const taskWithRelations = await this.findOne(savedTask.id);
+    this.eventsGateway.emitTaskCreated(
+      taskWithRelations,
+      taskWithRelations.district?.name,
+    );
+
+    return taskWithRelations;
   }
 
   async findAll(filters?: TaskFilters): Promise<Task[]> {
@@ -148,6 +159,7 @@ export class TasksService {
     userId: string,
   ): Promise<Task> {
     const task = await this.findOne(id);
+    const oldStatus = task.status;
 
     // Validate status transitions
     const validTransitions: Record<TaskStatus, TaskStatus[]> = {
@@ -180,7 +192,17 @@ export class TasksService {
       task.submittedAt = new Date();
     }
 
-    return this.taskRepository.save(task);
+    const savedTask = await this.taskRepository.save(task);
+    const taskWithRelations = await this.findOne(savedTask.id);
+
+    this.eventsGateway.emitTaskStatusChanged(
+      taskWithRelations,
+      oldStatus,
+      dto.status,
+      taskWithRelations.district?.name,
+    );
+
+    return taskWithRelations;
   }
 
   async assignTask(id: string, dto: AssignTaskDto): Promise<Task> {
@@ -199,12 +221,24 @@ export class TasksService {
     task.assignedAt = new Date();
     task.status = TaskStatus.ASSIGNED;
 
-    return this.taskRepository.save(task);
+    const savedTask = await this.taskRepository.save(task);
+    const taskWithRelations = await this.findOne(savedTask.id);
+
+    this.eventsGateway.emitTaskAssigned(
+      taskWithRelations,
+      dto.assignedPhiId,
+      taskWithRelations.district?.name,
+    );
+
+    return taskWithRelations;
   }
 
   async remove(id: string): Promise<void> {
     const task = await this.findOne(id);
+    const districtName = task.district?.name;
+    const taskId = task.id;
     await this.taskRepository.remove(task);
+    this.eventsGateway.emitTaskDeleted(taskId, districtName);
   }
 
   async getStats(districtId?: number): Promise<TaskStats> {

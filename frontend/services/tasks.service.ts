@@ -294,3 +294,58 @@ export function getPriorityColor(priority: TaskPriority): string {
   };
   return colors[priority] || "text-gray-500";
 }
+
+// Geocoding interfaces
+export interface GeocodingResult {
+  latitude: number;
+  longitude: number;
+  displayName: string;
+  address?: {
+    road?: string;
+    suburb?: string;
+    city?: string;
+    district?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  };
+}
+
+// Geocoding functions
+export async function geocodeAddress(
+  address: string,
+): Promise<GeocodingResult | null> {
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.post(
+    `${API_BASE}/tasks/geocode`,
+    { address },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.data;
+}
+
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+): Promise<GeocodingResult | null> {
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.post(
+    `${API_BASE}/tasks/reverse-geocode`,
+    { latitude, longitude },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.data;
+}
+
+export async function searchAddresses(
+  query: string,
+  limit: number = 5,
+): Promise<GeocodingResult[]> {
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.post(
+    `${API_BASE}/tasks/search-addresses`,
+    { query, limit },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.data;
+}
