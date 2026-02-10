@@ -172,6 +172,10 @@ export class EventsGateway
     // Also emit to all supervisors and admins
     this.server.to('role:supervisor').emit('task:created', task);
     this.server.to('role:admin').emit('task:created', task);
+    // Notify assigned PHI if task was pre-assigned
+    if (task.assignedPhiId) {
+      this.server.to(`user:${task.assignedPhiId}`).emit('task:created', task);
+    }
     this.logger.debug(`Emitted task:created for ${task.id}`);
   }
 
@@ -224,13 +228,21 @@ export class EventsGateway
     this.logger.debug(`Emitted task:assigned for ${task.id} to PHI ${phiId}`);
   }
 
-  emitTaskDeleted(taskId: string, districtName?: string) {
+  emitTaskDeleted(
+    taskId: string,
+    districtName?: string,
+    assignedPhiId?: string,
+  ) {
     const payload = { taskId };
     if (districtName) {
       this.server.to(`district:${districtName}`).emit('task:deleted', payload);
     }
     this.server.to('role:supervisor').emit('task:deleted', payload);
     this.server.to('role:admin').emit('task:deleted', payload);
+    // Notify assigned PHI
+    if (assignedPhiId) {
+      this.server.to(`user:${assignedPhiId}`).emit('task:deleted', payload);
+    }
     this.logger.debug(`Emitted task:deleted for ${taskId}`);
   }
 

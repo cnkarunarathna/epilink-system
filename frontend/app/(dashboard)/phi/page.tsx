@@ -140,11 +140,39 @@ export default function PHIDashboard() {
     [user?.id],
   );
 
+  const handleTaskAssigned = useCallback(
+    (data: { task: Task; phiId: string }) => {
+      if (data.phiId === user?.id) {
+        setTasks((prev) => {
+          const exists = prev.some((t) => t.id === data.task.id);
+          if (exists) {
+            return prev.map((t) => (t.id === data.task.id ? data.task : t));
+          }
+          return [data.task, ...prev];
+        });
+        toast.success(`New task assigned: ${data.task.title}`);
+      }
+    },
+    [user?.id],
+  );
+
+  const handleTaskDeleted = useCallback((data: { taskId: string }) => {
+    setTasks((prev) => {
+      const task = prev.find((t) => t.id === data.taskId);
+      if (task) {
+        toast.info(`Task "${task.title}" was removed`);
+      }
+      return prev.filter((t) => t.id !== data.taskId);
+    });
+  }, []);
+
   useSocketEvent("task:created", handleTaskCreated, [handleTaskCreated]);
   useSocketEvent("task:updated", handleTaskUpdated, [handleTaskUpdated]);
   useSocketEvent("task:status-changed", handleTaskStatusChanged, [
     handleTaskStatusChanged,
   ]);
+  useSocketEvent("task:assigned", handleTaskAssigned, [handleTaskAssigned]);
+  useSocketEvent("task:deleted", handleTaskDeleted, [handleTaskDeleted]);
 
   // Compute stats
   const assignedCount = tasks.filter(
