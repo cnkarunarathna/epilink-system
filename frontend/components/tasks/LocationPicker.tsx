@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Search, MapPin, Loader2, Crosshair } from "lucide-react";
+import {
+  Search,
+  MapPin,
+  Loader2,
+  Crosshair,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import {
   Map,
   MapMarker,
@@ -91,6 +98,8 @@ export function LocationPicker({
   height = 400,
 }: LocationPickerProps) {
   const mapRef = useRef<MapLibreGL.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [markerPosition, setMarkerPosition] = useState<{
     lng: number;
     lat: number;
@@ -106,6 +115,31 @@ export function LocationPicker({
   const [showResults, setShowResults] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoLocated = useRef(false);
+
+  // Auto-center map on user's location on mount
+  useEffect(() => {
+    if (hasAutoLocated.current) return;
+    if (value?.latitude && value?.longitude) return; // Don't override if value already set
+
+    if ("geolocation" in navigator) {
+      hasAutoLocated.current = true;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { longitude: lng, latitude: lat } = pos.coords;
+          mapRef.current?.flyTo({
+            center: [lng, lat],
+            zoom: 13,
+            duration: 1000,
+          });
+        },
+        (error) => {
+          console.log("Auto-locate skipped:", error.message);
+        },
+        { timeout: 5000, maximumAge: 300000 }, // 5s timeout, cache for 5 min
+      );
+    }
+  }, [value?.latitude, value?.longitude]);
 
   // Sync external value with internal state
   useEffect(() => {
@@ -284,9 +318,39 @@ export function LocationPicker({
     );
   }, [onChange]);
 
+  // Handle expand/collapse
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded((prev) => {
+      const next = !prev;
+      // Resize map after layout change
+      setTimeout(() => {
+        mapRef.current?.resize();
+      }, 100);
+      return next;
+    });
+  }, []);
+
+  // Handle Escape key to collapse
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsExpanded(false);
+        setTimeout(() => mapRef.current?.resize(), 100);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isExpanded]);
+
   return (
     <div
-      className={cn("relative rounded-lg overflow-hidden border", className)}
+      ref={containerRef}
+      className={cn(
+        "relative rounded-lg overflow-hidden border transition-all duration-300",
+        isExpanded && "fixed inset-0 z-50 rounded-none border-none",
+        className,
+      )}
     >
       {/* Search bar */}
       <div className="absolute top-3 left-3 right-3 z-10 flex gap-2">
@@ -339,11 +403,33 @@ export function LocationPicker({
             <Crosshair className="h-4 w-4" />
           )}
         </Button>
+
+        {/* Expand/Collapse button */}
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          onClick={handleToggleExpand}
+          className="shrink-0 shadow-md"
+          title={isExpanded ? "Collapse map (Esc)" : "Expand map"}
+        >
+          {isExpanded ? (
+            <Minimize2 className="h-4 w-4" />
+          ) : (
+            <Maximize2 className="h-4 w-4" />
+          )}
+        </Button>
       </div>
 
       {/* Map */}
       <div
-        style={{ height: typeof height === "number" ? `${height}px` : height }}
+        style={{
+          height: isExpanded
+            ? "100%"
+            : typeof height === "number"
+              ? `${height}px`
+              : height,
+        }}
       >
         <Map center={initialCenter} zoom={initialZoom} minZoom={6} maxZoom={18}>
           <MapController mapRef={mapRef} />
