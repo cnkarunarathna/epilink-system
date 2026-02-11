@@ -14,7 +14,14 @@ import {
 } from "react-native";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { colors, spacing, typography } from "../../theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  colors,
+  spacing,
+  typography,
+  borderRadius,
+  shadows,
+} from "../../theme";
 import { Button, Input, ErrorMessage } from "../../components/common";
 import { loginSchema, LoginFormData } from "../../utils/validation";
 import { useAuth } from "../../context/AuthContext";
@@ -71,7 +78,20 @@ export const LoginScreen: React.FC = () => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>EpiLink</Text>
+          <View style={styles.logoContainer}>
+            <View style={[styles.iconBadge, shadows.lg]}>
+              <MaterialCommunityIcons
+                name="pulse"
+                size={32}
+                color={colors.primaryForeground}
+              />
+            </View>
+            <View style={styles.brandText}>
+              <Text style={styles.title}>
+                Epi<Text style={styles.titleHighlight}>Link</Text>
+              </Text>
+            </View>
+          </View>
           <Text style={styles.subtitle}>PHI Mobile Login</Text>
         </View>
 
@@ -154,9 +174,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing.xl,
   },
+  logoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  iconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  brandText: {
+    justifyContent: "center",
+  },
   title: {
-    fontSize: typography.fontSize["3xl"],
+    fontSize: 32,
     fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+  },
+  titleHighlight: {
     color: colors.primary,
   },
   subtitle: {
