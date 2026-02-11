@@ -58,16 +58,16 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
   chip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.full,
     backgroundColor: colors.muted,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
   },
   chipActive: {
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    fontWeight: typography.fontWeight.medium,
+    fontWeight: typography.fontWeight.semibold,
   },
   chipTextActive: {
     color: colors.primaryForeground,

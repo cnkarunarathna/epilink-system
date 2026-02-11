@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import { StatusBar as RNStatusBar, Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -16,7 +17,11 @@ export default function App() {
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
         <AuthProvider>
-          <StatusBar style="auto" />
+          <StatusBar
+            style="dark"
+            backgroundColor="#ffffff"
+            translucent={false}
+          />
           <RootNavigator />
         </AuthProvider>
       </SafeAreaProvider>

@@ -4,7 +4,8 @@
 
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Task } from "../../types/task.types";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Task, TaskType, TaskPriority } from "../../types/task.types";
 import {
   colors,
   spacing,
@@ -30,11 +31,41 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
     colors.status[task.status as keyof typeof colors.status] ||
     colors.mutedForeground;
 
+  const getTypeIcon = () => {
+    switch (task.type) {
+      case TaskType.CLEANUP:
+        return "broom";
+      case TaskType.FOGGING:
+        return "spray";
+      case TaskType.INSPECTION:
+        return "clipboard-check";
+      case TaskType.INVESTIGATION:
+        return "magnify";
+      default:
+        return "clipboard-text";
+    }
+  };
+
+  const getPriorityIcon = () => {
+    switch (task.priority) {
+      case TaskPriority.URGENT:
+        return "alert-circle";
+      case TaskPriority.HIGH:
+        return "chevron-triple-up";
+      case TaskPriority.MEDIUM:
+        return "minus";
+      case TaskPriority.LOW:
+        return "chevron-triple-down";
+      default:
+        return "minus";
+    }
+  };
+
   return (
     <TouchableOpacity
       onPress={() => onPress?.(task)}
-      style={[styles.card, shadows.sm]}
-      activeOpacity={0.8}
+      style={[styles.card, shadows.md]}
+      activeOpacity={0.7}
     >
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={2}>
@@ -47,27 +78,59 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
         </View>
       </View>
 
-      <View style={styles.metaRow}>
-        <Text style={styles.metaLabel}>Type:</Text>
-        <Text style={styles.metaValue}>{TASK_TYPE_LABELS[task.type]}</Text>
-        <Text style={styles.metaSeparator}>•</Text>
-        <Text style={styles.metaLabel}>Priority:</Text>
-        <Text style={styles.metaValue}>
-          {TASK_PRIORITY_LABELS[task.priority]}
-        </Text>
+      <View style={styles.metaContainer}>
+        <View style={styles.metaItem}>
+          <MaterialCommunityIcons
+            name={getTypeIcon()}
+            size={16}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.metaText}>{TASK_TYPE_LABELS[task.type]}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <MaterialCommunityIcons
+            name={getPriorityIcon()}
+            size={16}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.metaText}>
+            {TASK_PRIORITY_LABELS[task.priority]}
+          </Text>
+        </View>
       </View>
 
-      {task.address ? (
-        <Text style={styles.address} numberOfLines={1}>
-          {task.address}
-        </Text>
-      ) : null}
+      {task.address && (
+        <View style={styles.addressRow}>
+          <MaterialCommunityIcons
+            name="map-marker"
+            size={14}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.address} numberOfLines={1}>
+            {task.address}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.footer}>
-        <Text style={[styles.dueDate, overdue && styles.overdue]}>
-          {task.dueDate ? `Due: ${formatDate(task.dueDate)}` : "No due date"}
-        </Text>
-        <Text style={styles.district}>{task.district?.name}</Text>
+        <View style={styles.footerItem}>
+          <MaterialCommunityIcons
+            name="calendar-clock"
+            size={14}
+            color={overdue ? colors.destructive : colors.textSecondary}
+          />
+          <Text style={[styles.dueDate, overdue && styles.overdue]}>
+            {task.dueDate ? formatDate(task.dueDate) : "No due date"}
+          </Text>
+        </View>
+        <View style={styles.footerItem}>
+          <MaterialCommunityIcons
+            name="map-outline"
+            size={14}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.district}>{task.district?.name}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -87,12 +150,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   title: {
     flex: 1,
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
+    lineHeight: 22,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm,
@@ -104,40 +169,48 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
     color: colors.primaryForeground,
   },
-  metaRow: {
+  metaContainer: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  metaItem: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: spacing.sm,
+    gap: spacing.xs,
   },
-  metaLabel: {
+  metaText: {
     fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-  },
-  metaValue: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
     color: colors.text,
-    marginLeft: spacing.xs,
-    marginRight: spacing.sm,
+    fontWeight: typography.fontWeight.medium,
   },
-  metaSeparator: {
-    color: colors.textSecondary,
-    marginRight: spacing.sm,
+  addressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
   address: {
+    flex: 1,
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginTop: spacing.sm,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   dueDate: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
   overdue: {
@@ -145,7 +218,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
   },
   district: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
 });

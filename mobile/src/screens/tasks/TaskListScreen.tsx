@@ -4,8 +4,16 @@
 
 import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
-import { colors, spacing, typography } from "../../theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  colors,
+  spacing,
+  typography,
+  borderRadius,
+  shadows,
+} from "../../theme";
 import { Input, Loading, ErrorMessage } from "../../components/common";
 import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
@@ -35,22 +43,41 @@ export const TaskListScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Tasks</Text>
-        <Text style={styles.subtitle}>{user?.district || "PHI"}</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Hero Header Card */}
+      <View style={[styles.heroCard, shadows.sm]}>
+        <View style={styles.heroHeader}>
+          <View>
+            <Text style={styles.title}>My Tasks</Text>
+            <Text style={styles.subtitle}>{user?.district || "PHI"}</Text>
+          </View>
+          <View style={styles.countPill}>
+            <MaterialCommunityIcons
+              name="clipboard-list"
+              size={16}
+              color={colors.primary}
+            />
+            <Text style={styles.countText}>{tasks.length}</Text>
+          </View>
+        </View>
 
-      <View style={styles.searchContainer}>
-        <Input
-          placeholder="Search by title, address, or district"
-          value={search}
-          onChangeText={setSearch}
-          containerStyle={styles.searchInput}
-        />
-      </View>
+        <View style={styles.searchContainer}>
+          <MaterialCommunityIcons
+            name="magnify"
+            size={20}
+            color={colors.textSecondary}
+            style={styles.searchIcon}
+          />
+          <Input
+            placeholder="Search by title, address, or district"
+            value={search}
+            onChangeText={setSearch}
+            containerStyle={styles.searchInput}
+          />
+        </View>
 
-      <TaskFilters value={filter} onChange={setFilter} />
+        <TaskFilters value={filter} onChange={setFilter} />
+      </View>
 
       {isLoading ? (
         <Loading message="Loading tasks..." />
@@ -67,6 +94,12 @@ export const TaskListScreen: React.FC = () => {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="clipboard-alert-outline"
+                size={64}
+                color={colors.textSecondary}
+                style={styles.emptyIcon}
+              />
               <Text style={styles.emptyText}>{emptyMessage}</Text>
               {error && <ErrorMessage message={error} />}
             </View>
@@ -84,7 +117,7 @@ export const TaskListScreen: React.FC = () => {
           </Text>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -93,12 +126,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    padding: spacing.lg,
+  heroCard: {
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  heroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
   title: {
-    fontSize: typography.fontSize.xl,
+    fontSize: typography.fontSize.xxl,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
@@ -107,24 +150,55 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
+  countPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.muted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  countText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
   searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  searchIcon: {
+    position: "absolute",
+    left: spacing.lg + spacing.sm,
+    zIndex: 1,
   },
   searchInput: {
+    flex: 1,
     marginBottom: 0,
+    paddingLeft: spacing.xl,
   },
   listContent: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   emptyState: {
     alignItems: "center",
-    paddingTop: spacing.xl,
+    paddingTop: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyIcon: {
+    marginBottom: spacing.md,
+    opacity: 0.5,
   },
   emptyText: {
     fontSize: typography.fontSize.base,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+    textAlign: "center",
   },
   retryContainer: {
     alignItems: "center",

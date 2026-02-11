@@ -3,7 +3,10 @@
  */
 
 import React from "react";
+import { Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { MainTabParamList } from "./types";
 import { TaskStackNavigator } from "./TaskStackNavigator";
 import { TaskMapScreen } from "../screens/tasks/TaskMapScreen";
@@ -14,6 +17,8 @@ import { colors } from "../theme";
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -24,6 +29,9 @@ export const MainNavigator: React.FC = () => {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
           borderTopWidth: 1,
+          height: 64 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
+          paddingTop: 8,
         },
       }}
     >
@@ -32,6 +40,13 @@ export const MainNavigator: React.FC = () => {
         component={TaskStackNavigator}
         options={{
           tabBarLabel: "Tasks",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="clipboard-list"
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
       <Tab.Screen
@@ -39,6 +54,13 @@ export const MainNavigator: React.FC = () => {
         component={TaskMapScreen}
         options={{
           tabBarLabel: "Map",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="map-marker-radius"
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
       {/* Only show DevTools in development */}
@@ -48,6 +70,9 @@ export const MainNavigator: React.FC = () => {
           component={DevToolsScreen}
           options={{
             tabBarLabel: "Dev Tools",
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name="tools" size={size} color={color} />
+            ),
           }}
         />
       )}
@@ -56,6 +81,13 @@ export const MainNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           tabBarLabel: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="account-circle"
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
     </Tab.Navigator>
