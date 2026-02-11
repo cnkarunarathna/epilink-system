@@ -15,10 +15,8 @@ import {
   storeAuthToken,
   getAuthToken,
   storeUserData,
-  getUserData,
   clearAuthData,
   storeData,
-  getData,
   STORAGE_KEYS,
 } from "../utils/storage";
 

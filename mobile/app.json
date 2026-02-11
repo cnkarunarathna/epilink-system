@@ -25,6 +25,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#10b981"
       },
+      "usesCleartextTraffic": true,
       "package": "lk.gov.epilink.phi",
       "permissions": [
         "android.permission.CAMERA",

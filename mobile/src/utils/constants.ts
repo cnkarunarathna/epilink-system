@@ -9,6 +9,11 @@ import { Platform } from "react-native";
 // Android Emulator: needs 10.0.2.2 to reach host machine
 // Physical devices: need computer's local IP
 const getApiBaseUrl = (): string => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl) {
+    return envUrl;
+  }
+
   if (__DEV__) {
     // Development mode
     if (Platform.OS === "android") {
