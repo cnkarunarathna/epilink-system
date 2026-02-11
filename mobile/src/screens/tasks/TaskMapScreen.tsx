@@ -152,6 +152,50 @@ export const TaskMapScreen: React.FC = () => {
     }
   };
 
+  const handleZoomIn = () => {
+    const newRegion = {
+      ...region,
+      latitudeDelta: region.latitudeDelta / 2,
+      longitudeDelta: region.longitudeDelta / 2,
+    };
+    setRegion(newRegion);
+    mapRef.current?.animateToRegion(newRegion, 300);
+  };
+
+  const handleZoomOut = () => {
+    const newRegion = {
+      ...region,
+      latitudeDelta: Math.min(region.latitudeDelta * 2, 10),
+      longitudeDelta: Math.min(region.longitudeDelta * 2, 10),
+    };
+    setRegion(newRegion);
+    mapRef.current?.animateToRegion(newRegion, 300);
+  };
+
+  const handleMyLocation = async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== "granted") {
+        const { status: newStatus } =
+          await Location.requestForegroundPermissionsAsync();
+        if (newStatus !== "granted") {
+          return;
+        }
+      }
+      const current = await Location.getCurrentPositionAsync({});
+      const newRegion = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+      setRegion(newRegion);
+      mapRef.current?.animateToRegion(newRegion, 500);
+    } catch (error) {
+      console.error("Error getting location:", error);
+    }
+  };
+
   const getTypeIcon = (type: TaskType) => {
     switch (type) {
       case TaskType.CLEANUP:
@@ -206,6 +250,10 @@ export const TaskMapScreen: React.FC = () => {
             initialRegion={region}
             onRegionChangeComplete={setRegion}
             customMapStyle={customMapStyle}
+            showsUserLocation={true}
+            showsMyLocationButton={false}
+            followsUserLocation={false}
+            showsCompass={false}
             onPress={() => selectedTask && handleCloseDetail()}
           >
             {taskMarkers.map((task) => {
@@ -323,6 +371,52 @@ export const TaskMapScreen: React.FC = () => {
               <Text style={styles.statText}>{taskStats.completed}</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Zoom Controls */}
+          <View
+            style={[styles.zoomControls, { top: insets.top + 180 }, shadows.md]}
+          >
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={handleZoomIn}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="plus"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+            <View style={styles.zoomDivider} />
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={handleZoomOut}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="minus"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* My Location Button */}
+          <TouchableOpacity
+            style={[
+              styles.myLocationButton,
+              { top: insets.top + 280 },
+              shadows.md,
+            ]}
+            onPress={handleMyLocation}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons
+              name="crosshairs-gps"
+              size={24}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
 
           {/* Enhanced Legend Card with Toggle */}
           {showLegend && taskMarkers.length > 0 && (
@@ -734,6 +828,35 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  zoomControls: {
+    position: "absolute",
+    right: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.lg,
+    overflow: "hidden",
+  },
+  zoomButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+  },
+  zoomDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.xs,
+  },
+  myLocationButton: {
+    position: "absolute",
+    right: spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
   },
   taskDetailPanel: {
     position: "absolute",
