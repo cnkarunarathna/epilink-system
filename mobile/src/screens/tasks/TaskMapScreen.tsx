@@ -34,7 +34,7 @@ import {
   TaskType,
   TaskPriority,
 } from "../../types/task.types";
-import { TaskStackNavigationProp } from "../../navigation/types";
+import { MainTabNavigationProp } from "../../navigation/types";
 import {
   colors,
   spacing,
@@ -57,7 +57,7 @@ const DEFAULT_REGION: Region = {
 };
 
 export const TaskMapScreen: React.FC = () => {
-  const navigation = useNavigation<TaskStackNavigationProp>();
+  const navigation = useNavigation<MainTabNavigationProp>();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { tasks, isLoading, error } = useTasks({
@@ -147,7 +147,10 @@ export const TaskMapScreen: React.FC = () => {
     if (selectedTask) {
       handleCloseDetail();
       setTimeout(() => {
-        navigation.navigate("TaskDetail", { taskId: selectedTask.id });
+        navigation.navigate("Tasks", {
+          screen: "TaskDetail",
+          params: { taskId: selectedTask.id },
+        });
       }, 250);
     }
   };

@@ -20,7 +20,7 @@ export type AuthStackParamList = {
 
 // Main Bottom Tab Navigator
 export type MainTabParamList = {
-  Tasks: undefined;
+  Tasks: { screen?: string; params?: any } | undefined;
   TaskMap: undefined;
   DevTools: undefined;
   Profile: undefined;
