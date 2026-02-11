@@ -6,6 +6,7 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { MainTabParamList } from "./types";
 import { TaskStackNavigator } from "./TaskStackNavigator";
+import { TaskMapScreen } from "../screens/tasks/TaskMapScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { DevToolsScreen } from "../screens/dev/DevToolsScreen";
 import { colors } from "../theme";
@@ -31,6 +32,13 @@ export const MainNavigator: React.FC = () => {
         component={TaskStackNavigator}
         options={{
           tabBarLabel: "Tasks",
+        }}
+      />
+      <Tab.Screen
+        name="TaskMap"
+        component={TaskMapScreen}
+        options={{
+          tabBarLabel: "Map",
         }}
       />
       {/* Only show DevTools in development */}

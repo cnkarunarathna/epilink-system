@@ -33,6 +33,7 @@ export type TaskStackParamList = {
   Camera: { taskId: string };
   EvidenceReview: { taskId: string };
   EvidenceUpload: { taskId: string };
+  TaskMap: undefined;
 };
 
 // Navigation prop types
