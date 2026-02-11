@@ -22,6 +22,7 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
   Tasks: undefined;
   TaskMap: undefined;
+  DevTools: undefined;
   Profile: undefined;
 };
 

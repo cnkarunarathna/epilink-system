@@ -2,11 +2,27 @@
  * App constants
  */
 
+import { Platform } from "react-native";
+
+// Get API base URL based on platform
+// iOS Simulator: localhost works
+// Android Emulator: needs 10.0.2.2 to reach host machine
+// Physical devices: need computer's local IP
+const getApiBaseUrl = (): string => {
+  if (__DEV__) {
+    // Development mode
+    if (Platform.OS === "android") {
+      return "http://10.0.2.2:3001/api"; // Android emulator
+    }
+    return "http://localhost:3001/api"; // iOS simulator or web
+  }
+  // Production mode
+  return "https://api.epilink.gov.lk/api";
+};
+
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: __DEV__
-    ? "http://localhost:3001/api"
-    : "https://api.epilink.gov.lk/api",
+  BASE_URL: getApiBaseUrl(),
   TIMEOUT: 10000,
 };
 

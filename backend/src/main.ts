@@ -18,9 +18,12 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS for frontend
+  // Enable CORS for frontend and mobile
   app.enableCors({
-    origin: process.env.NEXT_FRONTEND_URL || 'http://localhost:3000',
+    origin:
+      process.env.NODE_ENV === 'production'
+        ? process.env.NEXT_FRONTEND_URL
+        : true, // Allow all origins in development for mobile testing
     credentials: true,
   });
 

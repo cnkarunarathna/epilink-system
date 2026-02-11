@@ -15,9 +15,6 @@ export interface User {
   name: string;
   role: UserRole;
   district: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface LoginRequest {
@@ -26,6 +23,12 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  access_token: string;
-  user: User;
+  accessToken: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: UserRole;
+    district: string | null;
+  };
 }

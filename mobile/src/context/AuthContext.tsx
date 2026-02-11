@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authApi.login(credentials);
 
       // Store token and user data
-      await storeAuthToken(response.access_token);
+      await storeAuthToken(response.accessToken);
       await storeUserData(response.user);
 
       // Store remember me preference
