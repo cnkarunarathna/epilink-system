@@ -15,10 +15,14 @@ import {
  */
 export const getTasks = async (filters?: {
   status?: TaskStatus;
+  assignedPhiId?: string;
 }): Promise<Task[]> => {
-  const params = new URLSearchParams();
+  const params: Record<string, string> = {};
   if (filters?.status) {
-    params.append("status", filters.status);
+    params.status = filters.status;
+  }
+  if (filters?.assignedPhiId) {
+    params.assignedPhiId = filters.assignedPhiId;
   }
 
   const response = await apiClient.get<Task[]>("/tasks", { params });

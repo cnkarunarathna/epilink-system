@@ -57,7 +57,7 @@ export const colors = {
   status: {
     pending: "#646b64",
     assigned: "#00823c",
-    inProgress: "#dca400",
+    in_progress: "#dca400",
     submitted: "#007559",
     verified: "#00a580",
     completed: "#1cb657",
