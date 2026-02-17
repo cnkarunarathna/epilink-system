@@ -56,7 +56,7 @@ export class AnalyticsService {
         row.precipitation_sum !== null ? Number(row.precipitation_sum) : null,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600); // 1 hour
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
@@ -157,7 +157,7 @@ export class AnalyticsService {
       precipitation_sum: Number(r.precipitation_sum) || 0,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600); // 1 hour
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
@@ -255,7 +255,7 @@ export class AnalyticsService {
       avg_temperature: row.avg_temp ? Number(row.avg_temp) : null,
     };
 
-    await this.cacheManager.set(cacheKey, result, 600); // 10 minutes
+    await this.cacheManager.set(cacheKey, result, 600000); // 10 minutes
     return result;
   }
 
@@ -288,7 +288,7 @@ export class AnalyticsService {
       avg_precipitation: row.avg_precip ? Number(row.avg_precip) : null,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600); // 1 hour
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
@@ -465,7 +465,7 @@ export class AnalyticsService {
       data_points: Number(row.data_points) || 0,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600); // 1 hour
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 

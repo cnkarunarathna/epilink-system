@@ -25,9 +25,12 @@ import * as redisStore from 'cache-manager-redis-store';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         store: redisStore,
-        host: configService.get('REDIS_HOST', 'localhost'),
-        port: configService.get('REDIS_PORT', 6379),
-        ttl: 600, // 10 minutes default
+        host: configService.get('REDIS_HOST'),
+        port: configService.get('REDIS_PORT'),
+        username: configService.get('REDIS_USERNAME'),
+        password: configService.get('REDIS_PASSWORD'),
+        no_ready_check: true,
+        ttl: 600000, // 10 minutes default (in ms)
       }),
       inject: [ConfigService],
     }),
