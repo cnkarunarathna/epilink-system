@@ -26,6 +26,8 @@ import {
   LineChart,
   Activity,
   Loader2,
+  CloudRain,
+  Thermometer,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -37,6 +39,7 @@ import {
 import {
   LineChart as RechartsLine,
   BarChart as RechartsBar,
+  ComposedChart,
   Line,
   Bar,
   XAxis,
@@ -82,7 +85,7 @@ export default function HistoricalAnalyticsPage() {
   const [availableDistricts, setAvailableDistricts] = useState<string[]>([]);
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [yearlySummary, setYearlySummary] = useState<YearlySummary | null>(
-    null
+    null,
   );
   const [comparisonData, setComparisonData] = useState<HistoricalData[]>([]);
   const { resolvedTheme } = useTheme();
@@ -188,7 +191,7 @@ export default function HistoricalAnalyticsPage() {
     // Calculate averages
     Object.values(yearlyData).forEach((yearData) => {
       const yearRecords = historicalData.filter(
-        (d) => d.year === yearData.year
+        (d) => d.year === yearData.year,
       );
       yearData.avg = yearData.total / yearRecords.length;
     });
@@ -231,6 +234,58 @@ export default function HistoricalAnalyticsPage() {
   const yearlyTrends = processYearlyTrends();
   const seasonalPattern = processSeasonalPattern();
 
+  // Process data for weather correlation
+  const processWeatherCorrelationData = () => {
+    // Only use comparison data for selected districts to show cases vs weather
+    const groupedByWeek: Record<string, any> = {};
+
+    comparisonData.forEach((item) => {
+      const key = `${item.year}-W${item.week}`;
+      if (!groupedByWeek[key]) {
+        groupedByWeek[key] = {
+          weekLabel: key,
+          year: item.year,
+          week: item.week,
+          cases: 0,
+          tempSum: 0,
+          precipSum: 0,
+          weatherCount: 0,
+        };
+      }
+
+      groupedByWeek[key].cases += item.cases;
+
+      if (item.temperature !== null) {
+        groupedByWeek[key].tempSum += item.temperature;
+        groupedByWeek[key].weatherCount += 1;
+      }
+
+      if (item.precipitation !== null) {
+        groupedByWeek[key].precipSum += item.precipitation;
+      }
+    });
+
+    return Object.values(groupedByWeek)
+      .map((w: any) => ({
+        weekLabel: w.weekLabel,
+        year: w.year,
+        week: w.week,
+        cases: w.cases,
+        temp:
+          w.weatherCount > 0
+            ? Number((w.tempSum / w.weatherCount).toFixed(1))
+            : null,
+        precip:
+          w.weatherCount > 0
+            ? Number((w.precipSum / w.weatherCount).toFixed(1))
+            : null,
+      }))
+      .sort((a: any, b: any) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.week - b.week;
+      });
+  };
+
   const COLORS = [
     "#dc2626", // red
     "#2563eb", // blue
@@ -265,7 +320,7 @@ export default function HistoricalAnalyticsPage() {
       </div>
 
       <Tabs defaultValue="trends" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="trends">
             <LineChart className="h-4 w-4 mr-2" />
             Trends
@@ -281,6 +336,10 @@ export default function HistoricalAnalyticsPage() {
           <TabsTrigger value="seasonal">
             <TrendingUp className="h-4 w-4 mr-2" />
             Seasonal Patterns
+          </TabsTrigger>
+          <TabsTrigger value="weather">
+            <CloudRain className="h-4 w-4 mr-2" />
+            Weather Impact
           </TabsTrigger>
         </TabsList>
 
@@ -435,7 +494,7 @@ export default function HistoricalAnalyticsPage() {
                       onClick={() => {
                         if (selectedDistricts.includes(district)) {
                           setSelectedDistricts(
-                            selectedDistricts.filter((d) => d !== district)
+                            selectedDistricts.filter((d) => d !== district),
                           );
                         } else {
                           setSelectedDistricts([
@@ -674,7 +733,7 @@ export default function HistoricalAnalyticsPage() {
                       Week{" "}
                       {seasonalPattern.length > 0
                         ? [...seasonalPattern].sort(
-                            (a, b) => b.avgCases - a.avgCases
+                            (a, b) => b.avgCases - a.avgCases,
                           )[0]?.week
                         : "-"}
                     </div>
@@ -694,7 +753,7 @@ export default function HistoricalAnalyticsPage() {
                       Week{" "}
                       {seasonalPattern.length > 0
                         ? [...seasonalPattern].sort(
-                            (a, b) => a.avgCases - b.avgCases
+                            (a, b) => a.avgCases - b.avgCases,
                           )[0]?.week
                         : "-"}
                     </div>
@@ -714,7 +773,7 @@ export default function HistoricalAnalyticsPage() {
                       {seasonalPattern.length > 0
                         ? (
                             Math.max(
-                              ...seasonalPattern.map((s) => s.avgCases)
+                              ...seasonalPattern.map((s) => s.avgCases),
                             ) /
                             Math.min(...seasonalPattern.map((s) => s.avgCases))
                           ).toFixed(1)
@@ -723,6 +782,157 @@ export default function HistoricalAnalyticsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Peak to trough ratio
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Weather Impact Tab */}
+        <TabsContent value="weather" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Weather Impact Analysis</CardTitle>
+                  <CardDescription>
+                    Correlation between dengue cases and weather conditions
+                    across selected districts
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {availableDistricts.slice(0, 5).map((district) => (
+                    <Button
+                      key={`weather-${district}`}
+                      size="sm"
+                      variant={
+                        selectedDistricts.includes(district)
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => {
+                        if (selectedDistricts.includes(district)) {
+                          if (selectedDistricts.length > 1) {
+                            // keep at least 1
+                            setSelectedDistricts(
+                              selectedDistricts.filter((d) => d !== district),
+                            );
+                          }
+                        } else {
+                          setSelectedDistricts([
+                            ...selectedDistricts,
+                            district,
+                          ]);
+                        }
+                      }}
+                    >
+                      {district}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={500}>
+                <ComposedChart data={processWeatherCorrelationData()}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? "#374151" : "#e5e7eb"}
+                  />
+                  <XAxis
+                    dataKey="weekLabel"
+                    angle={-45}
+                    textAnchor="end"
+                    height={100}
+                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    orientation="left"
+                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
+                    label={{
+                      value: "Cases",
+                      angle: -90,
+                      position: "insideLeft",
+                      fill: isDark ? "#9ca3af" : "#6b7280",
+                    }}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fill: "#f59e0b" }}
+                    label={{
+                      value: "Temp (°C) / Precip (mm)",
+                      angle: 90,
+                      position: "insideRight",
+                      fill: "#f59e0b",
+                    }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? "#1f2937" : "#fff",
+                      borderColor: isDark ? "#374151" : "#e5e7eb",
+                      color: isDark ? "#f3f4f6" : "#111827",
+                    }}
+                  />
+                  <Legend />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="cases"
+                    fill="#3b82f6"
+                    name="Total Cases"
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="temp"
+                    stroke="#f59e0b"
+                    name="Avg Temperature (°C)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="precip"
+                    stroke="#06b6d4"
+                    name="Avg Precipitation (mm)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Thermometer className="h-4 w-4" />
+                      Temperature Impact
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Higher temperatures can accelerate the life cycle of
+                      mosquitoes, potentially increasing dengue risk following
+                      warmer periods.
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <CloudRain className="h-4 w-4" />
+                      Precipitation Impact
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Increased rainfall creates breeding grounds for
+                      mosquitoes, typically leading to a rise in cases after a
+                      lag of 2-4 weeks.
                     </p>
                   </CardContent>
                 </Card>
