@@ -28,7 +28,17 @@ import {
   Loader2,
   CloudRain,
   Thermometer,
+  X,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
   fetchHistoricalRange,
@@ -481,32 +491,92 @@ export default function HistoricalAnalyticsPage() {
                     Compare dengue case trends across selected districts
                   </CardDescription>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {availableDistricts.slice(0, 8).map((district) => (
-                    <Button
-                      key={district}
-                      size="sm"
-                      variant={
-                        selectedDistricts.includes(district)
-                          ? "default"
-                          : "outline"
-                      }
-                      onClick={() => {
-                        if (selectedDistricts.includes(district)) {
-                          setSelectedDistricts(
-                            selectedDistricts.filter((d) => d !== district),
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="ml-auto flex items-center gap-2"
+                        >
+                          Select Districts <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="w-[200px] max-h-[300px] overflow-y-auto"
+                      >
+                        <DropdownMenuLabel>
+                          Available Districts
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {availableDistricts.map((district) => {
+                          const isSelected =
+                            selectedDistricts.includes(district);
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={`comp-${district}`}
+                              checked={isSelected}
+                              onCheckedChange={() => {
+                                if (isSelected) {
+                                  if (selectedDistricts.length > 1) {
+                                    setSelectedDistricts(
+                                      selectedDistricts.filter(
+                                        (d) => d !== district,
+                                      ),
+                                    );
+                                  } else {
+                                    toast.error(
+                                      "At least one district must be selected",
+                                    );
+                                  }
+                                } else {
+                                  if (selectedDistricts.length >= 5) {
+                                    toast.error(
+                                      "You can only compare up to 5 districts at a time",
+                                    );
+                                  } else {
+                                    setSelectedDistricts([
+                                      ...selectedDistricts,
+                                      district,
+                                    ]);
+                                  }
+                                }
+                              }}
+                            >
+                              {district}
+                            </DropdownMenuCheckboxItem>
                           );
-                        } else {
-                          setSelectedDistricts([
-                            ...selectedDistricts,
-                            district,
-                          ]);
-                        }
-                      }}
-                    >
-                      {district}
-                    </Button>
-                  ))}
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2 mt-2">
+                    {selectedDistricts.map((district) => (
+                      <Badge
+                        key={`badge-${district}`}
+                        variant="secondary"
+                        className="flex items-center gap-1 group"
+                      >
+                        {district}
+                        {selectedDistricts.length > 1 && (
+                          <button
+                            type="button"
+                            className="ml-1 rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedDistricts(
+                                selectedDistricts.filter((d) => d !== district),
+                              );
+                            }}
+                          >
+                            <X className="h-3 w-3 text-muted-foreground group-hover:text-destructive transition-colors" />
+                          </button>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -802,35 +872,90 @@ export default function HistoricalAnalyticsPage() {
                     across selected districts
                   </CardDescription>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {availableDistricts.slice(0, 5).map((district) => (
-                    <Button
-                      key={`weather-${district}`}
-                      size="sm"
-                      variant={
-                        selectedDistricts.includes(district)
-                          ? "default"
-                          : "outline"
-                      }
-                      onClick={() => {
-                        if (selectedDistricts.includes(district)) {
-                          if (selectedDistricts.length > 1) {
-                            // keep at least 1
-                            setSelectedDistricts(
-                              selectedDistricts.filter((d) => d !== district),
-                            );
-                          }
-                        } else {
-                          setSelectedDistricts([
-                            ...selectedDistricts,
-                            district,
-                          ]);
-                        }
-                      }}
-                    >
-                      {district}
-                    </Button>
-                  ))}
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="ml-auto flex items-center gap-2"
+                        >
+                          Select Districts <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="w-[200px] max-h-[300px] overflow-y-auto"
+                      >
+                        <DropdownMenuLabel>Analyze Districts</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {availableDistricts.map((district) => {
+                          const isSelected =
+                            selectedDistricts.includes(district);
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={`weather-sel-${district}`}
+                              checked={isSelected}
+                              onCheckedChange={() => {
+                                if (isSelected) {
+                                  if (selectedDistricts.length > 1) {
+                                    setSelectedDistricts(
+                                      selectedDistricts.filter(
+                                        (d) => d !== district,
+                                      ),
+                                    );
+                                  } else {
+                                    toast.error(
+                                      "At least one district must be selected",
+                                    );
+                                  }
+                                } else {
+                                  if (selectedDistricts.length >= 5) {
+                                    toast.error(
+                                      "You can only compare up to 5 districts at a time",
+                                    );
+                                  } else {
+                                    setSelectedDistricts([
+                                      ...selectedDistricts,
+                                      district,
+                                    ]);
+                                  }
+                                }
+                              }}
+                            >
+                              {district}
+                            </DropdownMenuCheckboxItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2 mt-2">
+                    {selectedDistricts.map((district) => (
+                      <Badge
+                        key={`w-badge-${district}`}
+                        variant="secondary"
+                        className="flex items-center gap-1 group"
+                      >
+                        {district}
+                        {selectedDistricts.length > 1 && (
+                          <button
+                            type="button"
+                            className="ml-1 rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedDistricts(
+                                selectedDistricts.filter((d) => d !== district),
+                              );
+                            }}
+                          >
+                            <X className="h-3 w-3 text-muted-foreground group-hover:text-destructive transition-colors" />
+                          </button>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
               </div>
             </CardHeader>
