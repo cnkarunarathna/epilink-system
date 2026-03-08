@@ -1,6 +1,7 @@
 /**
  * Color palette matching the EpiLink web dashboard
  * Extracted from frontend/app/globals.css
+ * Enhanced with gradient & glass presets
  */
 
 export const colors = {
@@ -83,6 +84,31 @@ export const colors = {
   // Overlay & shadows
   overlay: "rgba(0, 0, 0, 0.5)",
   shadow: "rgba(0, 0, 0, 0.1)",
+
+  // ── Gradient presets ──
+  gradient: {
+    primary: ["#00823c", "#007559", "#005d47"] as const,
+    header: ["#00823c", "#00a060", "#1cb657"] as const,
+    accent: ["#1cb657", "#00a580", "#007559"] as const,
+    warm: ["#00823c", "#1cb657", "#4ade80"] as const,
+    splash: ["#003d1e", "#00633a", "#00823c"] as const,
+    card: ["rgba(255,255,255,0.95)", "rgba(255,255,255,0.85)"] as const,
+    risk: {
+      veryHigh: ["#7f1d1d", "#991b1b"] as const,
+      high: ["#dc2626", "#ef4444"] as const,
+      medium: ["#f59e0b", "#fbbf24"] as const,
+      low: ["#facc15", "#fde047"] as const,
+      veryLow: ["#4ade80", "#86efac"] as const,
+    },
+  },
+
+  // ── Glass / frosted tokens ──
+  glass: {
+    background: "rgba(255, 255, 255, 0.82)",
+    backgroundDark: "rgba(255, 255, 255, 0.65)",
+    border: "rgba(255, 255, 255, 0.3)",
+    card: "rgba(255, 255, 255, 0.9)",
+  },
 };
 
 export type Colors = typeof colors;

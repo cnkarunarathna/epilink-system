@@ -1,8 +1,8 @@
 /**
- * Task Detail Screen — Enhanced with progress timeline and evidence section
+ * Task Detail Screen — Enhanced with animated timeline, gradient hero, spring actions
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,11 @@ import {
   ScrollView,
   RefreshControl,
   Image,
+  Animated,
+  Easing,
 } from "react-native";
 import { RouteProp, useRoute } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TaskStackParamList } from "../../navigation/types";
 import {
@@ -20,6 +23,7 @@ import {
   typography,
   borderRadius,
   shadows,
+  animation,
 } from "../../theme";
 import { Button, Card, Loading, ErrorMessage } from "../../components/common";
 import { getTaskById, updateTaskStatus } from "../../api/taskService";
@@ -87,6 +91,15 @@ export const TaskDetailScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Animations
+  const fadeHero = useRef(new Animated.Value(0)).current;
+  const slideHero = useRef(new Animated.Value(20)).current;
+  const fadeProgress = useRef(new Animated.Value(0)).current;
+  const fadeDetails = useRef(new Animated.Value(0)).current;
+  const slideDetails = useRef(new Animated.Value(20)).current;
+  const fadeEvidence = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
   const fetchTask = useCallback(
     async (refresh = false) => {
       setError(null);
@@ -103,9 +116,74 @@ export const TaskDetailScreen: React.FC = () => {
         setError(err?.message || "Failed to load task");
       } finally {
         refresh ? setIsRefreshing(false) : setIsLoading(false);
+
+        // Staggered entrance
+        Animated.stagger(150, [
+          Animated.parallel([
+            Animated.timing(fadeHero, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.spring(slideHero, {
+              toValue: 0,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(fadeProgress, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.parallel([
+            Animated.timing(fadeDetails, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.spring(slideDetails, {
+              toValue: 0,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(fadeEvidence, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        // Pulse on current timeline dot
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, {
+              toValue: 1.2,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ).start();
       }
     },
-    [taskId],
+    [
+      taskId,
+      fadeHero,
+      slideHero,
+      fadeProgress,
+      fadeDetails,
+      slideDetails,
+      fadeEvidence,
+      pulseAnim,
+    ],
   );
 
   useEffect(() => {
@@ -171,6 +249,19 @@ export const TaskDetailScreen: React.FC = () => {
     }
   };
 
+  const getPriorityGradient = (): readonly [string, string] => {
+    switch (task.priority) {
+      case TaskPriority.URGENT:
+        return [colors.destructive, "#ff4444"] as const;
+      case TaskPriority.HIGH:
+        return [colors.warning, "#f0b429"] as const;
+      case TaskPriority.MEDIUM:
+        return [colors.primary, colors.primaryLight] as const;
+      default:
+        return [colors.textSecondary, "#8a918a"] as const;
+    }
+  };
+
   const getEvidenceStatusColor = (status: string) => {
     switch (status) {
       case "approved":
@@ -192,216 +283,267 @@ export const TaskDetailScreen: React.FC = () => {
         />
       }
     >
-      {/* Hero Card with priority accent */}
-      <View
-        style={[
-          styles.heroCard,
-          shadows.md,
-          { borderLeftColor: getPriorityColor(), borderLeftWidth: 4 },
-        ]}
+      {/* Hero Card with gradient accent */}
+      <Animated.View
+        style={{
+          opacity: fadeHero,
+          transform: [{ translateY: slideHero }],
+        }}
       >
-        <Card>
-          <Text style={styles.title}>{task.title}</Text>
-          <View style={styles.badgesRow}>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: colors.status[task.status] },
-              ]}
-            >
-              <Text style={styles.statusText}>
-                {TASK_STATUS_LABELS[task.status]}
-              </Text>
-            </View>
-            <View style={styles.metaBadge}>
-              <MaterialCommunityIcons
-                name={getTypeIcon()}
-                size={12}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.metaBadgeText}>
-                {TASK_TYPE_LABELS[task.type]}
-              </Text>
-            </View>
-            <View style={styles.metaBadge}>
-              <MaterialCommunityIcons
-                name="flag"
-                size={12}
-                color={getPriorityColor()}
-              />
-              <Text style={styles.metaBadgeText}>
-                {TASK_PRIORITY_LABELS[task.priority]}
-              </Text>
-            </View>
-          </View>
-        </Card>
-      </View>
-
-      {/* Progress Timeline */}
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Progress</Text>
-        <View style={styles.timeline}>
-          {TIMELINE_STEPS.map((step, index) => {
-            const stepOrder = STATUS_ORDER[step.status] ?? 0;
-            const isActive = currentOrder >= stepOrder && !isRejected;
-            const isCurrent = task.status === step.status;
-            const isLast = index === TIMELINE_STEPS.length - 1;
-
-            return (
-              <View key={step.status} style={styles.timelineStep}>
-                <View style={styles.timelineIndicator}>
-                  <View
-                    style={[
-                      styles.timelineDot,
-                      isActive && styles.timelineDotActive,
-                      isCurrent && styles.timelineDotCurrent,
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name={step.icon as any}
-                      size={14}
-                      color={
-                        isActive
-                          ? colors.primaryForeground
-                          : colors.textSecondary
-                      }
-                    />
-                  </View>
-                  {!isLast && (
-                    <View
-                      style={[
-                        styles.timelineLine,
-                        isActive &&
-                          currentOrder > stepOrder &&
-                          styles.timelineLineActive,
-                      ]}
-                    />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.timelineLabel,
-                    isActive && styles.timelineLabelActive,
-                    isCurrent && styles.timelineLabelCurrent,
-                  ]}
-                >
-                  {step.label}
+        <View style={[styles.heroCard, shadows.lg]}>
+          <LinearGradient
+            colors={getPriorityGradient()}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.heroGradientStrip}
+          />
+          <Card>
+            <Text style={styles.title}>{task.title}</Text>
+            <View style={styles.badgesRow}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: colors.status[task.status] },
+                ]}
+              >
+                <Text style={styles.statusText}>
+                  {TASK_STATUS_LABELS[task.status]}
                 </Text>
               </View>
-            );
-          })}
+              <View style={styles.metaBadge}>
+                <MaterialCommunityIcons
+                  name={getTypeIcon() as any}
+                  size={12}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.metaBadgeText}>
+                  {TASK_TYPE_LABELS[task.type]}
+                </Text>
+              </View>
+              <View style={styles.metaBadge}>
+                <MaterialCommunityIcons
+                  name="flag"
+                  size={12}
+                  color={getPriorityColor()}
+                />
+                <Text style={styles.metaBadgeText}>
+                  {TASK_PRIORITY_LABELS[task.priority]}
+                </Text>
+              </View>
+            </View>
+          </Card>
         </View>
-        {isRejected && (
-          <View style={styles.rejectedBadge}>
-            <MaterialCommunityIcons
-              name="close-circle"
-              size={16}
-              color={colors.destructive}
-            />
-            <Text style={styles.rejectedText}>Task Rejected</Text>
+      </Animated.View>
+
+      {/* Animated Progress Timeline */}
+      <Animated.View style={{ opacity: fadeProgress }}>
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Progress</Text>
+          <View style={styles.timeline}>
+            {TIMELINE_STEPS.map((step, index) => {
+              const stepOrder = STATUS_ORDER[step.status] ?? 0;
+              const isActive = currentOrder >= stepOrder && !isRejected;
+              const isCurrent = task.status === step.status;
+              const isLast = index === TIMELINE_STEPS.length - 1;
+
+              return (
+                <View key={step.status} style={styles.timelineStep}>
+                  <View style={styles.timelineIndicator}>
+                    <Animated.View
+                      style={[
+                        styles.timelineDot,
+                        isActive && styles.timelineDotActive,
+                        isCurrent && styles.timelineDotCurrent,
+                        isCurrent && {
+                          transform: [{ scale: pulseAnim }],
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={step.icon as any}
+                        size={14}
+                        color={
+                          isActive
+                            ? colors.primaryForeground
+                            : colors.textSecondary
+                        }
+                      />
+                    </Animated.View>
+                    {!isLast && (
+                      <View
+                        style={[
+                          styles.timelineLine,
+                          isActive &&
+                            currentOrder > stepOrder &&
+                            styles.timelineLineActive,
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.timelineLabel,
+                      isActive && styles.timelineLabelActive,
+                      isCurrent && styles.timelineLabelCurrent,
+                    ]}
+                  >
+                    {step.label}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
-        )}
-      </Card>
+          {isRejected && (
+            <View style={styles.rejectedBadge}>
+              <MaterialCommunityIcons
+                name="close-circle"
+                size={16}
+                color={colors.destructive}
+              />
+              <Text style={styles.rejectedText}>Task Rejected</Text>
+            </View>
+          )}
+        </Card>
+      </Animated.View>
 
       {/* Details Card */}
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Details</Text>
+      <Animated.View
+        style={{
+          opacity: fadeDetails,
+          transform: [{ translateY: slideDetails }],
+        }}
+      >
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Details</Text>
 
-        {task.description && (
+          {task.description && (
+            <View style={styles.infoRow}>
+              <View style={styles.infoIcon}>
+                <MaterialCommunityIcons
+                  name="text"
+                  size={18}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.infoText}>{task.description}</Text>
+            </View>
+          )}
+
+          {task.address && (
+            <View style={styles.infoRow}>
+              <View style={styles.infoIcon}>
+                <MaterialCommunityIcons
+                  name="map-marker"
+                  size={18}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.infoText}>{task.address}</Text>
+            </View>
+          )}
+
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons
-              name="text"
-              size={20}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.infoText}>{task.description}</Text>
+            <View
+              style={[
+                styles.infoIcon,
+                overdue && { backgroundColor: colors.destructive + "12" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="calendar-clock"
+                size={18}
+                color={overdue ? colors.destructive : colors.primary}
+              />
+            </View>
+            <Text style={[styles.infoText, overdue && styles.overdue]}>
+              {task.dueDate
+                ? `Due: ${formatDate(task.dueDate)}`
+                : "No due date"}
+            </Text>
           </View>
-        )}
 
-        {task.address && (
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons
-              name="map-marker"
-              size={20}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.infoText}>{task.address}</Text>
+            <View style={styles.infoIcon}>
+              <MaterialCommunityIcons
+                name="map-outline"
+                size={18}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={styles.infoText}>District: {task.district?.name}</Text>
           </View>
-        )}
-
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons
-            name="calendar-clock"
-            size={20}
-            color={overdue ? colors.destructive : colors.textSecondary}
-          />
-          <Text style={[styles.infoText, overdue && styles.overdue]}>
-            {task.dueDate ? `Due: ${formatDate(task.dueDate)}` : "No due date"}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons
-            name="map-outline"
-            size={20}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.infoText}>District: {task.district?.name}</Text>
-        </View>
-      </Card>
+        </Card>
+      </Animated.View>
 
       {/* Timestamps Card */}
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Timeline</Text>
-        {[
-          {
-            label: "Created",
-            date: task.createdAt,
-            icon: "plus-circle-outline",
-          },
-          { label: "Assigned", date: task.assignedAt, icon: "account-check" },
-          { label: "Submitted", date: task.submittedAt, icon: "send-check" },
-          { label: "Completed", date: task.completedAt, icon: "check-all" },
-        ]
-          .filter((item) => item.date)
-          .map((item) => (
-            <View key={item.label} style={styles.timestampRow}>
-              <MaterialCommunityIcons
-                name={item.icon as any}
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.timestampLabel}>{item.label}</Text>
-              <Text style={styles.timestampValue}>
-                {formatRelativeTime(item.date!)}
-              </Text>
-            </View>
-          ))}
+      <Animated.View
+        style={{
+          opacity: fadeDetails,
+          transform: [{ translateY: slideDetails }],
+        }}
+      >
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Timeline</Text>
+          {[
+            {
+              label: "Created",
+              date: task.createdAt,
+              icon: "plus-circle-outline",
+            },
+            { label: "Assigned", date: task.assignedAt, icon: "account-check" },
+            { label: "Submitted", date: task.submittedAt, icon: "send-check" },
+            { label: "Completed", date: task.completedAt, icon: "check-all" },
+          ]
+            .filter((item) => item.date)
+            .map((item) => (
+              <View key={item.label} style={styles.timestampRow}>
+                <View style={styles.timestampIcon}>
+                  <MaterialCommunityIcons
+                    name={item.icon as any}
+                    size={14}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={styles.timestampLabel}>{item.label}</Text>
+                <Text style={styles.timestampValue}>
+                  {formatRelativeTime(item.date!)}
+                </Text>
+              </View>
+            ))}
 
-        {/* Assigned by */}
-        {task.createdBy && (
-          <View style={[styles.timestampRow, { marginTop: spacing.sm }]}>
-            <MaterialCommunityIcons
-              name="account-arrow-right"
-              size={16}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.timestampLabel}>Assigned by</Text>
-            <Text style={styles.timestampValue}>{task.createdBy.name}</Text>
-          </View>
-        )}
-      </Card>
+          {task.createdBy && (
+            <View style={[styles.timestampRow, { marginTop: spacing.sm }]}>
+              <View style={styles.timestampIcon}>
+                <MaterialCommunityIcons
+                  name="account-arrow-right"
+                  size={14}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.timestampLabel}>Assigned by</Text>
+              <Text style={styles.timestampValue}>{task.createdBy.name}</Text>
+            </View>
+          )}
+        </Card>
+      </Animated.View>
 
       {/* Rejection Reason */}
       {task.rejectionReason && (
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Rejection Reason</Text>
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons
-              name="alert-circle"
-              size={20}
-              color={colors.destructive}
-            />
+            <View
+              style={[
+                styles.infoIcon,
+                { backgroundColor: colors.destructive + "12" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="alert-circle"
+                size={18}
+                color={colors.destructive}
+              />
+            </View>
             <Text style={[styles.infoText, { color: colors.destructive }]}>
               {task.rejectionReason}
             </Text>
@@ -411,62 +553,64 @@ export const TaskDetailScreen: React.FC = () => {
 
       {/* Evidence Section */}
       {evidence.length > 0 && (
-        <Card style={styles.section}>
-          <View style={styles.evidenceHeader}>
-            <Text style={styles.sectionTitle}>Evidence</Text>
-            <View style={styles.evidenceCount}>
-              <Text style={styles.evidenceCountText}>{evidence.length}</Text>
+        <Animated.View style={{ opacity: fadeEvidence }}>
+          <Card style={styles.section}>
+            <View style={styles.evidenceHeader}>
+              <Text style={styles.sectionTitle}>Evidence</Text>
+              <View style={styles.evidenceCount}>
+                <Text style={styles.evidenceCountText}>{evidence.length}</Text>
+              </View>
             </View>
-          </View>
-          {evidence.map((item) => (
-            <View key={item.id} style={styles.evidenceItem}>
-              {item.imageUrl && (
-                <Image
-                  source={{ uri: item.imageUrl }}
-                  style={styles.evidenceImage}
-                  resizeMode="cover"
-                />
-              )}
-              <View style={styles.evidenceInfo}>
-                <View style={styles.evidenceStatusRow}>
-                  <View
-                    style={[
-                      styles.evidenceStatusBadge,
-                      {
-                        backgroundColor:
-                          getEvidenceStatusColor(item.status) + "18",
-                      },
-                    ]}
-                  >
-                    <Text
+            {evidence.map((item) => (
+              <View key={item.id} style={styles.evidenceItem}>
+                {item.imageUrl && (
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.evidenceImage}
+                    resizeMode="cover"
+                  />
+                )}
+                <View style={styles.evidenceInfo}>
+                  <View style={styles.evidenceStatusRow}>
+                    <View
                       style={[
-                        styles.evidenceStatusText,
+                        styles.evidenceStatusBadge,
                         {
-                          color: getEvidenceStatusColor(item.status),
+                          backgroundColor:
+                            getEvidenceStatusColor(item.status) + "18",
                         },
                       ]}
                     >
-                      {EVIDENCE_STATUS_LABELS[item.status]}
+                      <Text
+                        style={[
+                          styles.evidenceStatusText,
+                          {
+                            color: getEvidenceStatusColor(item.status),
+                          },
+                        ]}
+                      >
+                        {EVIDENCE_STATUS_LABELS[item.status]}
+                      </Text>
+                    </View>
+                    <Text style={styles.evidenceDate}>
+                      {formatRelativeTime(item.submittedAt)}
                     </Text>
                   </View>
-                  <Text style={styles.evidenceDate}>
-                    {formatRelativeTime(item.submittedAt)}
-                  </Text>
+                  {item.notes && (
+                    <Text style={styles.evidenceNotes} numberOfLines={2}>
+                      {item.notes}
+                    </Text>
+                  )}
+                  {item.rejectionReason && (
+                    <Text style={styles.evidenceRejection} numberOfLines={2}>
+                      ❌ {item.rejectionReason}
+                    </Text>
+                  )}
                 </View>
-                {item.notes && (
-                  <Text style={styles.evidenceNotes} numberOfLines={2}>
-                    {item.notes}
-                  </Text>
-                )}
-                {item.rejectionReason && (
-                  <Text style={styles.evidenceRejection} numberOfLines={2}>
-                    ❌ {item.rejectionReason}
-                  </Text>
-                )}
               </View>
-            </View>
-          ))}
-        </Card>
+            ))}
+          </Card>
+        </Animated.View>
       )}
 
       {error && (
@@ -481,6 +625,9 @@ export const TaskDetailScreen: React.FC = () => {
             title="Start Task"
             onPress={() => handleStatusChange(TaskStatus.IN_PROGRESS)}
             loading={actionLoading}
+            variant="gradient"
+            icon="play"
+            size="large"
           />
         )}
         {task.status === TaskStatus.IN_PROGRESS && (
@@ -488,6 +635,9 @@ export const TaskDetailScreen: React.FC = () => {
             title="Submit Task"
             onPress={() => handleStatusChange(TaskStatus.SUBMITTED)}
             loading={actionLoading}
+            variant="gradient"
+            icon="send"
+            size="large"
           />
         )}
         {task.status === TaskStatus.REJECTED && (
@@ -495,6 +645,9 @@ export const TaskDetailScreen: React.FC = () => {
             title="Restart Task"
             onPress={() => handleStatusChange(TaskStatus.IN_PROGRESS)}
             loading={actionLoading}
+            variant="gradient"
+            icon="restart"
+            size="large"
           />
         )}
       </View>
@@ -510,8 +663,12 @@ const styles = StyleSheet.create({
   heroCard: {
     margin: spacing.lg,
     marginBottom: spacing.md,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     overflow: "hidden",
+    flexDirection: "row",
+  },
+  heroGradientStrip: {
+    width: 5,
   },
   section: {
     marginHorizontal: spacing.lg,
@@ -540,20 +697,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 1,
     borderRadius: borderRadius.full,
   },
   statusText: {
     fontSize: typography.fontSize.sm,
     color: colors.primaryForeground,
-    fontWeight: typography.fontWeight.medium,
+    fontWeight: typography.fontWeight.semibold,
+    letterSpacing: 0.3,
   },
   metaBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 1,
     borderRadius: borderRadius.full,
     backgroundColor: colors.muted,
   },
@@ -580,9 +738,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   timelineDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.muted,
     alignItems: "center",
     justifyContent: "center",
@@ -593,16 +751,17 @@ const styles = StyleSheet.create({
   },
   timelineDotCurrent: {
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.primaryLight,
+    borderWidth: 3,
+    borderColor: colors.primaryLight + "50",
   },
   timelineLine: {
     position: "absolute",
-    height: 2,
+    height: 3,
     backgroundColor: colors.border,
     left: "50%",
     right: "-50%",
-    top: 13,
+    top: 14,
+    borderRadius: 1.5,
   },
   timelineLineActive: {
     backgroundColor: colors.primary,
@@ -625,7 +784,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     backgroundColor: colors.destructive + "10",
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     marginTop: spacing.md,
   },
   rejectedText: {
@@ -640,11 +799,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     alignItems: "flex-start",
   },
+  infoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary + "10",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   infoText: {
     flex: 1,
     fontSize: typography.fontSize.base,
     color: colors.text,
     lineHeight: 22,
+    paddingTop: 4,
   },
   overdue: {
     color: colors.destructive,
@@ -656,6 +824,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  timestampIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary + "10",
+    alignItems: "center",
+    justifyContent: "center",
   },
   timestampLabel: {
     fontSize: typography.fontSize.sm,
@@ -691,12 +867,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.sm,
     backgroundColor: colors.muted,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
   },
   evidenceImage: {
     width: 64,
     height: 64,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     backgroundColor: colors.border,
   },
   evidenceInfo: {

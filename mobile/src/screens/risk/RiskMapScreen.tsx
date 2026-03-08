@@ -15,6 +15,8 @@ import {
   Animated,
   Platform,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -24,6 +26,7 @@ import {
   typography,
   borderRadius,
   shadows,
+  animation,
 } from "../../theme";
 import {
   getDistrictLatest,
@@ -416,24 +419,35 @@ export const RiskMapScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <MaterialCommunityIcons
-            name="shield-alert"
-            size={22}
-            color={colors.primaryForeground}
-          />
-          <Text style={styles.headerTitle}>Dengue Risk Map</Text>
-        </View>
-        {summary?.current_week && (
-          <View style={styles.weekBadge}>
-            <Text style={styles.weekBadgeText}>
-              W{summary.current_week.week}/{summary.current_week.year}
-            </Text>
+      {/* Gradient Header */}
+      <LinearGradient
+        colors={colors.gradient.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.decorCircle1} />
+        <View style={styles.decorCircle2} />
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <View style={styles.headerIconCircle}>
+              <MaterialCommunityIcons
+                name="shield-alert"
+                size={20}
+                color={colors.primaryForeground}
+              />
+            </View>
+            <Text style={styles.headerTitle}>Dengue Risk Map</Text>
           </View>
-        )}
-      </View>
+          {summary?.current_week && (
+            <View style={styles.weekBadge}>
+              <Text style={styles.weekBadgeText}>
+                W{summary.current_week.week}/{summary.current_week.year}
+              </Text>
+            </View>
+          )}
+        </View>
+      </LinearGradient>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -450,11 +464,16 @@ export const RiskMapScreen: React.FC = () => {
           <Animated.View style={[styles.summaryRow, { opacity: fadeAnim }]}>
             {summaryCards.map((card) => (
               <View key={card.label} style={[styles.summaryCard, shadows.sm]}>
-                <MaterialCommunityIcons
-                  name={card.icon}
-                  size={18}
-                  color={card.color}
-                />
+                <LinearGradient
+                  colors={[card.color + "18", card.color + "08"]}
+                  style={styles.summaryIconCircle}
+                >
+                  <MaterialCommunityIcons
+                    name={card.icon}
+                    size={18}
+                    color={card.color}
+                  />
+                </LinearGradient>
                 <Text style={[styles.summaryValue, { color: card.color }]}>
                   {card.value}
                 </Text>
@@ -509,15 +528,23 @@ export const RiskMapScreen: React.FC = () => {
 
         {/* Toggle District List */}
         <TouchableOpacity
-          style={styles.listToggle}
-          onPress={() => setShowList(!showList)}
+          style={[styles.listToggle, shadows.md]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowList(!showList);
+          }}
           activeOpacity={0.7}
         >
-          <MaterialCommunityIcons
-            name="format-list-numbered"
-            size={20}
-            color={colors.primary}
-          />
+          <LinearGradient
+            colors={[colors.primary + "15", colors.primary + "08"]}
+            style={styles.toggleIconCircle}
+          >
+            <MaterialCommunityIcons
+              name="format-list-numbered"
+              size={18}
+              color={colors.primary}
+            />
+          </LinearGradient>
           <Text style={styles.listToggleText}>
             District Rankings ({predictions.length})
           </Text>
@@ -546,26 +573,41 @@ export const RiskMapScreen: React.FC = () => {
                   onPress={() => setSelectedDistrict(d.district)}
                   activeOpacity={0.7}
                 >
-                  {/* Rank */}
-                  <View
-                    style={[
-                      styles.rankCircle,
-                      {
-                        backgroundColor: index < 3 ? riskColor : colors.muted,
-                      },
-                    ]}
-                  >
-                    <Text
+                  {/* Rank with medal for top 3 */}
+                  {index < 3 ? (
+                    <LinearGradient
+                      colors={[riskColor, riskColor + "cc"]}
+                      style={styles.rankCircle}
+                    >
+                      <MaterialCommunityIcons
+                        name={
+                          index === 0
+                            ? "medal"
+                            : index === 1
+                              ? "medal-outline"
+                              : "numeric-3-circle"
+                        }
+                        size={16}
+                        color="#fff"
+                      />
+                    </LinearGradient>
+                  ) : (
+                    <View
                       style={[
-                        styles.rankText,
-                        {
-                          color: index < 3 ? "#fff" : colors.textSecondary,
-                        },
+                        styles.rankCircle,
+                        { backgroundColor: colors.muted },
                       ]}
                     >
-                      {index + 1}
-                    </Text>
-                  </View>
+                      <Text
+                        style={[
+                          styles.rankText,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        {index + 1}
+                      </Text>
+                    </View>
+                  )}
 
                   {/* Info */}
                   <View style={styles.districtInfo}>
@@ -626,17 +668,47 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    overflow: "hidden",
+    position: "relative",
+  },
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    zIndex: 2,
+  },
+  decorCircle1: {
+    position: "absolute",
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -30,
+    right: -10,
+  },
+  decorCircle2: {
+    position: "absolute",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    bottom: -15,
+    left: 30,
   },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  headerIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: typography.fontSize.xl,
@@ -663,12 +735,20 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.sm,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 2,
+    gap: 3,
+  },
+  summaryIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
   },
   summaryValue: {
     fontSize: typography.fontSize.lg,
@@ -742,9 +822,16 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.xs,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  toggleIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
   },
   listToggleText: {
     fontSize: typography.fontSize.sm,

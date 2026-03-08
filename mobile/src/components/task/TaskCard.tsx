@@ -1,9 +1,16 @@
 /**
- * Task Card Component — Enhanced with priority color strip and relative time
+ * Task Card Component — Enhanced with animated entrance, gradient strip, press scale
  */
 
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Task, TaskType, TaskPriority } from "../../types/task.types";
 import {
@@ -12,6 +19,7 @@ import {
   typography,
   borderRadius,
   shadows,
+  animation,
 } from "../../theme";
 import {
   TASK_STATUS_LABELS,
@@ -27,9 +35,14 @@ import {
 interface TaskCardProps {
   task: Task;
   onPress?: (task: Task) => void;
+  index?: number;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({
+  task,
+  onPress,
+  index = 0,
+}) => {
   const overdue = isOverdue(task.dueDate);
   const statusColor =
     colors.status[task.status as keyof typeof colors.status] ||
@@ -39,7 +52,46 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
     colors.priority[task.priority as keyof typeof colors.priority] ||
     colors.textSecondary;
 
-  const getTypeIcon = () => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+
+  React.useEffect(() => {
+    const delay = index * animation.staggerDelay;
+    const timeout = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: animation.slow,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          ...animation.spring.gentle,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timeout);
+  }, [index, fadeAnim, slideAnim]);
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
+      ...animation.spring.snappy,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      ...animation.spring.bouncy,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const getTypeIcon = (): string => {
     switch (task.type) {
       case TaskType.CLEANUP:
         return "broom";
@@ -54,7 +106,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
     }
   };
 
-  const getPriorityIcon = () => {
+  const getPriorityIcon = (): string => {
     switch (task.priority) {
       case TaskPriority.URGENT:
         return "alert-circle";
@@ -69,106 +121,149 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress }) => {
     }
   };
 
+  const getPriorityGradient = (): readonly [string, string] => {
+    switch (task.priority) {
+      case TaskPriority.URGENT:
+        return [colors.destructive, "#ff4444"] as const;
+      case TaskPriority.HIGH:
+        return [colors.warning, "#f0b429"] as const;
+      case TaskPriority.MEDIUM:
+        return [colors.primary, colors.primaryLight] as const;
+      case TaskPriority.LOW:
+        return [colors.textSecondary, "#8a918a"] as const;
+      default:
+        return [colors.textSecondary, "#8a918a"] as const;
+    }
+  };
+
   return (
-    <TouchableOpacity
-      onPress={() => onPress?.(task)}
-      style={[styles.card, shadows.md, overdue && styles.cardOverdue]}
-      activeOpacity={0.7}
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+      }}
     >
-      {/* Priority color strip */}
-      <View
-        style={[styles.priorityStrip, { backgroundColor: priorityColor }]}
-      />
+      <TouchableOpacity
+        onPress={() => onPress?.(task)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={[styles.card, overdue && styles.cardOverdue]}
+        activeOpacity={1}
+      >
+        {/* Priority gradient strip */}
+        <LinearGradient
+          colors={getPriorityGradient()}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.priorityStrip}
+        />
 
-      <View style={styles.cardContent}>
-        <View style={styles.header}>
-          <Text style={styles.title} numberOfLines={2}>
-            {task.title}
-          </Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-            <Text style={styles.statusText}>
-              {TASK_STATUS_LABELS[task.status]}
+        <View style={styles.cardContent}>
+          <View style={styles.header}>
+            <Text style={styles.title} numberOfLines={2}>
+              {task.title}
             </Text>
+            <View
+              style={[styles.statusBadge, { backgroundColor: statusColor }]}
+            >
+              <Text style={styles.statusText}>
+                {TASK_STATUS_LABELS[task.status]}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.metaContainer}>
+            <View style={styles.metaItem}>
+              <View
+                style={[
+                  styles.metaIconBg,
+                  { backgroundColor: colors.primary + "10" },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={getTypeIcon() as any}
+                  size={14}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.metaText}>{TASK_TYPE_LABELS[task.type]}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <View
+                style={[
+                  styles.metaIconBg,
+                  { backgroundColor: priorityColor + "10" },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={getPriorityIcon() as any}
+                  size={14}
+                  color={priorityColor}
+                />
+              </View>
+              <Text style={[styles.metaText, { color: priorityColor }]}>
+                {TASK_PRIORITY_LABELS[task.priority]}
+              </Text>
+            </View>
+          </View>
+
+          {task.address && (
+            <View style={styles.addressRow}>
+              <MaterialCommunityIcons
+                name="map-marker"
+                size={14}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.address} numberOfLines={1}>
+                {task.address}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.footer}>
+            <View style={styles.footerItem}>
+              <MaterialCommunityIcons
+                name="calendar-clock"
+                size={14}
+                color={overdue ? colors.destructive : colors.textSecondary}
+              />
+              <Text style={[styles.dueDate, overdue && styles.overdue]}>
+                {task.dueDate ? formatDate(task.dueDate) : "No due date"}
+              </Text>
+            </View>
+            <View style={styles.footerItem}>
+              <MaterialCommunityIcons
+                name="clock-outline"
+                size={14}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.relativeTime}>
+                {formatRelativeTime(task.updatedAt)}
+              </Text>
+            </View>
           </View>
         </View>
-
-        <View style={styles.metaContainer}>
-          <View style={styles.metaItem}>
-            <MaterialCommunityIcons
-              name={getTypeIcon()}
-              size={16}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.metaText}>{TASK_TYPE_LABELS[task.type]}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <MaterialCommunityIcons
-              name={getPriorityIcon()}
-              size={16}
-              color={priorityColor}
-            />
-            <Text style={[styles.metaText, { color: priorityColor }]}>
-              {TASK_PRIORITY_LABELS[task.priority]}
-            </Text>
-          </View>
-        </View>
-
-        {task.address && (
-          <View style={styles.addressRow}>
-            <MaterialCommunityIcons
-              name="map-marker"
-              size={14}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.address} numberOfLines={1}>
-              {task.address}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.footer}>
-          <View style={styles.footerItem}>
-            <MaterialCommunityIcons
-              name="calendar-clock"
-              size={14}
-              color={overdue ? colors.destructive : colors.textSecondary}
-            />
-            <Text style={[styles.dueDate, overdue && styles.overdue]}>
-              {task.dueDate ? formatDate(task.dueDate) : "No due date"}
-            </Text>
-          </View>
-          <View style={styles.footerItem}>
-            <MaterialCommunityIcons
-              name="clock-outline"
-              size={14}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.relativeTime}>
-              {formatRelativeTime(task.updatedAt)}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.md,
     flexDirection: "row",
     overflow: "hidden",
+    ...shadows.md,
   },
   cardOverdue: {
     borderColor: colors.destructive + "35",
-    backgroundColor: colors.card,
   },
   priorityStrip: {
-    width: 4,
+    width: 5,
   },
   cardContent: {
     flex: 1,
@@ -189,14 +284,15 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs / 2,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs / 2 + 1,
     borderRadius: borderRadius.full,
   },
   statusText: {
     fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium,
+    fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
+    letterSpacing: 0.3,
   },
   metaContainer: {
     flexDirection: "row",
@@ -207,6 +303,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+  },
+  metaIconBg: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   metaText: {
     fontSize: typography.fontSize.sm,

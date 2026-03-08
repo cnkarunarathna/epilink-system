@@ -1,5 +1,5 @@
 /**
- * Spacing scale for consistent layout
+ * Spacing scale, shadows, and animation tokens for consistent layout
  */
 
 export const spacing = {
@@ -18,6 +18,8 @@ export const borderRadius = {
   md: 8,
   lg: 12,
   xl: 16,
+  "2xl": 20,
+  "3xl": 28,
   full: 9999,
 };
 
@@ -42,6 +44,33 @@ export const shadows = {
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 4,
+  },
+  xl: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  glow: (color: string) => ({
+    shadowColor: color,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  }),
+};
+
+/** Animation timing tokens (durations in ms) */
+export const animation = {
+  fast: 150,
+  normal: 300,
+  slow: 500,
+  staggerDelay: 80,
+  spring: {
+    gentle: { tension: 40, friction: 7 },
+    bouncy: { tension: 60, friction: 8 },
+    snappy: { tension: 100, friction: 10 },
   },
 };
 
