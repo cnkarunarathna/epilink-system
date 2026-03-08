@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { MainTabParamList } from "./types";
+import { HomeScreen } from "../screens/home/HomeScreen";
 import { TaskStackNavigator } from "./TaskStackNavigator";
 import { TaskMapScreen } from "../screens/tasks/TaskMapScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
@@ -34,6 +35,20 @@ export const MainNavigator: React.FC = () => {
         },
       }}
     >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarLabel: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="home-variant"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
       <Tab.Screen
         name="Tasks"
         component={TaskStackNavigator}
