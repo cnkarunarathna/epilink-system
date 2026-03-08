@@ -11,6 +11,7 @@ import { MainTabParamList } from "./types";
 import { HomeScreen } from "../screens/home/HomeScreen";
 import { TaskStackNavigator } from "./TaskStackNavigator";
 import { TaskMapScreen } from "../screens/tasks/TaskMapScreen";
+import { RiskMapScreen } from "../screens/risk/RiskMapScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { colors } from "../theme";
 
@@ -71,6 +72,20 @@ export const MainNavigator: React.FC = () => {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
               name="map-marker-radius"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="RiskMap"
+        component={RiskMapScreen}
+        options={{
+          tabBarLabel: "Risk",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="shield-alert"
               size={size}
               color={color}
             />

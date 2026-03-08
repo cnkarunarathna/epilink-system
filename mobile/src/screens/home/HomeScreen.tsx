@@ -25,7 +25,10 @@ import {
 } from "../../theme";
 import { useAuth } from "../../context/AuthContext";
 import { getTaskStats } from "../../api/taskService";
-import { getDistrictLatest, DistrictLatest } from "../../api/analyticsService";
+import {
+  getDistrictLatest,
+  DistrictPrediction,
+} from "../../api/analyticsService";
 import { TaskStats } from "../../types/task.types";
 import { MainTabNavigationProp } from "../../navigation/types";
 
@@ -33,7 +36,9 @@ export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation<MainTabNavigationProp>();
   const [stats, setStats] = useState<TaskStats | null>(null);
-  const [districtRisk, setDistrictRisk] = useState<DistrictLatest | null>(null);
+  const [districtRisk, setDistrictRisk] = useState<DistrictPrediction | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -49,8 +54,7 @@ export const HomeScreen: React.FC = () => {
         if (statsData.status === "fulfilled") setStats(statsData.value);
         if (districtData.status === "fulfilled" && user?.district) {
           const match = districtData.value.find(
-            (d) =>
-              d.districtName.toLowerCase() === user.district?.toLowerCase(),
+            (d) => d.district.toLowerCase() === user.district?.toLowerCase(),
           );
           if (match) setDistrictRisk(match);
         }
@@ -79,34 +83,28 @@ export const HomeScreen: React.FC = () => {
     return "Good Evening";
   };
 
-  const getRiskColor = (level?: string) => {
-    switch (level?.toLowerCase()) {
-      case "critical":
-        return colors.destructive;
-      case "high":
-        return colors.warning;
-      case "medium":
-        return "#e5851e";
-      case "low":
-        return colors.success;
-      default:
-        return colors.textSecondary;
-    }
+  const getRiskLevel = (cases: number) => {
+    if (cases >= 100) return "Very High";
+    if (cases >= 50) return "High";
+    if (cases >= 25) return "Medium";
+    if (cases >= 10) return "Low";
+    return "Very Low";
   };
 
-  const getRiskIcon = (level?: string): string => {
-    switch (level?.toLowerCase()) {
-      case "critical":
-        return "alert-octagon";
-      case "high":
-        return "alert";
-      case "medium":
-        return "alert-circle-outline";
-      case "low":
-        return "shield-check";
-      default:
-        return "help-circle-outline";
-    }
+  const getRiskColor = (cases: number) => {
+    if (cases >= 100) return colors.destructive;
+    if (cases >= 50) return colors.warning;
+    if (cases >= 25) return "#e5851e";
+    if (cases >= 10) return colors.success;
+    return colors.textSecondary;
+  };
+
+  const getRiskIcon = (cases: number): string => {
+    if (cases >= 100) return "alert-octagon";
+    if (cases >= 50) return "alert";
+    if (cases >= 25) return "alert-circle-outline";
+    if (cases >= 10) return "shield-check";
+    return "help-circle-outline";
   };
 
   const statCards = [
@@ -271,22 +269,22 @@ export const HomeScreen: React.FC = () => {
                       styles.riskIconCircle,
                       {
                         backgroundColor:
-                          getRiskColor(districtRisk.riskLevel) + "18",
+                          getRiskColor(districtRisk.predicted_cases) + "18",
                       },
                     ]}
                   >
                     <MaterialCommunityIcons
-                      name={getRiskIcon(districtRisk.riskLevel) as any}
+                      name={getRiskIcon(districtRisk.predicted_cases) as any}
                       size={24}
-                      color={getRiskColor(districtRisk.riskLevel)}
+                      color={getRiskColor(districtRisk.predicted_cases)}
                     />
                   </View>
                   <View>
                     <Text style={styles.riskDistrict}>
-                      {districtRisk.districtName}
+                      {districtRisk.district}
                     </Text>
                     <Text style={styles.riskWeek}>
-                      Week {districtRisk.weekNumber}, {districtRisk.year}
+                      Week {districtRisk.week}, {districtRisk.year}
                     </Text>
                   </View>
                 </View>
@@ -295,7 +293,7 @@ export const HomeScreen: React.FC = () => {
                     styles.riskBadge,
                     {
                       backgroundColor:
-                        getRiskColor(districtRisk.riskLevel) + "18",
+                        getRiskColor(districtRisk.predicted_cases) + "18",
                     },
                   ]}
                 >
@@ -303,11 +301,11 @@ export const HomeScreen: React.FC = () => {
                     style={[
                       styles.riskBadgeText,
                       {
-                        color: getRiskColor(districtRisk.riskLevel),
+                        color: getRiskColor(districtRisk.predicted_cases),
                       },
                     ]}
                   >
-                    {districtRisk.riskLevel?.toUpperCase() || "N/A"}
+                    {getRiskLevel(districtRisk.predicted_cases)}
                   </Text>
                 </View>
               </View>
@@ -318,7 +316,9 @@ export const HomeScreen: React.FC = () => {
                     size={16}
                     color={colors.textSecondary}
                   />
-                  <Text style={styles.riskStatValue}>{districtRisk.cases}</Text>
+                  <Text style={styles.riskStatValue}>
+                    {districtRisk.predicted_cases}
+                  </Text>
                   <Text style={styles.riskStatLabel}>Cases</Text>
                 </View>
                 {districtRisk.temperature != null && (

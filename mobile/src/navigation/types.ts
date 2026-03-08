@@ -23,6 +23,7 @@ export type MainTabParamList = {
   Home: undefined;
   Tasks: { screen?: string; params?: any } | undefined;
   TaskMap: undefined;
+  RiskMap: undefined;
   Profile: undefined;
 };
 
