@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { DengueCase } from '../entities/dengue_case.entity';
@@ -12,9 +14,14 @@ export class AnalyticsService {
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private readonly eventsGateway: EventsGateway,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async getLatestWeekPerDistrict() {
+    const cacheKey = 'analytics:latest_week_districts';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Get latest year/week per district from dengue_cases using ROW_NUMBER
@@ -34,7 +41,7 @@ export class AnalyticsService {
       ORDER BY d.name;
     `);
 
-    return latest.map((row: any) => ({
+    const result = latest.map((row: any) => ({
       district: row.name,
       predicted_cases: row.cases, // placeholder: using real latest cases
       year: row.year,
@@ -48,6 +55,9 @@ export class AnalyticsService {
       precipitation:
         row.precipitation_sum !== null ? Number(row.precipitation_sum) : null,
     }));
+
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async getTimeSeries(districtName: string) {
@@ -88,6 +98,10 @@ export class AnalyticsService {
       precipitation_sum: number;
     }>
   > {
+    const cacheKey = 'analytics:district_features_bulk';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as any;
+
     const manager = this.dataSource.manager;
     // Compute lags and 4-week mean per district from dengue_cases; use latest weather
     const rows = await manager.query(`
@@ -133,7 +147,7 @@ export class AnalyticsService {
       ORDER BY a.district;
     `);
 
-    return rows.map((r: any) => ({
+    const result = rows.map((r: any) => ({
       district: r.district,
       cases_lag1: Number(r.cases_lag1) || 0,
       cases_lag2: Number(r.cases_lag2) || 0,
@@ -142,6 +156,9 @@ export class AnalyticsService {
       temperature_2m_mean: Number(r.temperature_2m_mean) || 0,
       precipitation_sum: Number(r.precipitation_sum) || 0,
     }));
+
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async predictBulkFromML() {
@@ -161,6 +178,10 @@ export class AnalyticsService {
   }
 
   async getDashboardSummary() {
+    const cacheKey = 'analytics:dashboard_summary';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Get current week total and comparison with previous week
@@ -224,7 +245,7 @@ export class AnalyticsService {
     }
 
     const row = summary[0];
-    return {
+    const result = {
       current_week: { year: row.year, week: row.week },
       total_cases: Number(row.total_cases) || 0,
       previous_total: Number(row.previous_total) || 0,
@@ -233,9 +254,16 @@ export class AnalyticsService {
       high_risk_districts: Number(row.high_risk_districts) || 0,
       avg_temperature: row.avg_temp ? Number(row.avg_temp) : null,
     };
+
+    await this.cacheManager.set(cacheKey, result, 600000); // 10 minutes
+    return result;
   }
 
   async getTrends(weeks: number = 12) {
+    const cacheKey = `analytics:trends:${weeks}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     const trends = await manager.query(
@@ -252,13 +280,16 @@ export class AnalyticsService {
       [weeks],
     );
 
-    return trends.reverse().map((row: any) => ({
+    const result = trends.reverse().map((row: any) => ({
       year: row.year,
       week: row.week,
       total_cases: Number(row.total_cases) || 0,
       avg_temperature: row.avg_temp ? Number(row.avg_temp) : null,
       avg_precipitation: row.avg_precip ? Number(row.avg_precip) : null,
     }));
+
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async getHistoricalRange(
@@ -395,6 +426,10 @@ export class AnalyticsService {
   }
 
   async getWeatherCorrelation() {
+    const cacheKey = 'analytics:weather_correlation';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Calculate correlation between weather and dengue cases
@@ -418,7 +453,7 @@ export class AnalyticsService {
       ORDER BY ABS(CORR(dc.cases, w.temperature_2m_mean)) DESC
     `);
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       district: row.district,
       temp_correlation: row.temp_correlation ? Number(row.temp_correlation) : 0,
       precip_correlation: row.precip_correlation
@@ -429,6 +464,9 @@ export class AnalyticsService {
       avg_precip: Number(row.avg_precip) || 0,
       data_points: Number(row.data_points) || 0,
     }));
+
+    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async getGrowthRate(weeks: number = 4) {

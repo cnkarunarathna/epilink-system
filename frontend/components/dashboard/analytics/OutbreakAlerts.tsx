@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchOutbreakAlerts } from "@/services/analytics.service";
+import { fetchPublicOutbreakAlerts } from "@/services/public-analytics.service";
 
 interface Alert {
   district: string;
@@ -26,7 +27,11 @@ interface Alert {
   severity: string;
 }
 
-export default function OutbreakAlerts() {
+export default function OutbreakAlerts({
+  usePublicApi = false,
+}: {
+  usePublicApi?: boolean;
+}) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,7 +42,9 @@ export default function OutbreakAlerts() {
   const loadAlerts = async () => {
     try {
       setLoading(true);
-      const data = await fetchOutbreakAlerts();
+      const data = usePublicApi
+        ? await fetchPublicOutbreakAlerts()
+        : await fetchOutbreakAlerts();
       setAlerts(data);
     } catch (error) {
       console.error("Failed to load alerts:", error);
@@ -129,8 +136,8 @@ export default function OutbreakAlerts() {
                 alert.severity === "critical"
                   ? "border-red-500 bg-gradient-to-r from-red-50 to-red-100/50 dark:from-red-950/50 dark:to-red-900/30 hover:from-red-100 hover:to-red-200/50 dark:hover:from-red-900/50 dark:hover:to-red-800/30"
                   : alert.severity === "high"
-                  ? "border-orange-500 bg-gradient-to-r from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 hover:from-orange-100 hover:to-orange-200/50 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
-                  : "border-yellow-500 bg-gradient-to-r from-yellow-50 to-yellow-100/50 dark:from-yellow-950/50 dark:to-yellow-900/30 hover:from-yellow-100 hover:to-yellow-200/50 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
+                    ? "border-orange-500 bg-gradient-to-r from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 hover:from-orange-100 hover:to-orange-200/50 dark:hover:from-orange-900/50 dark:hover:to-orange-800/30"
+                    : "border-yellow-500 bg-gradient-to-r from-yellow-50 to-yellow-100/50 dark:from-yellow-950/50 dark:to-yellow-900/30 hover:from-yellow-100 hover:to-yellow-200/50 dark:hover:from-yellow-900/50 dark:hover:to-yellow-800/30"
               }`}
               style={{ animationDelay: `${index * 100}ms` }}
             >

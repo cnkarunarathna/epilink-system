@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Menu, Activity, LayoutDashboard } from "lucide-react";
+import { Menu, Activity, LayoutDashboard, BarChart3 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -65,6 +65,16 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center space-x-3">
+          <Button
+            variant="outline"
+            className="shadow-sm hover:shadow-md transition-all border-primary/30 hover:border-primary hover:bg-primary/5"
+            asChild
+          >
+            <Link href="/risk-map">
+              <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+              Risk Map
+            </Link>
+          </Button>
           {user ? (
             <Button
               className="shadow-md hover:shadow-lg transition-shadow"
@@ -115,7 +125,17 @@ export function Header() {
                   {item.label}
                 </Link>
               ))}
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t space-y-3">
+                <Button
+                  variant="outline"
+                  className="w-full border-primary/30"
+                  asChild
+                >
+                  <Link href="/risk-map" onClick={() => setIsOpen(false)}>
+                    <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+                    Risk Map
+                  </Link>
+                </Button>
                 {user ? (
                   <Button className="w-full" asChild>
                     <Link href={`/${user.role.toLowerCase()}`}>
