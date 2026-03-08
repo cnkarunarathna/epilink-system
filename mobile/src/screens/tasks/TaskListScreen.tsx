@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   title: {
-    fontSize: typography.fontSize.xxl,
+    fontSize: typography.fontSize["2xl"],
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },

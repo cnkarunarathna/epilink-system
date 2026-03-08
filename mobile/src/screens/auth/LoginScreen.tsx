@@ -1,5 +1,5 @@
 /**
- * Login Screen
+ * Login Screen — Enhanced with subtle gradient, field icons, version text
  */
 
 import React, { useEffect, useState } from "react";
@@ -73,6 +73,9 @@ export const LoginScreen: React.FC = () => {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      {/* Top gradient accent */}
+      <View style={styles.topAccent} />
+
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -93,42 +96,67 @@ export const LoginScreen: React.FC = () => {
             </View>
           </View>
           <Text style={styles.subtitle}>PHI Mobile Login</Text>
+          <Text style={styles.tagline}>
+            Dengue Risk Monitoring & Cleanup Management
+          </Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={[styles.form, shadows.md]}>
           {error && <ErrorMessage message={error} />}
 
-          <Controller
-            control={control}
-            name="email"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                label="Email"
-                placeholder="phi@epilink.gov.lk"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={value}
-                onChangeText={onChange}
-                error={errors.email?.message}
+          <View style={styles.fieldContainer}>
+            <View style={styles.fieldIcon}>
+              <MaterialCommunityIcons
+                name="email-outline"
+                size={20}
+                color={colors.textSecondary}
               />
-            )}
-          />
+            </View>
+            <View style={styles.fieldInput}>
+              <Controller
+                control={control}
+                name="email"
+                render={({ field: { onChange, value } }) => (
+                  <Input
+                    label="Email"
+                    placeholder="phi@epilink.gov.lk"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={value}
+                    onChangeText={onChange}
+                    error={errors.email?.message}
+                  />
+                )}
+              />
+            </View>
+          </View>
 
-          <Controller
-            control={control}
-            name="password"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                label="Password"
-                placeholder="Enter your password"
-                secureTextEntry
-                value={value}
-                onChangeText={onChange}
-                error={errors.password?.message}
+          <View style={styles.fieldContainer}>
+            <View style={styles.fieldIcon}>
+              <MaterialCommunityIcons
+                name="lock-outline"
+                size={20}
+                color={colors.textSecondary}
               />
-            )}
-          />
+            </View>
+            <View style={styles.fieldInput}>
+              <Controller
+                control={control}
+                name="password"
+                render={({ field: { onChange, value } }) => (
+                  <Input
+                    label="Password"
+                    placeholder="Enter your password"
+                    secureTextEntry
+                    value={value}
+                    onChangeText={onChange}
+                    error={errors.password?.message}
+                  />
+                )}
+              />
+            </View>
+          </View>
 
           <View style={styles.rememberRow}>
             <Text style={styles.rememberText}>Remember me</Text>
@@ -155,6 +183,8 @@ export const LoginScreen: React.FC = () => {
             Only PHI users can access the mobile app.
           </Text>
         </View>
+
+        <Text style={styles.versionText}>EpiLink v1.0.0</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -164,6 +194,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  topAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    opacity: 0.06,
   },
   content: {
     flexGrow: 1,
@@ -204,12 +245,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
+  tagline: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    opacity: 0.7,
+    textAlign: "center",
+  },
   form: {
     backgroundColor: colors.card,
     padding: spacing.lg,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fieldContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  fieldIcon: {
+    width: 24,
+    paddingTop: 36, // align with input field
+    marginRight: spacing.xs,
+  },
+  fieldInput: {
+    flex: 1,
   },
   rememberRow: {
     flexDirection: "row",
@@ -230,5 +290,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
+  },
+  versionText: {
+    textAlign: "center",
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xl,
+    opacity: 0.5,
   },
 });

@@ -41,6 +41,14 @@ import {
   fetchDashboardSummary,
   fetchTrends,
 } from "@/services/analytics.service";
+import {
+  BarChart as RechartsBar,
+  Bar,
+  XAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import dynamic from "next/dynamic";
 
 // Dynamically import historical analytics to reduce initial bundle size
@@ -122,7 +130,7 @@ export default function AnalyticsPage() {
           loadDashboardData();
       }
     },
-    []
+    [],
   );
 
   // Subscribe to analytics updates via WebSocket
@@ -197,7 +205,7 @@ export default function AnalyticsPage() {
   // Calculate total predicted cases
   const totalPredictedCases = predictions.reduce(
     (sum, p) => sum + p.predicted_cases,
-    0
+    0,
   );
 
   // Get risk level (data-driven thresholds based on actual case distribution)
@@ -499,7 +507,7 @@ export default function AnalyticsPage() {
                             <div className="space-y-2">
                               {(() => {
                                 const currentData = predictions.find(
-                                  (p) => p.district === selectedDistrict
+                                  (p) => p.district === selectedDistrict,
                                 );
                                 const risk = currentData
                                   ? getRiskLevel(currentData.predicted_cases)
@@ -595,30 +603,46 @@ export default function AnalyticsPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-64 flex items-end justify-between gap-2">
-                      {trends
-                        .filter((t) => t.year && t.week)
-                        .map((t) => {
-                          const maxCases = Math.max(
-                            ...trends.map((d) => d.total_cases)
-                          );
-                          const height = (t.total_cases / maxCases) * 100;
-                          return (
-                            <div
-                              key={`${t.year}-${t.week}`}
-                              className="flex-1 flex flex-col items-center"
-                            >
-                              <div
-                                className="w-full bg-primary rounded-t transition-all hover:bg-primary/80"
-                                style={{ height: `${height}%` }}
-                                title={`Week ${t.week}: ${t.total_cases} cases`}
-                              ></div>
-                              <span className="text-xs text-muted-foreground mt-2">
-                                W{t.week}
-                              </span>
-                            </div>
-                          );
-                        })}
+                    <div className="h-64 mt-4 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsBar data={trends}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="week"
+                            tickFormatter={(value) => `W${value}`}
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fontSize: 12 }}
+                            dy={10}
+                          />
+                          <Tooltip
+                            cursor={{ fill: "transparent" }}
+                            formatter={(value: number | undefined) => [
+                              value || 0,
+                              "Cases",
+                            ]}
+                            labelFormatter={(label, payload) => {
+                              if (
+                                payload &&
+                                payload.length > 0 &&
+                                payload[0].payload
+                              ) {
+                                return `Week ${label}, ${payload[0].payload.year}`;
+                              }
+                              return `Week ${label}`;
+                            }}
+                          />
+                          <Bar
+                            dataKey="total_cases"
+                            fill="currentColor"
+                            className="fill-primary"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </RechartsBar>
+                      </ResponsiveContainer>
                     </div>
                   </CardContent>
                 </Card>
@@ -765,7 +789,7 @@ export default function AnalyticsPage() {
                         .sort((a, b) => b.predicted_cases - a.predicted_cases)
                         .map((district) => {
                           const maxCases = Math.max(
-                            ...predictions.map((d) => d.predicted_cases)
+                            ...predictions.map((d) => d.predicted_cases),
                           );
                           const percentage =
                             (district.predicted_cases / maxCases) * 100;
@@ -794,12 +818,12 @@ export default function AnalyticsPage() {
                                     risk.level === "Very High"
                                       ? "bg-red-600"
                                       : risk.level === "High"
-                                      ? "bg-orange-500"
-                                      : risk.level === "Medium"
-                                      ? "bg-yellow-500"
-                                      : risk.level === "Low"
-                                      ? "bg-blue-500"
-                                      : "bg-green-500"
+                                        ? "bg-orange-500"
+                                        : risk.level === "Medium"
+                                          ? "bg-yellow-500"
+                                          : risk.level === "Low"
+                                            ? "bg-blue-500"
+                                            : "bg-green-500"
                                   }`}
                                   style={{ width: `${percentage}%` }}
                                 ></div>
