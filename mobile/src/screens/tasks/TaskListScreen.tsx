@@ -1,10 +1,11 @@
 /**
- * Task List Screen
+ * Task List Screen — Enhanced with shimmer loading, staggered cards, gradient header
  */
 
 import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
@@ -14,7 +15,12 @@ import {
   borderRadius,
   shadows,
 } from "../../theme";
-import { Input, Loading, ErrorMessage } from "../../components/common";
+import {
+  Input,
+  ErrorMessage,
+  AnimatedCounter,
+  ShimmerCardSkeleton,
+} from "../../components/common";
 import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
 import { useAuth } from "../../context/AuthContext";
@@ -44,22 +50,30 @@ export const TaskListScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Hero Header Card */}
-      <View style={[styles.heroCard, shadows.sm]}>
-        <View style={styles.heroHeader}>
-          <View>
-            <Text style={styles.title}>My Tasks</Text>
-            <Text style={styles.subtitle}>{user?.district || "PHI"}</Text>
+      {/* Enhanced Hero Header */}
+      <View style={styles.heroCard}>
+        <LinearGradient
+          colors={colors.gradient.header}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroGradient}
+        >
+          <View style={styles.heroDecorCircle} />
+          <View style={styles.heroHeader}>
+            <View>
+              <Text style={styles.title}>My Tasks</Text>
+              <Text style={styles.subtitle}>{user?.district || "PHI"}</Text>
+            </View>
+            <View style={styles.countPill}>
+              <MaterialCommunityIcons
+                name="clipboard-list"
+                size={16}
+                color={colors.primaryForeground}
+              />
+              <AnimatedCounter value={tasks.length} style={styles.countText} />
+            </View>
           </View>
-          <View style={styles.countPill}>
-            <MaterialCommunityIcons
-              name="clipboard-list"
-              size={16}
-              color={colors.primary}
-            />
-            <Text style={styles.countText}>{tasks.length}</Text>
-          </View>
-        </View>
+        </LinearGradient>
 
         <View style={styles.searchContainer}>
           <MaterialCommunityIcons
@@ -80,26 +94,27 @@ export const TaskListScreen: React.FC = () => {
       </View>
 
       {isLoading ? (
-        <Loading message="Loading tasks..." />
+        <ShimmerCardSkeleton count={4} />
       ) : (
         <FlatList
           data={tasks}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TaskCard task={item} onPress={handleTaskPress} />
+          renderItem={({ item, index }) => (
+            <TaskCard task={item} onPress={handleTaskPress} index={index} />
           )}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={refresh} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons
-                name="clipboard-alert-outline"
-                size={64}
-                color={colors.textSecondary}
-                style={styles.emptyIcon}
-              />
+              <View style={styles.emptyIconCircle}>
+                <MaterialCommunityIcons
+                  name="clipboard-alert-outline"
+                  size={48}
+                  color={colors.textSecondary}
+                />
+              </View>
               <Text style={styles.emptyText}>{emptyMessage}</Text>
               {error && <ErrorMessage message={error} />}
             </View>
@@ -130,45 +145,60 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  heroGradient: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroDecorCircle: {
+    position: "absolute",
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -20,
+    right: -10,
   },
   heroHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    zIndex: 2,
   },
   title: {
     fontSize: typography.fontSize["2xl"],
     fontWeight: typography.fontWeight.bold,
-    color: colors.text,
+    color: colors.primaryForeground,
   },
   subtitle: {
     fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
+    color: "rgba(255,255,255,0.7)",
     marginTop: spacing.xs,
   },
   countPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    backgroundColor: colors.muted,
+    backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 2,
     borderRadius: borderRadius.full,
   },
   countText: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
+    color: colors.primaryForeground,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   searchIcon: {
     position: "absolute",
@@ -190,9 +220,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xxl,
     paddingHorizontal: spacing.lg,
   },
-  emptyIcon: {
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: spacing.md,
-    opacity: 0.5,
   },
   emptyText: {
     fontSize: typography.fontSize.base,

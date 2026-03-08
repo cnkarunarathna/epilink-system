@@ -1,9 +1,9 @@
 /**
- * Home Dashboard Screen — PHI-focused overview
- * Uses existing backend endpoints: /tasks/stats, /analytics/districts/latest
+ * Home Dashboard Screen — Enhanced with gradient header, staggered animations,
+ * animated counters, and premium card design
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,8 +12,11 @@ import {
   RefreshControl,
   TouchableOpacity,
   Animated,
+  Easing,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
@@ -22,10 +25,15 @@ import {
   typography,
   borderRadius,
   shadows,
+  animation,
 } from "../../theme";
+import { AnimatedCounter } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import { getTaskStats } from "../../api/taskService";
-import { getDistrictLatest, DistrictLatest } from "../../api/analyticsService";
+import {
+  getDistrictLatest,
+  DistrictPrediction,
+} from "../../api/analyticsService";
 import { TaskStats } from "../../types/task.types";
 import { MainTabNavigationProp } from "../../navigation/types";
 
@@ -33,10 +41,20 @@ export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation<MainTabNavigationProp>();
   const [stats, setStats] = useState<TaskStats | null>(null);
-  const [districtRisk, setDistrictRisk] = useState<DistrictLatest | null>(null);
+  const [districtRisk, setDistrictRisk] = useState<DistrictPrediction | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const fadeAnim = useState(new Animated.Value(0))[0];
+
+  // Staggered entrance anims
+  const fadeHeader = useRef(new Animated.Value(0)).current;
+  const fadeAlert = useRef(new Animated.Value(0)).current;
+  const fadeStats = useRef(new Animated.Value(0)).current;
+  const slideStats = useRef(new Animated.Value(30)).current;
+  const fadeRisk = useRef(new Animated.Value(0)).current;
+  const slideRisk = useRef(new Animated.Value(30)).current;
+  const fadeActions = useRef(new Animated.Value(0)).current;
 
   const fetchData = useCallback(
     async (refresh = false) => {
@@ -49,8 +67,7 @@ export const HomeScreen: React.FC = () => {
         if (statsData.status === "fulfilled") setStats(statsData.value);
         if (districtData.status === "fulfilled" && user?.district) {
           const match = districtData.value.find(
-            (d) =>
-              d.districtName.toLowerCase() === user.district?.toLowerCase(),
+            (d) => d.district.toLowerCase() === user.district?.toLowerCase(),
           );
           if (match) setDistrictRisk(match);
         }
@@ -58,14 +75,60 @@ export const HomeScreen: React.FC = () => {
         // silently handle
       } finally {
         refresh ? setIsRefreshing(false) : setIsLoading(false);
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }).start();
+        // Start staggered entrance
+        Animated.stagger(120, [
+          Animated.timing(fadeHeader, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAlert, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.parallel([
+            Animated.timing(fadeStats, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.spring(slideStats, {
+              toValue: 0,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(fadeRisk, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.spring(slideRisk, {
+              toValue: 0,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(fadeActions, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
     },
-    [user?.district, fadeAnim],
+    [
+      user?.district,
+      fadeHeader,
+      fadeAlert,
+      fadeStats,
+      slideStats,
+      fadeRisk,
+      slideRisk,
+      fadeActions,
+    ],
   );
 
   useEffect(() => {
@@ -79,34 +142,28 @@ export const HomeScreen: React.FC = () => {
     return "Good Evening";
   };
 
-  const getRiskColor = (level?: string) => {
-    switch (level?.toLowerCase()) {
-      case "critical":
-        return colors.destructive;
-      case "high":
-        return colors.warning;
-      case "medium":
-        return "#e5851e";
-      case "low":
-        return colors.success;
-      default:
-        return colors.textSecondary;
-    }
+  const getRiskLevel = (cases: number) => {
+    if (cases >= 100) return "Very High";
+    if (cases >= 50) return "High";
+    if (cases >= 25) return "Medium";
+    if (cases >= 10) return "Low";
+    return "Very Low";
   };
 
-  const getRiskIcon = (level?: string): string => {
-    switch (level?.toLowerCase()) {
-      case "critical":
-        return "alert-octagon";
-      case "high":
-        return "alert";
-      case "medium":
-        return "alert-circle-outline";
-      case "low":
-        return "shield-check";
-      default:
-        return "help-circle-outline";
-    }
+  const getRiskColor = (cases: number) => {
+    if (cases >= 100) return colors.destructive;
+    if (cases >= 50) return colors.warning;
+    if (cases >= 25) return "#e5851e";
+    if (cases >= 10) return colors.success;
+    return colors.textSecondary;
+  };
+
+  const getRiskIcon = (cases: number): string => {
+    if (cases >= 100) return "alert-octagon";
+    if (cases >= 50) return "alert";
+    if (cases >= 25) return "alert-circle-outline";
+    if (cases >= 10) return "shield-check";
+    return "help-circle-outline";
   };
 
   const statCards = [
@@ -136,6 +193,58 @@ export const HomeScreen: React.FC = () => {
     },
   ];
 
+  const ActionCard: React.FC<{
+    icon: string;
+    label: string;
+    color: string;
+    onPress: () => void;
+  }> = ({ icon, label, color, onPress }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.93,
+        ...animation.spring.snappy,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        ...animation.spring.bouncy,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    return (
+      <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
+        <TouchableOpacity
+          style={[styles.actionCard, shadows.md]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPress();
+          }}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={1}
+        >
+          <LinearGradient
+            colors={[color + "15", color + "08"]}
+            style={styles.actionIcon}
+          >
+            <MaterialCommunityIcons
+              name={icon as any}
+              size={24}
+              color={color}
+            />
+          </LinearGradient>
+          <Text style={styles.actionText}>{label}</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
@@ -149,91 +258,120 @@ export const HomeScreen: React.FC = () => {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Greeting Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.userName}>{user?.name || "PHI"}</Text>
-            <View style={styles.rolePill}>
-              <MaterialCommunityIcons
-                name="shield-account"
-                size={12}
-                color={colors.primary}
-              />
-              <Text style={styles.roleText}>Public Health Inspector</Text>
-            </View>
-          </View>
-          <View style={styles.headerRight}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>
-                {(user?.name || "P").charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          </View>
-        </View>
+        {/* Gradient Greeting Header */}
+        <Animated.View style={{ opacity: fadeHeader }}>
+          <LinearGradient
+            colors={colors.gradient.header}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.gradientHeader}
+          >
+            <View style={styles.decorCircle1} />
+            <View style={styles.decorCircle2} />
 
-        {/* District info */}
-        {user?.district && (
-          <View style={styles.districtBanner}>
-            <MaterialCommunityIcons
-              name="map-marker"
-              size={16}
-              color={colors.primary}
-            />
-            <Text style={styles.districtText}>{user.district} District</Text>
-          </View>
-        )}
+            <View style={styles.header}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.greeting}>{getGreeting()},</Text>
+                <Text style={styles.userName}>{user?.name || "PHI"}</Text>
+                <View style={styles.rolePill}>
+                  <MaterialCommunityIcons
+                    name="shield-account"
+                    size={12}
+                    color="rgba(255,255,255,0.9)"
+                  />
+                  <Text style={styles.roleText}>Public Health Inspector</Text>
+                </View>
+              </View>
+              <View style={styles.headerRight}>
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
+                  style={styles.avatarCircle}
+                >
+                  <Text style={styles.avatarText}>
+                    {(user?.name || "P").charAt(0).toUpperCase()}
+                  </Text>
+                </LinearGradient>
+              </View>
+            </View>
+
+            {/* District info */}
+            {user?.district && (
+              <View style={styles.districtBanner}>
+                <MaterialCommunityIcons
+                  name="map-marker"
+                  size={14}
+                  color="rgba(255,255,255,0.9)"
+                />
+                <Text style={styles.districtText}>
+                  {user.district} District
+                </Text>
+              </View>
+            )}
+          </LinearGradient>
+        </Animated.View>
 
         {/* Overdue Alert */}
         {stats && stats.overdueCount > 0 && (
-          <TouchableOpacity
-            style={styles.alertBanner}
-            onPress={() => navigation.navigate("Tasks")}
-            activeOpacity={0.8}
-          >
-            <View style={styles.alertIcon}>
+          <Animated.View style={{ opacity: fadeAlert }}>
+            <TouchableOpacity
+              style={styles.alertBanner}
+              onPress={() => navigation.navigate("Tasks")}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={[colors.destructive + "18", colors.destructive + "08"]}
+                style={styles.alertIconCircle}
+              >
+                <MaterialCommunityIcons
+                  name="clock-alert"
+                  size={20}
+                  color={colors.destructive}
+                />
+              </LinearGradient>
+              <View style={styles.alertContent}>
+                <Text style={styles.alertTitle}>
+                  {stats.overdueCount} Overdue{" "}
+                  {stats.overdueCount === 1 ? "Task" : "Tasks"}
+                </Text>
+                <Text style={styles.alertSubtitle}>
+                  Tap to view and take action
+                </Text>
+              </View>
               <MaterialCommunityIcons
-                name="clock-alert"
+                name="chevron-right"
                 size={20}
-                color={colors.destructive}
+                color={colors.textSecondary}
               />
-            </View>
-            <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>
-                {stats.overdueCount} Overdue{" "}
-                {stats.overdueCount === 1 ? "Task" : "Tasks"}
-              </Text>
-              <Text style={styles.alertSubtitle}>
-                Tap to view and take action
-              </Text>
-            </View>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </Animated.View>
         )}
 
         {/* Task Stats */}
-        <Animated.View style={{ opacity: fadeAnim }}>
+        <Animated.View
+          style={{
+            opacity: fadeStats,
+            transform: [{ translateY: slideStats }],
+          }}
+        >
           <Text style={styles.sectionTitle}>My Task Overview</Text>
           <View style={styles.statsGrid}>
-            {statCards.map((card) => (
-              <View key={card.label} style={[styles.statCard, shadows.sm]}>
-                <View
-                  style={[
-                    styles.statIconCircle,
-                    { backgroundColor: card.color + "18" },
-                  ]}
+            {statCards.map((card, i) => (
+              <View key={card.label} style={[styles.statCard, shadows.md]}>
+                <LinearGradient
+                  colors={[card.color + "18", card.color + "08"]}
+                  style={styles.statIconCircle}
                 >
                   <MaterialCommunityIcons
                     name={card.icon}
                     size={22}
                     color={card.color}
                   />
-                </View>
-                <Text style={styles.statValue}>{card.value}</Text>
+                </LinearGradient>
+                <AnimatedCounter
+                  value={card.value}
+                  delay={i * 100 + 300}
+                  style={styles.statValue}
+                />
                 <Text style={styles.statLabel}>{card.label}</Text>
               </View>
             ))}
@@ -241,19 +379,23 @@ export const HomeScreen: React.FC = () => {
 
           {/* Total summary */}
           {stats && (
-            <View style={[styles.totalCard, shadows.sm]}>
+            <View style={[styles.totalCard, shadows.md]}>
               <View style={styles.totalLeft}>
                 <Text style={styles.totalLabel}>Total Tasks</Text>
-                <Text style={styles.totalValue}>{stats.total}</Text>
+                <AnimatedCounter
+                  value={stats.total}
+                  delay={600}
+                  style={styles.totalValue}
+                />
               </View>
               <View style={styles.totalDivider} />
               <View style={styles.totalRight}>
                 <Text style={styles.totalLabel}>Rejected</Text>
-                <Text
-                  style={[styles.totalValue, { color: colors.destructive }]}
-                >
-                  {stats.rejected}
-                </Text>
+                <AnimatedCounter
+                  value={stats.rejected}
+                  delay={700}
+                  style={{ ...styles.totalValue, color: colors.destructive }}
+                />
               </View>
             </View>
           )}
@@ -261,32 +403,35 @@ export const HomeScreen: React.FC = () => {
 
         {/* District Risk */}
         {districtRisk && (
-          <Animated.View style={{ opacity: fadeAnim }}>
+          <Animated.View
+            style={{
+              opacity: fadeRisk,
+              transform: [{ translateY: slideRisk }],
+            }}
+          >
             <Text style={styles.sectionTitle}>District Risk Level</Text>
-            <View style={[styles.riskCard, shadows.sm]}>
+            <View style={[styles.riskCard, shadows.md]}>
               <View style={styles.riskHeader}>
                 <View style={styles.riskLeft}>
-                  <View
-                    style={[
-                      styles.riskIconCircle,
-                      {
-                        backgroundColor:
-                          getRiskColor(districtRisk.riskLevel) + "18",
-                      },
+                  <LinearGradient
+                    colors={[
+                      getRiskColor(districtRisk.predicted_cases) + "20",
+                      getRiskColor(districtRisk.predicted_cases) + "08",
                     ]}
+                    style={styles.riskIconCircle}
                   >
                     <MaterialCommunityIcons
-                      name={getRiskIcon(districtRisk.riskLevel) as any}
+                      name={getRiskIcon(districtRisk.predicted_cases) as any}
                       size={24}
-                      color={getRiskColor(districtRisk.riskLevel)}
+                      color={getRiskColor(districtRisk.predicted_cases)}
                     />
-                  </View>
+                  </LinearGradient>
                   <View>
                     <Text style={styles.riskDistrict}>
-                      {districtRisk.districtName}
+                      {districtRisk.district}
                     </Text>
                     <Text style={styles.riskWeek}>
-                      Week {districtRisk.weekNumber}, {districtRisk.year}
+                      Week {districtRisk.week}, {districtRisk.year}
                     </Text>
                   </View>
                 </View>
@@ -295,7 +440,7 @@ export const HomeScreen: React.FC = () => {
                     styles.riskBadge,
                     {
                       backgroundColor:
-                        getRiskColor(districtRisk.riskLevel) + "18",
+                        getRiskColor(districtRisk.predicted_cases) + "18",
                     },
                   ]}
                 >
@@ -303,11 +448,11 @@ export const HomeScreen: React.FC = () => {
                     style={[
                       styles.riskBadgeText,
                       {
-                        color: getRiskColor(districtRisk.riskLevel),
+                        color: getRiskColor(districtRisk.predicted_cases),
                       },
                     ]}
                   >
-                    {districtRisk.riskLevel?.toUpperCase() || "N/A"}
+                    {getRiskLevel(districtRisk.predicted_cases)}
                   </Text>
                 </View>
               </View>
@@ -318,7 +463,11 @@ export const HomeScreen: React.FC = () => {
                     size={16}
                     color={colors.textSecondary}
                   />
-                  <Text style={styles.riskStatValue}>{districtRisk.cases}</Text>
+                  <AnimatedCounter
+                    value={districtRisk.predicted_cases}
+                    delay={800}
+                    style={styles.riskStatValue}
+                  />
                   <Text style={styles.riskStatLabel}>Cases</Text>
                 </View>
                 {districtRisk.temperature != null && (
@@ -328,9 +477,13 @@ export const HomeScreen: React.FC = () => {
                       size={16}
                       color={colors.textSecondary}
                     />
-                    <Text style={styles.riskStatValue}>
-                      {districtRisk.temperature.toFixed(1)}°
-                    </Text>
+                    <AnimatedCounter
+                      value={districtRisk.temperature}
+                      delay={900}
+                      decimalPlaces={1}
+                      suffix="°"
+                      style={styles.riskStatValue}
+                    />
                     <Text style={styles.riskStatLabel}>Temp</Text>
                   </View>
                 )}
@@ -341,9 +494,12 @@ export const HomeScreen: React.FC = () => {
                       size={16}
                       color={colors.textSecondary}
                     />
-                    <Text style={styles.riskStatValue}>
-                      {districtRisk.precipitation.toFixed(0)}mm
-                    </Text>
+                    <AnimatedCounter
+                      value={districtRisk.precipitation}
+                      delay={1000}
+                      suffix="mm"
+                      style={styles.riskStatValue}
+                    />
                     <Text style={styles.riskStatLabel}>Rain</Text>
                   </View>
                 )}
@@ -353,65 +509,29 @@ export const HomeScreen: React.FC = () => {
         )}
 
         {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionCard, shadows.sm]}
-            onPress={() => navigation.navigate("Tasks")}
-            activeOpacity={0.7}
-          >
-            <View
-              style={[
-                styles.actionIcon,
-                { backgroundColor: colors.primary + "15" },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="clipboard-list"
-                size={24}
-                color={colors.primary}
-              />
-            </View>
-            <Text style={styles.actionText}>View Tasks</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionCard, shadows.sm]}
-            onPress={() => navigation.navigate("TaskMap")}
-            activeOpacity={0.7}
-          >
-            <View
-              style={[
-                styles.actionIcon,
-                { backgroundColor: colors.primaryDark + "15" },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="map-marker-radius"
-                size={24}
-                color={colors.primaryDark}
-              />
-            </View>
-            <Text style={styles.actionText}>Task Map</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionCard, shadows.sm]}
-            onPress={() => navigation.navigate("Profile")}
-            activeOpacity={0.7}
-          >
-            <View
-              style={[styles.actionIcon, { backgroundColor: colors.accent }]}
-            >
-              <MaterialCommunityIcons
-                name="account-circle"
-                size={24}
-                color={colors.primary}
-              />
-            </View>
-            <Text style={styles.actionText}>Profile</Text>
-          </TouchableOpacity>
-        </View>
+        <Animated.View style={{ opacity: fadeActions }}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.actionsRow}>
+            <ActionCard
+              icon="clipboard-list"
+              label="View Tasks"
+              color={colors.primary}
+              onPress={() => navigation.navigate("Tasks")}
+            />
+            <ActionCard
+              icon="map-marker-radius"
+              label="Task Map"
+              color={colors.primaryDark}
+              onPress={() => navigation.navigate("TaskMap")}
+            />
+            <ActionCard
+              icon="account-circle"
+              label="Profile"
+              color={colors.primaryLight}
+              onPress={() => navigation.navigate("Profile")}
+            />
+          </View>
+        </Animated.View>
 
         <View style={{ height: spacing.xl }} />
       </ScrollView>
@@ -427,13 +547,39 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xl,
   },
+  // Gradient header
+  gradientHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderBottomLeftRadius: borderRadius["3xl"],
+    borderBottomRightRadius: borderRadius["3xl"],
+    overflow: "hidden",
+    position: "relative",
+  },
+  decorCircle1: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -30,
+    right: -20,
+  },
+  decorCircle2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    bottom: -20,
+    left: 20,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    zIndex: 2,
   },
   headerLeft: {
     flex: 1,
@@ -443,38 +589,39 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
+    color: "rgba(255,255,255,0.75)",
     fontWeight: typography.fontWeight.medium,
   },
   userName: {
     fontSize: typography.fontSize["2xl"],
     fontWeight: typography.fontWeight.bold,
-    color: colors.text,
+    color: colors.primaryForeground,
     marginTop: 2,
   },
   rolePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    backgroundColor: colors.primary + "12",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
     borderRadius: borderRadius.full,
     alignSelf: "flex-start",
     marginTop: spacing.sm,
   },
   roleText: {
     fontSize: typography.fontSize.xs,
-    color: colors.primary,
+    color: "rgba(255,255,255,0.9)",
     fontWeight: typography.fontWeight.medium,
   },
   avatarCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   avatarText: {
     fontSize: typography.fontSize.xl,
@@ -485,34 +632,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    backgroundColor: "rgba(255,255,255,0.12)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.secondary,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
+    zIndex: 2,
   },
   districtText: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,
-    color: colors.secondaryForeground,
+    color: "rgba(255,255,255,0.9)",
   },
+  // Alert
   alertBanner: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+    marginTop: spacing.md,
     padding: spacing.md,
-    backgroundColor: colors.destructive + "0C",
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: colors.destructive + "25",
+    borderColor: colors.destructive + "20",
+    ...shadows.sm,
   },
-  alertIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.destructive + "15",
+  alertIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     marginRight: spacing.sm,
@@ -530,14 +678,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 1,
   },
+  // Section
   sectionTitle: {
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     marginBottom: spacing.md,
   },
+  // Stats
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -549,15 +699,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "46%",
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
   statIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.sm,
@@ -573,13 +723,14 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
     marginTop: 2,
   },
+  // Total
   totalCard: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -609,10 +760,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 2,
   },
+  // Risk
   riskCard: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -629,9 +781,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   riskIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -676,6 +828,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
+  // Actions
   actionsRow: {
     flexDirection: "row",
     paddingHorizontal: spacing.lg,
@@ -684,16 +837,16 @@ const styles = StyleSheet.create({
   actionCard: {
     flex: 1,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
   },
   actionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.sm,

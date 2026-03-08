@@ -1,9 +1,8 @@
 /**
- * Profile Screen — Full PHI user profile
- * Shows user info, task stats, and provides logout functionality
+ * Profile Screen — Enhanced with gradient header, animated avatar, animated progress
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,8 +11,12 @@ import {
   RefreshControl,
   Alert,
   TouchableOpacity,
+  Animated,
+  Easing,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   colors,
@@ -21,7 +24,9 @@ import {
   typography,
   borderRadius,
   shadows,
+  animation,
 } from "../../theme";
+import { AnimatedCounter } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import { getTaskStats } from "../../api/taskService";
 import { TaskStats } from "../../types/task.types";
@@ -31,6 +36,14 @@ export const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Animations
+  const fadeHeader = useRef(new Animated.Value(0)).current;
+  const scaleAvatar = useRef(new Animated.Value(0.7)).current;
+  const fadeContent = useRef(new Animated.Value(0)).current;
+  const slideContent = useRef(new Animated.Value(30)).current;
+  const progressWidth = useRef(new Animated.Value(0)).current;
+  const ringRotation = useRef(new Animated.Value(0)).current;
 
   const fetchStats = useCallback(async (refresh = false) => {
     if (refresh) setIsRefreshing(true);
@@ -47,6 +60,60 @@ export const ProfileScreen: React.FC = () => {
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  useEffect(() => {
+    // Entrance animations
+    Animated.stagger(150, [
+      Animated.parallel([
+        Animated.timing(fadeHeader, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAvatar, {
+          toValue: 1,
+          tension: 40,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(fadeContent, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideContent, {
+          toValue: 0,
+          ...animation.spring.gentle,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    // Subtle ring rotation
+    Animated.loop(
+      Animated.timing(ringRotation, {
+        toValue: 1,
+        duration: 8000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [fadeHeader, scaleAvatar, fadeContent, slideContent, ringRotation]);
+
+  // Animate progress bar when stats change
+  useEffect(() => {
+    if (stats && stats.total > 0) {
+      const percent = stats.completed / stats.total;
+      Animated.spring(progressWidth, {
+        toValue: percent,
+        tension: 30,
+        friction: 8,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [stats, progressWidth]);
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -85,6 +152,11 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const rotateInterpolation = ringRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
@@ -98,212 +170,283 @@ export const ProfileScreen: React.FC = () => {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header */}
-        <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, shadows.lg]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-            <View style={styles.onlineIndicator} />
-          </View>
-          <Text style={styles.userName}>{user?.name || "PHI User"}</Text>
-          <Text style={styles.userEmail}>{user?.email || ""}</Text>
-          <View style={styles.roleBadge}>
-            <MaterialCommunityIcons
-              name="shield-check"
-              size={14}
-              color={colors.primary}
-            />
-            <Text style={styles.roleText}>{getRoleName(user?.role)}</Text>
-          </View>
-        </View>
-
-        {/* Info Cards */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Information</Text>
-
-          <View style={[styles.infoCard, shadows.sm]}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialCommunityIcons
-                  name="email-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Email</Text>
-                <Text style={styles.infoValue}>{user?.email || "—"}</Text>
-              </View>
-            </View>
-
-            <View style={styles.infoDivider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialCommunityIcons
-                  name="map-marker-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>District</Text>
-                <Text style={styles.infoValue}>
-                  {user?.district || "Not assigned"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.infoDivider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialCommunityIcons
-                  name="shield-account-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Role</Text>
-                <Text style={styles.infoValue}>{getRoleName(user?.role)}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Task Stats */}
-        {stats && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Performance</Text>
-            <View style={[styles.statsCard, shadows.sm]}>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>{stats.total}</Text>
-                  <Text style={styles.statLabel}>Total</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text
-                    style={[
-                      styles.statNumber,
-                      { color: colors.status.completed },
-                    ]}
-                  >
-                    {stats.completed}
-                  </Text>
-                  <Text style={styles.statLabel}>Done</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text
-                    style={[
-                      styles.statNumber,
-                      { color: colors.status.in_progress },
-                    ]}
-                  >
-                    {stats.inProgress}
-                  </Text>
-                  <Text style={styles.statLabel}>Active</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text
-                    style={[
-                      styles.statNumber,
-                      stats.overdueCount > 0 && {
-                        color: colors.destructive,
-                      },
-                    ]}
-                  >
-                    {stats.overdueCount}
-                  </Text>
-                  <Text style={styles.statLabel}>Overdue</Text>
-                </View>
-              </View>
-
-              {/* Completion bar */}
-              {stats.total > 0 && (
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBar}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${Math.round(
-                            (stats.completed / stats.total) * 100,
-                          )}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.progressText}>
-                    {Math.round((stats.completed / stats.total) * 100)}%
-                    completion rate
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* App Info */}
-        {__DEV__ && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>App Info</Text>
-            <View style={[styles.infoCard, shadows.sm]}>
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconContainer}>
-                  <MaterialCommunityIcons
-                    name="information-outline"
-                    size={20}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Version</Text>
-                  <Text style={styles.infoValue}>1.0.0</Text>
-                </View>
-              </View>
-              <View style={styles.infoDivider} />
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconContainer}>
-                  <MaterialCommunityIcons
-                    name="server-network"
-                    size={20}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>API Server</Text>
-                  <Text style={styles.infoValue} numberOfLines={1}>
-                    {API_CONFIG.BASE_URL}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Logout Button */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={[styles.logoutButton, shadows.sm]}
-            onPress={handleLogout}
-            activeOpacity={0.7}
+        {/* Gradient Profile Header */}
+        <Animated.View style={{ opacity: fadeHeader }}>
+          <LinearGradient
+            colors={colors.gradient.header}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
           >
-            <MaterialCommunityIcons
-              name="logout"
-              size={20}
-              color={colors.destructive}
-            />
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.decorCircle1} />
+            <View style={styles.decorCircle2} />
 
-        <Text style={styles.footerText}>EpiLink PHI Mobile v1.0.0</Text>
-        <View style={{ height: spacing.xl }} />
+            <View style={styles.avatarContainer}>
+              {/* Rotating gradient ring */}
+              <Animated.View
+                style={[
+                  styles.avatarRing,
+                  { transform: [{ rotate: rotateInterpolation }] },
+                ]}
+              >
+                <LinearGradient
+                  colors={[
+                    "rgba(255,255,255,0.5)",
+                    "rgba(255,255,255,0.1)",
+                    "rgba(255,255,255,0.5)",
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatarRingGradient}
+                />
+              </Animated.View>
+              <Animated.View
+                style={[styles.avatar, { transform: [{ scale: scaleAvatar }] }]}
+              >
+                <Text style={styles.avatarText}>{initials}</Text>
+              </Animated.View>
+              <View style={styles.onlineIndicator} />
+            </View>
+
+            <Text style={styles.userName}>{user?.name || "PHI User"}</Text>
+            <Text style={styles.userEmail}>{user?.email || ""}</Text>
+            <View style={styles.roleBadge}>
+              <MaterialCommunityIcons
+                name="shield-check"
+                size={14}
+                color="rgba(255,255,255,0.9)"
+              />
+              <Text style={styles.roleText}>{getRoleName(user?.role)}</Text>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+
+        {/* Content */}
+        <Animated.View
+          style={{
+            opacity: fadeContent,
+            transform: [{ translateY: slideContent }],
+          }}
+        >
+          {/* Info Cards */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Account Information</Text>
+
+            <View style={[styles.infoCard, shadows.md]}>
+              <View style={styles.infoRow}>
+                <LinearGradient
+                  colors={[colors.primary + "15", colors.primary + "08"]}
+                  style={styles.infoIconContainer}
+                >
+                  <MaterialCommunityIcons
+                    name="email-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </LinearGradient>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Email</Text>
+                  <Text style={styles.infoValue}>{user?.email || "—"}</Text>
+                </View>
+              </View>
+
+              <View style={styles.infoDivider} />
+
+              <View style={styles.infoRow}>
+                <LinearGradient
+                  colors={[colors.primary + "15", colors.primary + "08"]}
+                  style={styles.infoIconContainer}
+                >
+                  <MaterialCommunityIcons
+                    name="map-marker-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </LinearGradient>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>District</Text>
+                  <Text style={styles.infoValue}>
+                    {user?.district || "Not assigned"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.infoDivider} />
+
+              <View style={styles.infoRow}>
+                <LinearGradient
+                  colors={[colors.primary + "15", colors.primary + "08"]}
+                  style={styles.infoIconContainer}
+                >
+                  <MaterialCommunityIcons
+                    name="shield-account-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </LinearGradient>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Role</Text>
+                  <Text style={styles.infoValue}>
+                    {getRoleName(user?.role)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Task Stats */}
+          {stats && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>My Performance</Text>
+              <View style={[styles.statsCard, shadows.md]}>
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <AnimatedCounter
+                      value={stats.total}
+                      delay={300}
+                      style={styles.statNumber}
+                    />
+                    <Text style={styles.statLabel}>Total</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <AnimatedCounter
+                      value={stats.completed}
+                      delay={400}
+                      style={{
+                        ...styles.statNumber,
+                        color: colors.status.completed,
+                      }}
+                    />
+                    <Text style={styles.statLabel}>Done</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <AnimatedCounter
+                      value={stats.inProgress}
+                      delay={500}
+                      style={{
+                        ...styles.statNumber,
+                        color: colors.status.in_progress,
+                      }}
+                    />
+                    <Text style={styles.statLabel}>Active</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <AnimatedCounter
+                      value={stats.overdueCount}
+                      delay={600}
+                      style={{
+                        ...styles.statNumber,
+                        ...(stats.overdueCount > 0
+                          ? { color: colors.destructive }
+                          : {}),
+                      }}
+                    />
+                    <Text style={styles.statLabel}>Overdue</Text>
+                  </View>
+                </View>
+
+                {/* Animated completion bar */}
+                {stats.total > 0 && (
+                  <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                      <Animated.View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: progressWidth.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ["0%", "100%"],
+                            }),
+                          },
+                        ]}
+                      >
+                        <LinearGradient
+                          colors={colors.gradient.accent}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={StyleSheet.absoluteFill}
+                        />
+                      </Animated.View>
+                    </View>
+                    <Text style={styles.progressText}>
+                      {Math.round((stats.completed / stats.total) * 100)}%
+                      completion rate
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* App Info  */}
+          {__DEV__ && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>App Info</Text>
+              <View style={[styles.infoCard, shadows.md]}>
+                <View style={styles.infoRow}>
+                  <LinearGradient
+                    colors={[colors.primary + "15", colors.primary + "08"]}
+                    style={styles.infoIconContainer}
+                  >
+                    <MaterialCommunityIcons
+                      name="information-outline"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  </LinearGradient>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Version</Text>
+                    <Text style={styles.infoValue}>1.0.0</Text>
+                  </View>
+                </View>
+                <View style={styles.infoDivider} />
+                <View style={styles.infoRow}>
+                  <LinearGradient
+                    colors={[colors.primary + "15", colors.primary + "08"]}
+                    style={styles.infoIconContainer}
+                  >
+                    <MaterialCommunityIcons
+                      name="server-network"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  </LinearGradient>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>API Server</Text>
+                    <Text style={styles.infoValue} numberOfLines={1}>
+                      {API_CONFIG.BASE_URL}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Logout Button */}
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={[styles.logoutButton, shadows.md]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleLogout();
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="logout"
+                size={20}
+                color={colors.destructive}
+              />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.footerText}>EpiLink PHI Mobile v1.0.0</Text>
+          <View style={{ height: spacing.xl }} />
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -317,23 +460,65 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xl,
   },
-  header: {
+  // Gradient header
+  headerGradient: {
     alignItems: "center",
     paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+    borderBottomLeftRadius: borderRadius["3xl"],
+    borderBottomRightRadius: borderRadius["3xl"],
+    overflow: "hidden",
+    position: "relative",
+  },
+  decorCircle1: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -20,
+    right: -20,
+  },
+  decorCircle2: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    bottom: 10,
+    left: 20,
   },
   avatarContainer: {
     position: "relative",
     marginBottom: spacing.md,
+    width: 92,
+    height: 92,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarRing: {
+    position: "absolute",
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    overflow: "hidden",
+  },
+  avatarRingGradient: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 46,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.primary,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   avatarText: {
     fontSize: typography.fontSize["3xl"],
@@ -342,39 +527,39 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: {
     position: "absolute",
-    bottom: 2,
-    right: 2,
+    bottom: 4,
+    right: 4,
     width: 16,
     height: 16,
     borderRadius: 8,
     backgroundColor: colors.success,
     borderWidth: 3,
-    borderColor: colors.background,
+    borderColor: "rgba(255,255,255,0.5)",
   },
   userName: {
     fontSize: typography.fontSize["2xl"],
     fontWeight: typography.fontWeight.bold,
-    color: colors.text,
+    color: colors.primaryForeground,
   },
   userEmail: {
     fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
+    color: "rgba(255,255,255,0.7)",
     marginTop: 2,
   },
   roleBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    backgroundColor: colors.primary + "12",
+    backgroundColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 1,
     borderRadius: borderRadius.full,
     marginTop: spacing.sm,
   },
   roleText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,
-    color: colors.primary,
+    color: "rgba(255,255,255,0.9)",
   },
   section: {
     paddingHorizontal: spacing.lg,
@@ -385,10 +570,11 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
   infoCard: {
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "hidden",
@@ -400,10 +586,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   infoIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary + "10",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -428,7 +613,7 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -465,15 +650,15 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   progressBar: {
-    height: 6,
+    height: 8,
     backgroundColor: colors.muted,
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: colors.success,
-    borderRadius: 3,
+    borderRadius: 4,
+    overflow: "hidden",
   },
   progressText: {
     fontSize: typography.fontSize.xs,
@@ -488,9 +673,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.card,
     padding: spacing.md,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: colors.destructive + "30",
+    borderColor: colors.destructive + "25",
   },
   logoutText: {
     fontSize: typography.fontSize.base,
