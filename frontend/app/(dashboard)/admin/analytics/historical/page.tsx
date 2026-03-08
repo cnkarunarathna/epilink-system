@@ -8,16 +8,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import {
   Calendar,
   TrendingUp,
@@ -26,7 +20,9 @@ import {
   LineChart,
   Activity,
   Loader2,
+  CloudRain,
 } from "lucide-react";
+
 import { toast } from "sonner";
 import {
   fetchHistoricalRange,
@@ -34,21 +30,24 @@ import {
   fetchYearlySummary,
   fetchLatestPerDistrict,
 } from "@/services/analytics.service";
+
 import {
-  LineChart as RechartsLine,
-  BarChart as RechartsBar,
-  Line,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Area,
-  AreaChart,
 } from "recharts";
+
 import { useTheme } from "next-themes";
+
+import { DistrictComparisonTab } from "@/components/dashboard/historical/DistrictComparisonTab";
+import { YearlySummaryTab } from "@/components/dashboard/historical/YearlySummaryTab";
+import { SeasonalPatternTab } from "@/components/dashboard/historical/SeasonalPatternTab";
+import { WeatherImpactTab } from "@/components/dashboard/historical/WeatherImpactTab";
 
 interface HistoricalData {
   year: number;
@@ -82,7 +81,7 @@ export default function HistoricalAnalyticsPage() {
   const [availableDistricts, setAvailableDistricts] = useState<string[]>([]);
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [yearlySummary, setYearlySummary] = useState<YearlySummary | null>(
-    null
+    null,
   );
   const [comparisonData, setComparisonData] = useState<HistoricalData[]>([]);
   const { resolvedTheme } = useTheme();
@@ -188,7 +187,7 @@ export default function HistoricalAnalyticsPage() {
     // Calculate averages
     Object.values(yearlyData).forEach((yearData) => {
       const yearRecords = historicalData.filter(
-        (d) => d.year === yearData.year
+        (d) => d.year === yearData.year,
       );
       yearData.avg = yearData.total / yearRecords.length;
     });
@@ -231,6 +230,58 @@ export default function HistoricalAnalyticsPage() {
   const yearlyTrends = processYearlyTrends();
   const seasonalPattern = processSeasonalPattern();
 
+  // Process data for weather correlation
+  const processWeatherCorrelationData = () => {
+    // Only use comparison data for selected districts to show cases vs weather
+    const groupedByWeek: Record<string, any> = {};
+
+    comparisonData.forEach((item) => {
+      const key = `${item.year}-W${item.week}`;
+      if (!groupedByWeek[key]) {
+        groupedByWeek[key] = {
+          weekLabel: key,
+          year: item.year,
+          week: item.week,
+          cases: 0,
+          tempSum: 0,
+          precipSum: 0,
+          weatherCount: 0,
+        };
+      }
+
+      groupedByWeek[key].cases += item.cases;
+
+      if (item.temperature !== null) {
+        groupedByWeek[key].tempSum += item.temperature;
+        groupedByWeek[key].weatherCount += 1;
+      }
+
+      if (item.precipitation !== null) {
+        groupedByWeek[key].precipSum += item.precipitation;
+      }
+    });
+
+    return Object.values(groupedByWeek)
+      .map((w: any) => ({
+        weekLabel: w.weekLabel,
+        year: w.year,
+        week: w.week,
+        cases: w.cases,
+        temp:
+          w.weatherCount > 0
+            ? Number((w.tempSum / w.weatherCount).toFixed(1))
+            : null,
+        precip:
+          w.weatherCount > 0
+            ? Number((w.precipSum / w.weatherCount).toFixed(1))
+            : null,
+      }))
+      .sort((a: any, b: any) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.week - b.week;
+      });
+  };
+
   const COLORS = [
     "#dc2626", // red
     "#2563eb", // blue
@@ -265,7 +316,7 @@ export default function HistoricalAnalyticsPage() {
       </div>
 
       <Tabs defaultValue="trends" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="trends">
             <LineChart className="h-4 w-4 mr-2" />
             Trends
@@ -281,6 +332,10 @@ export default function HistoricalAnalyticsPage() {
           <TabsTrigger value="seasonal">
             <TrendingUp className="h-4 w-4 mr-2" />
             Seasonal Patterns
+          </TabsTrigger>
+          <TabsTrigger value="weather">
+            <CloudRain className="h-4 w-4 mr-2" />
+            Weather Impact
           </TabsTrigger>
         </TabsList>
 
@@ -413,322 +468,45 @@ export default function HistoricalAnalyticsPage() {
 
         {/* District Comparison Tab */}
         <TabsContent value="comparison" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>District Time Series Comparison</CardTitle>
-                  <CardDescription>
-                    Compare dengue case trends across selected districts
-                  </CardDescription>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {availableDistricts.slice(0, 8).map((district) => (
-                    <Button
-                      key={district}
-                      size="sm"
-                      variant={
-                        selectedDistricts.includes(district)
-                          ? "default"
-                          : "outline"
-                      }
-                      onClick={() => {
-                        if (selectedDistricts.includes(district)) {
-                          setSelectedDistricts(
-                            selectedDistricts.filter((d) => d !== district)
-                          );
-                        } else {
-                          setSelectedDistricts([
-                            ...selectedDistricts,
-                            district,
-                          ]);
-                        }
-                      }}
-                    >
-                      {district}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={500}>
-                <RechartsLine data={timeSeriesData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={isDark ? "#374151" : "#e5e7eb"}
-                  />
-                  <XAxis
-                    dataKey="weekLabel"
-                    angle={-45}
-                    textAnchor="end"
-                    height={100}
-                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
-                  />
-                  <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDark ? "#1f2937" : "#fff",
-                      borderColor: isDark ? "#374151" : "#e5e7eb",
-                      color: isDark ? "#f3f4f6" : "#111827",
-                    }}
-                  />
-                  <Legend />
-                  {selectedDistricts.map((district, idx) => (
-                    <Line
-                      key={district}
-                      type="monotone"
-                      dataKey={district}
-                      stroke={COLORS[idx % COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  ))}
-                </RechartsLine>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <DistrictComparisonTab
+            availableDistricts={availableDistricts}
+            selectedDistricts={selectedDistricts}
+            setSelectedDistricts={setSelectedDistricts}
+            timeSeriesData={timeSeriesData}
+            isDark={isDark}
+            COLORS={COLORS}
+          />
         </TabsContent>
 
         {/* Yearly Summary Tab */}
         <TabsContent value="yearly" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Yearly District Summary</CardTitle>
-                  <CardDescription>
-                    Detailed statistics for each district in {selectedYear}
-                  </CardDescription>
-                </div>
-                <Select
-                  value={selectedYear.toString()}
-                  onValueChange={(v) => setSelectedYear(parseInt(v))}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableYears.map((year) => (
-                      <SelectItem key={year} value={year.toString()}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {yearlySummary ? (
-                <div className="space-y-4">
-                  {/* Bar chart */}
-                  <ResponsiveContainer width="100%" height={400}>
-                    <RechartsBar data={yearlySummary.districts}>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={isDark ? "#374151" : "#e5e7eb"}
-                      />
-                      <XAxis
-                        dataKey="district"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
-                      />
-                      <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: isDark ? "#1f2937" : "#fff",
-                          borderColor: isDark ? "#374151" : "#e5e7eb",
-                          color: isDark ? "#f3f4f6" : "#111827",
-                        }}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="total_cases"
-                        fill="#3b82f6"
-                        name="Total Cases"
-                      />
-                      <Bar
-                        dataKey="max_cases"
-                        fill="#dc2626"
-                        name="Peak Week"
-                      />
-                    </RechartsBar>
-                  </ResponsiveContainer>
-
-                  {/* District table */}
-                  <div className="rounded-lg border">
-                    <table className="w-full">
-                      <thead className="border-b bg-muted/50">
-                        <tr>
-                          <th className="p-3 text-left font-medium">
-                            District
-                          </th>
-                          <th className="p-3 text-right font-medium">Total</th>
-                          <th className="p-3 text-right font-medium">
-                            Average
-                          </th>
-                          <th className="p-3 text-right font-medium">Peak</th>
-                          <th className="p-3 text-right font-medium">
-                            Minimum
-                          </th>
-                          <th className="p-3 text-center font-medium">
-                            Risk Level
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {yearlySummary.districts.map((district, idx) => {
-                          const risk = getRiskLevel(district.max_cases);
-                          return (
-                            <tr
-                              key={district.district}
-                              className="border-b last:border-0"
-                            >
-                              <td className="p-3 font-medium">
-                                {district.district}
-                              </td>
-                              <td className="p-3 text-right">
-                                {district.total_cases.toLocaleString()}
-                              </td>
-                              <td className="p-3 text-right">
-                                {district.avg_cases.toFixed(1)}
-                              </td>
-                              <td className="p-3 text-right font-semibold text-red-600 dark:text-red-400">
-                                {district.max_cases}
-                              </td>
-                              <td className="p-3 text-right text-muted-foreground">
-                                {district.min_cases}
-                              </td>
-                              <td className="p-3 text-center">
-                                <Badge variant={risk.color as any}>
-                                  {risk.level}
-                                </Badge>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-64 text-muted-foreground">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <YearlySummaryTab
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+            availableYears={availableYears}
+            yearlySummary={yearlySummary}
+            getRiskLevel={getRiskLevel}
+            isDark={isDark}
+          />
         </TabsContent>
 
         {/* Seasonal Patterns Tab */}
         <TabsContent value="seasonal" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Seasonal Pattern Analysis</CardTitle>
-              <CardDescription>
-                Average dengue cases by week across all years
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <AreaChart data={seasonalPattern}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={isDark ? "#374151" : "#e5e7eb"}
-                  />
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }}
-                  />
-                  <YAxis tick={{ fill: isDark ? "#9ca3af" : "#6b7280" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDark ? "#1f2937" : "#fff",
-                      borderColor: isDark ? "#374151" : "#e5e7eb",
-                      color: isDark ? "#f3f4f6" : "#111827",
-                    }}
-                  />
-                  <Legend />
-                  <Area
-                    type="monotone"
-                    dataKey="avgCases"
-                    stroke="#f59e0b"
-                    fill="#fbbf24"
-                    fillOpacity={0.6}
-                    name="Average Cases per Week"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+          <SeasonalPatternTab
+            seasonalPattern={seasonalPattern}
+            isDark={isDark}
+          />
+        </TabsContent>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Peak Season
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      Week{" "}
-                      {seasonalPattern.length > 0
-                        ? [...seasonalPattern].sort(
-                            (a, b) => b.avgCases - a.avgCases
-                          )[0]?.week
-                        : "-"}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Highest average cases
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Low Season
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      Week{" "}
-                      {seasonalPattern.length > 0
-                        ? [...seasonalPattern].sort(
-                            (a, b) => a.avgCases - b.avgCases
-                          )[0]?.week
-                        : "-"}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Lowest average cases
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Pattern Variation
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {seasonalPattern.length > 0
-                        ? (
-                            Math.max(
-                              ...seasonalPattern.map((s) => s.avgCases)
-                            ) /
-                            Math.min(...seasonalPattern.map((s) => s.avgCases))
-                          ).toFixed(1)
-                        : "-"}
-                      x
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Peak to trough ratio
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Weather Impact Tab */}
+        <TabsContent value="weather" className="space-y-6">
+          <WeatherImpactTab
+            availableDistricts={availableDistricts}
+            selectedDistricts={selectedDistricts}
+            setSelectedDistricts={setSelectedDistricts}
+            weatherCorrelationData={processWeatherCorrelationData()}
+            isDark={isDark}
+          />
         </TabsContent>
       </Tabs>
     </div>

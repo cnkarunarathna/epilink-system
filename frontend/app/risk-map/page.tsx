@@ -38,6 +38,14 @@ import {
   fetchPublicDashboardSummary,
   fetchPublicTrends,
 } from "@/services/public-analytics.service";
+import {
+  BarChart as RechartsBar,
+  Bar,
+  XAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 interface DistrictPrediction {
   district: string;
@@ -568,33 +576,43 @@ export default function PublicRiskMapPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64 flex items-end justify-between gap-2">
-                    {trends
-                      .filter((t) => t.year && t.week)
-                      .map((t) => {
-                        const maxCases = Math.max(
-                          ...trends.map((d) => d.total_cases),
-                        );
-                        const height = (t.total_cases / maxCases) * 100;
-                        return (
-                          <div
-                            key={`${t.year}-${t.week}`}
-                            className="flex-1 flex flex-col items-center group"
-                          >
-                            <div className="text-xs text-muted-foreground mb-1 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                              {t.total_cases}
-                            </div>
-                            <div
-                              className="w-full bg-primary rounded-t transition-all hover:bg-primary/80 cursor-default"
-                              style={{ height: `${height}%` }}
-                              title={`Week ${t.week}: ${t.total_cases} cases`}
-                            ></div>
-                            <span className="text-xs text-muted-foreground mt-2">
-                              W{t.week}
-                            </span>
-                          </div>
-                        );
-                      })}
+                  <div className="h-64 mt-4 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBar data={trends}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis
+                          dataKey="week"
+                          tickFormatter={(value) => `W${value}`}
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 12 }}
+                          dy={10}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "transparent" }}
+                          formatter={(value: number | undefined) => [
+                            value || 0,
+                            "Cases",
+                          ]}
+                          labelFormatter={(label, payload) => {
+                            if (
+                              payload &&
+                              payload.length > 0 &&
+                              payload[0].payload
+                            ) {
+                              return `Week ${label}, ${payload[0].payload.year}`;
+                            }
+                            return `Week ${label}`;
+                          }}
+                        />
+                        <Bar
+                          dataKey="total_cases"
+                          fill="currentColor"
+                          className="fill-primary"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </RechartsBar>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
