@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Wifi,
   WifiOff,
+  Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -35,6 +36,7 @@ import OutbreakAlerts from "@/components/dashboard/analytics/OutbreakAlerts";
 import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
 import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
+import ExplainableInsightsPanel from "@/components/dashboard/analytics/ExplainableInsightsPanel";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -324,7 +326,7 @@ export default function AnalyticsPage() {
           </div>
           {/* Nested Tabs for Predictions Sections */}
           <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 h-12 p-1 bg-muted/50">
+            <TabsList className="grid w-full grid-cols-4 h-12 p-1 bg-muted/50">
               <TabsTrigger value="overview" className="text-sm">
                 <Activity className="h-4 w-4 mr-2" />
                 Overview
@@ -332,6 +334,10 @@ export default function AnalyticsPage() {
               <TabsTrigger value="advanced" className="text-sm">
                 <Zap className="h-4 w-4 mr-2" />
                 Advanced Analytics
+              </TabsTrigger>
+              <TabsTrigger value="ai-insights" className="text-sm">
+                <Brain className="h-4 w-4 mr-2" />
+                AI Insights
               </TabsTrigger>
               <TabsTrigger value="districts" className="text-sm">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -721,6 +727,37 @@ export default function AnalyticsPage() {
 
                 {/* Weather Correlation */}
                 <WeatherCorrelation />
+              </div>
+            </TabsContent>
+
+            {/* AI Insights Tab */}
+            <TabsContent value="ai-insights" className="space-y-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
+                    <Brain className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold">AI-Powered Insights</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Explainable risk analysis with key drivers and actionable recommendations
+                    </p>
+                  </div>
+                </div>
+
+                <ExplainableInsightsPanel district={selectedDistrict} />
+
+                {!selectedDistrict && predictions.length > 0 && (
+                  <Card className="border border-dashed">
+                    <CardContent className="py-6">
+                      <p className="text-sm text-muted-foreground text-center">
+                        💡 Tip: Click on any district in the{" "}
+                        <span className="font-medium text-foreground">Overview</span> tab&apos;s map or district list,
+                        then return here to see AI-generated insights.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </TabsContent>
 

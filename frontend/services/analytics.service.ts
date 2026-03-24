@@ -137,3 +137,27 @@ export async function fetchWeeklyForecast() {
   );
   return res.data;
 }
+
+export interface ExplainInsightResponse {
+  district: string;
+  risk_level: "low" | "moderate" | "high" | "critical";
+  summary: string;
+  key_drivers: string[];
+  recommendations: string[];
+  caveats: string[];
+  references: string[];
+  implementation_phase: string;
+  _fallback?: boolean;
+  _error?: string;
+  error?: string;
+}
+
+export async function fetchExplainableInsight(
+  district: string,
+): Promise<ExplainInsightResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/explain/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}

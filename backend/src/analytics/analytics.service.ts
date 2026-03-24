@@ -671,4 +671,115 @@ export class AnalyticsService {
       confidence: 'medium',
     }));
   }
+
+  async getExplainableInsight(districtName: string) {
+    const manager = this.dataSource.manager;
+
+    // Get the district entity
+    const district = await manager
+      .getRepository(District)
+      .findOne({ where: { name: districtName } });
+    if (!district) {
+      return { error: 'District not found', district: districtName };
+    }
+
+    // Get latest 4 weeks of cases for this district
+    const recentWeeks = await manager.query(
+      `SELECT dc.year, dc.week, dc.cases,
+              w.temperature_2m_mean, w.precipitation_sum,
+              ROW_NUMBER() OVER (ORDER BY dc.year DESC, dc.week DESC) as rn
+       FROM dengue_cases dc
+       LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
+       WHERE dc.district_id = $1
+       ORDER BY dc.year DESC, dc.week DESC
+       LIMIT 4`,
+      [district.id],
+    );
+
+    if (recentWeeks.length === 0) {
+      return { error: 'No data available', district: districtName };
+    }
+
+    const current = recentWeeks[0];
+    const previous = recentWeeks.length > 1 ? recentWeeks[1] : null;
+
+    const currentCases = Number(current.cases) || 0;
+    const prevCases = previous ? Number(previous.cases) || 0 : 0;
+    const wowChange =
+      prevCases > 0
+        ? ((currentCases - prevCases) / prevCases) * 100
+        : 0;
+
+    const rainfall7d = current.precipitation_sum
+      ? Number(current.precipitation_sum)
+      : null;
+    const temperature7d = current.temperature_2m_mean
+      ? Number(current.temperature_2m_mean)
+      : null;
+
+    // Derive a risk score from current case count (normalize to 0-1)
+    const maxCasesRow = await manager.query(
+      `SELECT MAX(cases) as max_cases FROM dengue_cases`,
+    );
+    const maxCases = Number(maxCasesRow[0]?.max_cases) || 200;
+    const riskScore = Math.min(currentCases / maxCases, 1.0);
+
+    // Uncertainty bounds (±15% of risk score)
+    const uncertaintyLower = Math.max(0, riskScore - 0.15);
+    const uncertaintyUpper = Math.min(1, riskScore + 0.15);
+
+    const payload = {
+      district: districtName,
+      prediction_week: `${current.year}-W${String(current.week).padStart(2, '0')}`,
+      structured_signals: {
+        recent_case_count: currentCases,
+        wow_case_change_pct: Number(wowChange.toFixed(1)),
+        rainfall_mm_7d: rainfall7d,
+        temperature_c_7d: temperature7d,
+        model_risk_score: Number(riskScore.toFixed(3)),
+        uncertainty_lower: Number(uncertaintyLower.toFixed(3)),
+        uncertainty_upper: Number(uncertaintyUpper.toFixed(3)),
+      },
+      rag_context: [],
+    };
+
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.post(
+        `${explainUrl}/v1/insights/explain`,
+        payload,
+      );
+      return resp.data;
+    } catch (err: any) {
+      // If the Python service is down, return a basic fallback
+      return {
+        district: districtName,
+        risk_level:
+          riskScore >= 0.85
+            ? 'critical'
+            : riskScore >= 0.65
+              ? 'high'
+              : riskScore >= 0.4
+                ? 'moderate'
+                : 'low',
+        summary: `${districtName} has ${currentCases} cases this week (${wowChange >= 0 ? '+' : ''}${wowChange.toFixed(1)}% WoW). Explainable AI service is currently unavailable.`,
+        key_drivers: [
+          wowChange >= 10
+            ? `Cases increased ${wowChange.toFixed(1)}% week-over-week`
+            : `Current case count: ${currentCases}`,
+        ],
+        recommendations: [
+          'Increase surveillance in high-incidence areas',
+        ],
+        caveats: [
+          'AI explanation service unavailable — showing basic fallback',
+        ],
+        references: [],
+        implementation_phase: 'phase-1-fallback',
+        _fallback: true,
+        _error: err.message,
+      };
+    }
+  }
 }
