@@ -147,6 +147,9 @@ export interface ExplainInsightResponse {
   caveats: string[];
   references: string[];
   implementation_phase: string;
+  confidence_score: number;
+  trend_direction: "rising" | "falling" | "stable";
+  follow_up_answer?: string | null;
   _fallback?: boolean;
   _error?: string;
   error?: string;
@@ -157,6 +160,17 @@ export async function fetchExplainableInsight(
 ): Promise<ExplainInsightResponse> {
   const res = await axios.get(
     `${API_BASE}/analytics/explain/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function fetchExplainFollowUp(
+  district: string,
+  question: string,
+): Promise<ExplainInsightResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/explain/${encodeURIComponent(district)}/ask?question=${encodeURIComponent(question)}`,
     { headers: getAuthHeaders() },
   );
   return res.data;

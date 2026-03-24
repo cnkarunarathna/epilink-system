@@ -747,6 +747,7 @@ export class AnalyticsService {
         model_risk_score: Number(riskScore.toFixed(3)),
         uncertainty_lower: Number(uncertaintyLower.toFixed(3)),
         uncertainty_upper: Number(uncertaintyUpper.toFixed(3)),
+        historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
       },
       rag_context: [],
     };
@@ -785,6 +786,82 @@ export class AnalyticsService {
         implementation_phase: 'phase-1-fallback',
         _fallback: true,
         _error: err.message,
+      };
+    }
+  }
+
+  async askFollowUpQuestion(districtName: string, question: string) {
+    // Re-use getExplainableInsight logic but add user_question
+    const manager = this.dataSource.manager;
+    const district = await manager
+      .getRepository(District)
+      .findOne({ where: { name: districtName } });
+    if (!district) {
+      return { error: 'District not found', district: districtName };
+    }
+
+    const recentWeeks = await manager.query(
+      `SELECT dc.year, dc.week, dc.cases,
+              w.temperature_2m_mean, w.precipitation_sum
+       FROM dengue_cases dc
+       LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
+       WHERE dc.district_id = $1
+       ORDER BY dc.year DESC, dc.week DESC
+       LIMIT 4`,
+      [district.id],
+    );
+
+    if (recentWeeks.length === 0) {
+      return { error: 'No data available', district: districtName };
+    }
+
+    const current = recentWeeks[0];
+    const previous = recentWeeks.length > 1 ? recentWeeks[1] : null;
+    const currentCases = Number(current.cases) || 0;
+    const prevCases = previous ? Number(previous.cases) || 0 : 0;
+    const wowChange =
+      prevCases > 0 ? ((currentCases - prevCases) / prevCases) * 100 : 0;
+    const maxCasesRow = await manager.query(
+      `SELECT MAX(cases) as max_cases FROM dengue_cases`,
+    );
+    const maxCases = Number(maxCasesRow[0]?.max_cases) || 200;
+    const riskScore = Math.min(currentCases / maxCases, 1.0);
+
+    const payload = {
+      district: districtName,
+      prediction_week: `${current.year}-W${String(current.week).padStart(2, '0')}`,
+      structured_signals: {
+        recent_case_count: currentCases,
+        wow_case_change_pct: Number(wowChange.toFixed(1)),
+        rainfall_mm_7d: current.precipitation_sum
+          ? Number(current.precipitation_sum)
+          : null,
+        temperature_c_7d: current.temperature_2m_mean
+          ? Number(current.temperature_2m_mean)
+          : null,
+        model_risk_score: Number(riskScore.toFixed(3)),
+        uncertainty_lower: Number(Math.max(0, riskScore - 0.15).toFixed(3)),
+        uncertainty_upper: Number(Math.min(1, riskScore + 0.15).toFixed(3)),
+        historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
+      },
+      rag_context: [],
+      user_question: question,
+    };
+
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.post(
+        `${explainUrl}/v1/insights/explain`,
+        payload,
+      );
+      return resp.data;
+    } catch (err: any) {
+      return {
+        error: 'AI service unavailable',
+        follow_up_answer:
+          'The AI explanation service is currently unavailable. Please try again later.',
+        _fallback: true,
       };
     }
   }

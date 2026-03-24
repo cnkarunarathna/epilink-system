@@ -98,6 +98,7 @@ export default function AnalyticsPage() {
   const [predictions, setPredictions] = useState<DistrictPrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+  const [innerTab, setInnerTab] = useState("overview");
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [districtTimeseries, setDistrictTimeseries] = useState<
@@ -325,7 +326,7 @@ export default function AnalyticsPage() {
             </Button>
           </div>
           {/* Nested Tabs for Predictions Sections */}
-          <Tabs defaultValue="overview" className="space-y-6">
+          <Tabs value={innerTab} onValueChange={setInnerTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-4 h-12 p-1 bg-muted/50">
               <TabsTrigger value="overview" className="text-sm">
                 <Activity className="h-4 w-4 mr-2" />
@@ -689,9 +690,24 @@ export default function AnalyticsPage() {
                                 </p>
                               </div>
                             </div>
-                            <Badge variant={risk.color as any}>
-                              {risk.level}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={risk.color as any}>
+                                {risk.level}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-purple-500 hover:text-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/50"
+                                title="Explain This"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDistrict(district.district);
+                                  setInnerTab("ai-insights");
+                                }}
+                              >
+                                <Sparkles className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
@@ -745,19 +761,14 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                <ExplainableInsightsPanel district={selectedDistrict} />
-
-                {!selectedDistrict && predictions.length > 0 && (
-                  <Card className="border border-dashed">
-                    <CardContent className="py-6">
-                      <p className="text-sm text-muted-foreground text-center">
-                        💡 Tip: Click on any district in the{" "}
-                        <span className="font-medium text-foreground">Overview</span> tab&apos;s map or district list,
-                        then return here to see AI-generated insights.
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
+                <ExplainableInsightsPanel
+                  district={selectedDistrict}
+                  districts={predictions.map((p) => p.district)}
+                  onDistrictChange={(d) => {
+                    setSelectedDistrict(d);
+                    handleDistrictClick(d);
+                  }}
+                />
               </div>
             </TabsContent>
 

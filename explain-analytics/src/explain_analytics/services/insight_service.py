@@ -7,11 +7,50 @@ from explain_analytics.models import (
     ExplainInsightRequest,
     ExplainInsightResponse,
     RiskLevel,
+    TrendDirection,
 )
+
+SYSTEM_PROMPT = """\
+You are a **Senior Epidemiologist** specializing in dengue fever analytics \
+for the Sri Lankan Ministry of Health, integrated into the EpiLink Decision \
+Support System.
+
+Your task: given structured surveillance signals for a single district, \
+produce a concise but insightful JSON analysis that a Medical Officer of \
+Health (MOH) can immediately act upon.
+
+## Output JSON schema (all fields required)
+{
+  "risk_level": "low | moderate | high | critical",
+  "summary": "A 2–3 sentence narrative explaining the current situation in \
+plain language. Mention the district name, the case count, the trend, and \
+the main reason for the assigned risk level.",
+  "key_drivers": ["3–5 bullet strings identifying the primary factors \
+driving the risk assessment, e.g. rainfall, temperature, WoW change, \
+historical trajectory"],
+  "recommendations": ["3–5 specific, actionable public-health \
+recommendations tailored to the risk level and drivers, e.g. fogging, \
+source reduction, hospital bed allocation"],
+  "caveats": ["1–3 short caveats about model limitations or data gaps"],
+  "confidence_score": 0-100,
+  "trend_direction": "rising | falling | stable"
+}
+
+## Guidelines
+- Be specific to dengue in Sri Lanka; reference tropical weather patterns.
+- If rainfall > 80 mm / 7 days, highlight vector breeding risk.
+- If WoW change > 15%, emphasize the acceleration.
+- Derive trend_direction from the historical_trend array: compare recent \
+weeks to detect rising/falling/stable patterns.
+- confidence_score should reflect data completeness (all signals present → \
+higher) and consistency of trend signals.
+- Keep each string concise (max 2 sentences per bullet).
+- Do NOT include any markdown, only valid JSON.
+"""
 
 
 class ExplainabilityService:
-    """Phase 1 service that turns structured analytics into concise insights."""
+    """Turns structured analytics into concise, actionable insights."""
 
     @staticmethod
     def _classify_risk(score: float) -> RiskLevel:
@@ -24,9 +63,29 @@ class ExplainabilityService:
         return "low"
 
     @staticmethod
+    def _derive_trend(historical: list[int]) -> TrendDirection:
+        if len(historical) < 2:
+            return "stable"
+        recent_half = historical[: len(historical) // 2]
+        older_half = historical[len(historical) // 2 :]
+        avg_recent = sum(recent_half) / len(recent_half)
+        avg_older = sum(older_half) / len(older_half)
+        if avg_recent > avg_older * 1.10:
+            return "rising"
+        if avg_recent < avg_older * 0.90:
+            return "falling"
+        return "stable"
+
+    @staticmethod
     def _normalize_risk_level(value: str | None, fallback: RiskLevel) -> RiskLevel:
         if value in {"low", "moderate", "high", "critical"}:
-            return value
+            return value  # type: ignore[return-value]
+        return fallback
+
+    @staticmethod
+    def _normalize_trend(value: str | None, fallback: TrendDirection) -> TrendDirection:
+        if value in {"rising", "falling", "stable"}:
+            return value  # type: ignore[return-value]
         return fallback
 
     @staticmethod
@@ -36,60 +95,102 @@ class ExplainabilityService:
         cleaned = [str(item).strip() for item in value if str(item).strip()]
         return cleaned if cleaned else fallback
 
+    # ── Rule-based fallback ──────────────────────────────────────────
+
     def _generate_rule_based_insight(
         self, payload: ExplainInsightRequest
     ) -> ExplainInsightResponse:
-        risk_level = self._classify_risk(payload.structured_signals.model_risk_score)
+        signals = payload.structured_signals
+        risk_level = self._classify_risk(signals.model_risk_score)
+        trend = self._derive_trend(signals.historical_trend)
         drivers: list[str] = []
 
-        wow_change = payload.structured_signals.wow_case_change_pct
-        if wow_change is not None:
-            if wow_change >= 10:
+        wow = signals.wow_case_change_pct
+        if wow is not None:
+            if wow >= 15:
                 drivers.append(
-                    f"Reported cases increased by {wow_change:.1f}% week-over-week"
+                    f"Significant case surge: reported cases increased by {wow:.1f}% week-over-week, indicating rapid transmission acceleration"
                 )
-            elif wow_change <= -10:
+            elif wow >= 10:
                 drivers.append(
-                    f"Reported cases decreased by {abs(wow_change):.1f}% week-over-week"
+                    f"Cases increased by {wow:.1f}% week-over-week, showing an upward trend"
+                )
+            elif wow <= -10:
+                drivers.append(
+                    f"Cases decreased by {abs(wow):.1f}% week-over-week, suggesting improving conditions"
                 )
 
-        rainfall = payload.structured_signals.rainfall_mm_7d
-        if rainfall is not None and rainfall >= 80:
+        rain = signals.rainfall_mm_7d
+        if rain is not None:
+            if rain >= 120:
+                drivers.append(
+                    f"Very heavy rainfall ({rain:.0f} mm in 7 days) creating extensive standing water and high Aedes breeding potential"
+                )
+            elif rain >= 80:
+                drivers.append(
+                    f"High rainfall ({rain:.0f} mm in 7 days) increasing mosquito breeding sites"
+                )
+
+        temp = signals.temperature_c_7d
+        if temp is not None and temp >= 28:
             drivers.append(
-                f"High recent rainfall ({rainfall:.1f} mm in 7 days) can increase vector breeding"
+                f"Elevated temperature ({temp:.1f}°C) shortening mosquito development cycle and increasing biting frequency"
             )
+
+        if signals.historical_trend:
+            trend_str = " → ".join(str(c) for c in signals.historical_trend)
+            drivers.append(f"4-week case trajectory: {trend_str} ({trend})")
 
         if not drivers:
             drivers.append(
-                "Model risk score is the primary indicator in the current signal set"
+                f"Model risk score of {signals.model_risk_score:.2f} is the primary risk indicator"
             )
 
-        recommendations = [
-            "Increase field surveillance in high-incidence neighborhoods",
-            "Reinforce community source reduction campaigns for stagnant water",
-        ]
-        if risk_level in ("high", "critical"):
-            recommendations.insert(
-                0, "Prioritize rapid response teams and targeted fogging in hotspots"
-            )
+        recommendations = []
+        if risk_level in ("critical",):
+            recommendations.extend([
+                "Activate emergency response protocol with rapid response teams in all affected MOH areas",
+                "Deploy targeted spatial fogging within 200m radius of confirmed clusters",
+                "Coordinate hospital preparedness: ensure adequate IV fluid, platelet monitoring, and ICU capacity",
+            ])
+        elif risk_level == "high":
+            recommendations.extend([
+                "Prioritize mobile vector control teams for targeted fogging in hotspot neighborhoods",
+                "Intensify active case surveillance with fever clinics in high-incidence areas",
+                "Launch community source-reduction drives focusing on stored water containers and construction sites",
+            ])
+        else:
+            recommendations.extend([
+                "Maintain routine vector surveillance and larviciding programs",
+                "Reinforce community education on eliminating stagnant water sources around households",
+            ])
+        recommendations.append(
+            "Monitor weekly epidemiological trends and reassess risk level at next reporting cycle"
+        )
 
         caveats = [
-            "This explanation is generated from structured signals (Phase 1) and not full RAG evidence yet"
+            "Analysis based on structured surveillance signals (Phase 1); historical document retrieval (RAG) not yet active"
         ]
+        if signals.uncertainty_lower is not None and signals.uncertainty_upper is not None:
+            caveats.append(
+                f"Model forecast uncertainty range: {signals.uncertainty_lower:.2f} – {signals.uncertainty_upper:.2f}"
+            )
 
-        if (
-            payload.structured_signals.uncertainty_lower is not None
-            and payload.structured_signals.uncertainty_upper is not None
-        ):
-            low = payload.structured_signals.uncertainty_lower
-            high = payload.structured_signals.uncertainty_upper
-            caveats.append(f"Forecast uncertainty range: {low:.2f} to {high:.2f}")
-
-        references = payload.rag_context[:3]
+        # Confidence score
+        filled = sum([
+            signals.wow_case_change_pct is not None,
+            signals.rainfall_mm_7d is not None,
+            signals.temperature_c_7d is not None,
+            len(signals.historical_trend) >= 3,
+            signals.uncertainty_lower is not None,
+        ])
+        confidence = min(100, 30 + filled * 14)
 
         summary = (
-            f"{payload.district} is currently assessed as {risk_level} risk "
-            f"based on a model score of {payload.structured_signals.model_risk_score:.2f}."
+            f"{payload.district} is assessed at **{risk_level}** risk for {payload.prediction_week or 'the current week'} "
+            f"with {signals.recent_case_count} reported cases "
+            f"({'↑' if (wow or 0) > 0 else '↓' if (wow or 0) < 0 else '→'} {abs(wow or 0):.1f}% WoW). "
+            f"The case trajectory is {trend}."
         )
 
         return ExplainInsightResponse(
@@ -99,9 +200,13 @@ class ExplainabilityService:
             key_drivers=drivers,
             recommendations=recommendations,
             caveats=caveats,
-            references=references,
-            implementation_phase="phase-1-structured-data-to-text",
+            references=payload.rag_context[:3],
+            implementation_phase="phase-1-rule-based",
+            confidence_score=confidence,
+            trend_direction=trend,
         )
+
+    # ── Gemini LLM generation ────────────────────────────────────────
 
     def _generate_with_gemini(
         self, payload: ExplainInsightRequest, baseline: ExplainInsightResponse
@@ -111,19 +216,24 @@ class ExplainabilityService:
         if not settings.gemini_api_key:
             return baseline
 
-        prompt = (
-            "You are an expert public health dengue analyst for Sri Lanka. "
-            "Return valid JSON only with this schema: "
-            '{"risk_level":"low|moderate|high|critical","summary":"...",'
-            '"key_drivers":["..."],"recommendations":["..."],"caveats":["..."]}. '
-            "Keep the response concise and actionable. "
-            f"Input data: {json.dumps(payload.model_dump(), ensure_ascii=True)}"
-        )
+        # Build a rich data block for the LLM
+        data_block = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+
+        user_prompt = f"Analyze the following dengue surveillance data and return the JSON analysis:\n\n{data_block}"
+
+        if payload.user_question:
+            user_prompt += (
+                f"\n\nThe user also asks: \"{payload.user_question}\"\n"
+                "Include a `follow_up_answer` field in your JSON with a concise, "
+                "expert answer to this question."
+            )
 
         client = genai.Client(api_key=settings.gemini_api_key)
         response = client.models.generate_content(
             model=settings.llm_model,
-            contents=prompt,
+            contents=[
+                {"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_prompt}]}
+            ],
             config={
                 "response_mime_type": "application/json",
                 "temperature": settings.default_temperature,
@@ -152,8 +262,15 @@ class ExplainabilityService:
                 generated.get("caveats"), baseline.caveats
             ),
             references=payload.rag_context[:3],
-            implementation_phase="phase-1-structured-data-to-text-gemini",
+            implementation_phase="phase-1-gemini",
+            confidence_score=max(0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))),
+            trend_direction=self._normalize_trend(
+                generated.get("trend_direction"), baseline.trend_direction
+            ),
+            follow_up_answer=str(generated["follow_up_answer"]) if "follow_up_answer" in generated else None,
         )
+
+    # ── Public entry point ───────────────────────────────────────────
 
     def generate_insight(
         self, payload: ExplainInsightRequest

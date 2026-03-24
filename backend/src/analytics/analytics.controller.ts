@@ -91,4 +91,12 @@ export class AnalyticsController {
   async explainInsight(@Param('district') district: string) {
     return this.analyticsService.getExplainableInsight(district);
   }
+
+  @Get('explain/:district/ask')
+  async askFollowUp(
+    @Param('district') district: string,
+    @Query('question') question: string,
+  ) {
+    return this.analyticsService.askFollowUpQuestion(district, question);
+  }
 }

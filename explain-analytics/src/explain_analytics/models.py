@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 RiskLevel = Literal["low", "moderate", "high", "critical"]
+TrendDirection = Literal["rising", "falling", "stable"]
 
 
 class StructuredSignals(BaseModel):
@@ -14,6 +15,10 @@ class StructuredSignals(BaseModel):
     model_risk_score: float = Field(ge=0, le=1)
     uncertainty_lower: float | None = Field(default=None, ge=0, le=1)
     uncertainty_upper: float | None = Field(default=None, ge=0, le=1)
+    historical_trend: list[int] = Field(
+        default_factory=list,
+        description="Last 4 weekly case counts (most-recent first)",
+    )
 
 
 class ExplainInsightRequest(BaseModel):
@@ -35,3 +40,8 @@ class ExplainInsightResponse(BaseModel):
     caveats: list[str]
     references: list[str]
     implementation_phase: str
+    confidence_score: int = Field(
+        default=50, ge=0, le=100, description="AI confidence 0-100"
+    )
+    trend_direction: TrendDirection = "stable"
+    follow_up_answer: str | None = None
