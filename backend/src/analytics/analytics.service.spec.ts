@@ -329,4 +329,99 @@ describe('AnalyticsService', () => {
       expect(result[0].confidence).toBe('medium');
     });
   });
+
+  describe('getExplainableInsight', () => {
+    it('should return error for non-existent district', async () => {
+      mockManager.getRepository.mockReturnValue({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      const result = await analyticsService.getExplainableInsight(
+        'NonExistent',
+      );
+
+      expect(result).toHaveProperty('error', 'District not found');
+      expect(result).toHaveProperty('district', 'NonExistent');
+    });
+
+    it('should call explain-analytics service and return insight', async () => {
+      mockManager.getRepository.mockReturnValue({
+        findOne: jest.fn().mockResolvedValue({ id: 'district-1' }),
+      });
+      mockManager.query
+        .mockResolvedValueOnce([
+          {
+            year: 2026,
+            week: 12,
+            cases: 100,
+            temperature_2m_mean: '28.5',
+            precipitation_sum: '85.0',
+          },
+          {
+            year: 2026,
+            week: 11,
+            cases: 80,
+            temperature_2m_mean: '27.0',
+            precipitation_sum: '60.0',
+          },
+        ])
+        .mockResolvedValueOnce([{ max_cases: '200' }]);
+
+      const mockResponse = {
+        data: {
+          district: 'Colombo',
+          risk_level: 'high',
+          summary: 'Colombo is high risk.',
+          key_drivers: ['Cases increased 25.0% WoW'],
+          recommendations: ['Deploy fogging teams'],
+          caveats: ['Phase 1 data only'],
+          references: [],
+          implementation_phase: 'phase-1-structured-data-to-text',
+        },
+      };
+      mockedAxios.post.mockResolvedValue(mockResponse);
+
+      const result = await analyticsService.getExplainableInsight('Colombo');
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/insights/explain'),
+        expect.objectContaining({
+          district: 'Colombo',
+          structured_signals: expect.objectContaining({
+            recent_case_count: 100,
+          }),
+        }),
+      );
+      expect(result).toHaveProperty('risk_level', 'high');
+      expect(result).toHaveProperty('district', 'Colombo');
+    });
+
+    it('should return fallback when explain-analytics service is down', async () => {
+      mockManager.getRepository.mockReturnValue({
+        findOne: jest.fn().mockResolvedValue({ id: 'district-1' }),
+      });
+      mockManager.query
+        .mockResolvedValueOnce([
+          {
+            year: 2026,
+            week: 12,
+            cases: 50,
+            temperature_2m_mean: '28.0',
+            precipitation_sum: '40.0',
+          },
+        ])
+        .mockResolvedValueOnce([{ max_cases: '200' }]);
+
+      mockedAxios.post.mockRejectedValue(
+        new Error('connect ECONNREFUSED 127.0.0.1:8010'),
+      );
+
+      const result = await analyticsService.getExplainableInsight('Gampaha');
+
+      expect(result).toHaveProperty('district', 'Gampaha');
+      expect(result).toHaveProperty('_fallback', true);
+      expect(result).toHaveProperty('implementation_phase', 'phase-1-fallback');
+      expect(result).toHaveProperty('summary');
+    });
+  });
 });

@@ -1,0 +1,28 @@
+[project]
+name = "explain-analytics"
+version = "0.1.0"
+description = "Explainable insights service for EpiLink analytics"
+readme = "README.md"
+authors = [
+    { name = "cnkarunarathna", email = "nuwanthakonline@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.116.1",
+    "google-genai>=1.17.0",
+    "pydantic-settings>=2.10.1",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[project.scripts]
+explain-analytics = "explain_analytics:main"
+
+[build-system]
+requires = ["uv_build>=0.9.15,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.13.1",
+]

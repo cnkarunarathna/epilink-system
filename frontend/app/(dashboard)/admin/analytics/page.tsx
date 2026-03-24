@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Wifi,
   WifiOff,
+  Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -35,6 +36,7 @@ import OutbreakAlerts from "@/components/dashboard/analytics/OutbreakAlerts";
 import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
 import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
+import ExplainableInsightsPanel from "@/components/dashboard/analytics/ExplainableInsightsPanel";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -96,6 +98,7 @@ export default function AnalyticsPage() {
   const [predictions, setPredictions] = useState<DistrictPrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+  const [innerTab, setInnerTab] = useState("overview");
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [districtTimeseries, setDistrictTimeseries] = useState<
@@ -323,8 +326,8 @@ export default function AnalyticsPage() {
             </Button>
           </div>
           {/* Nested Tabs for Predictions Sections */}
-          <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 h-12 p-1 bg-muted/50">
+          <Tabs value={innerTab} onValueChange={setInnerTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4 h-12 p-1 bg-muted/50">
               <TabsTrigger value="overview" className="text-sm">
                 <Activity className="h-4 w-4 mr-2" />
                 Overview
@@ -332,6 +335,10 @@ export default function AnalyticsPage() {
               <TabsTrigger value="advanced" className="text-sm">
                 <Zap className="h-4 w-4 mr-2" />
                 Advanced Analytics
+              </TabsTrigger>
+              <TabsTrigger value="ai-insights" className="text-sm">
+                <Brain className="h-4 w-4 mr-2" />
+                AI Insights
               </TabsTrigger>
               <TabsTrigger value="districts" className="text-sm">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -683,9 +690,24 @@ export default function AnalyticsPage() {
                                 </p>
                               </div>
                             </div>
-                            <Badge variant={risk.color as any}>
-                              {risk.level}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={risk.color as any}>
+                                {risk.level}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-purple-500 hover:text-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/50"
+                                title="Explain This"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDistrict(district.district);
+                                  setInnerTab("ai-insights");
+                                }}
+                              >
+                                <Sparkles className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
@@ -721,6 +743,32 @@ export default function AnalyticsPage() {
 
                 {/* Weather Correlation */}
                 <WeatherCorrelation />
+              </div>
+            </TabsContent>
+
+            {/* AI Insights Tab */}
+            <TabsContent value="ai-insights" className="space-y-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
+                    <Brain className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold">AI-Powered Insights</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Explainable risk analysis with key drivers and actionable recommendations
+                    </p>
+                  </div>
+                </div>
+
+                <ExplainableInsightsPanel
+                  district={selectedDistrict}
+                  districts={predictions.map((p) => p.district)}
+                  onDistrictChange={(d) => {
+                    setSelectedDistrict(d);
+                    handleDistrictClick(d);
+                  }}
+                />
               </div>
             </TabsContent>
 

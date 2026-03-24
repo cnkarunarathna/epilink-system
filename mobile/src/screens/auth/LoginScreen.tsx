@@ -1,8 +1,8 @@
 /**
- * Login Screen — Enhanced with subtle gradient, field icons, version text
+ * Login Screen — Enhanced with gradient hero, animated form entrance, floating decorations
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,10 @@ import {
   Platform,
   ScrollView,
   Switch,
+  Animated,
+  Easing,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -32,6 +35,13 @@ export const LoginScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // Animations
+  const fadeHeader = useRef(new Animated.Value(0)).current;
+  const fadeForm = useRef(new Animated.Value(0)).current;
+  const slideForm = useRef(new Animated.Value(40)).current;
+  const fadeVersion = useRef(new Animated.Value(0)).current;
+  const orbFloat = useRef(new Animated.Value(0)).current;
 
   const {
     control,
@@ -54,6 +64,53 @@ export const LoginScreen: React.FC = () => {
     loadRememberMe();
   }, []);
 
+  useEffect(() => {
+    // Staggered entrance
+    Animated.stagger(250, [
+      Animated.timing(fadeHeader, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.timing(fadeForm, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideForm, {
+          toValue: 0,
+          tension: 40,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(fadeVersion, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Floating orb
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbFloat, {
+          toValue: 1,
+          duration: 3500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(orbFloat, {
+          toValue: 0,
+          duration: 3500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [fadeHeader, fadeForm, slideForm, fadeVersion, orbFloat]);
+
   const onSubmit = async (data: LoginFormData) => {
     setError(null);
     setIsLoading(true);
@@ -73,16 +130,41 @@ export const LoginScreen: React.FC = () => {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* Top gradient accent */}
-      <View style={styles.topAccent} />
+      {/* Gradient hero top */}
+      <LinearGradient
+        colors={colors.gradient.splash}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroGradient}
+      >
+        {/* Decorative orbs */}
+        <Animated.View
+          style={[
+            styles.decorOrb1,
+            {
+              transform: [
+                {
+                  translateY: orbFloat.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View style={styles.decorOrb2} />
+      </LinearGradient>
 
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        {/* Header Section */}
+        <Animated.View style={[styles.header, { opacity: fadeHeader }]}>
           <View style={styles.logoContainer}>
-            <View style={[styles.iconBadge, shadows.lg]}>
+            <View style={[styles.iconBadge, shadows.xl]}>
               <MaterialCommunityIcons
                 name="pulse"
                 size={32}
@@ -99,17 +181,27 @@ export const LoginScreen: React.FC = () => {
           <Text style={styles.tagline}>
             Dengue Risk Monitoring & Cleanup Management
           </Text>
-        </View>
+        </Animated.View>
 
-        <View style={[styles.form, shadows.md]}>
+        {/* Form Card */}
+        <Animated.View
+          style={[
+            styles.form,
+            shadows.lg,
+            {
+              opacity: fadeForm,
+              transform: [{ translateY: slideForm }],
+            },
+          ]}
+        >
           {error && <ErrorMessage message={error} />}
 
           <View style={styles.fieldContainer}>
-            <View style={styles.fieldIcon}>
+            <View style={styles.fieldIconContainer}>
               <MaterialCommunityIcons
                 name="email-outline"
                 size={20}
-                color={colors.textSecondary}
+                color={colors.primary}
               />
             </View>
             <View style={styles.fieldInput}>
@@ -133,11 +225,11 @@ export const LoginScreen: React.FC = () => {
           </View>
 
           <View style={styles.fieldContainer}>
-            <View style={styles.fieldIcon}>
+            <View style={styles.fieldIconContainer}>
               <MaterialCommunityIcons
                 name="lock-outline"
                 size={20}
-                color={colors.textSecondary}
+                color={colors.primary}
               />
             </View>
             <View style={styles.fieldInput}>
@@ -176,15 +268,19 @@ export const LoginScreen: React.FC = () => {
             onPress={handleSubmit(onSubmit)}
             loading={isLoading}
             disabled={isLoading}
-            style={styles.submitButton}
+            variant="gradient"
+            icon="login"
+            size="large"
           />
 
           <Text style={styles.helpText}>
             Only PHI users can access the mobile app.
           </Text>
-        </View>
+        </Animated.View>
 
-        <Text style={styles.versionText}>EpiLink v1.0.0</Text>
+        <Animated.Text style={[styles.versionText, { opacity: fadeVersion }]}>
+          EpiLink v1.0.0
+        </Animated.Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -195,21 +291,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  topAccent: {
+  heroGradient: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 220,
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    opacity: 0.06,
+    height: 260,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    overflow: "hidden",
+  },
+  decorOrb1: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: 30,
+    right: -30,
+  },
+  decorOrb2: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(74,222,128,0.08)",
+    bottom: 20,
+    left: 20,
   },
   content: {
     flexGrow: 1,
     justifyContent: "center",
     padding: spacing.xl,
+    paddingTop: spacing.xxxl,
   },
   header: {
     alignItems: "center",
@@ -233,7 +347,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
@@ -244,18 +358,19 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+    fontWeight: typography.fontWeight.medium,
   },
   tagline: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    opacity: 0.7,
+    opacity: 0.6,
     textAlign: "center",
   },
   form: {
     backgroundColor: colors.card,
     padding: spacing.lg,
-    borderRadius: 16,
+    borderRadius: borderRadius["2xl"],
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -263,10 +378,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
   },
-  fieldIcon: {
-    width: 24,
-    paddingTop: 36, // align with input field
-    marginRight: spacing.xs,
+  fieldIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + "10",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+    marginTop: 30,
   },
   fieldInput: {
     flex: 1,
@@ -281,9 +401,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.text,
     fontWeight: typography.fontWeight.medium,
-  },
-  submitButton: {
-    marginTop: spacing.sm,
   },
   helpText: {
     marginTop: spacing.md,
