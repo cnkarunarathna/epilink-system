@@ -9,6 +9,16 @@ import { District } from '../entities/district.entity';
 import { EventsGateway } from '../events/events.gateway';
 import axios from 'axios';
 
+type DashboardSummary = {
+  current_week: { year: number | null; week: number | null };
+  total_cases: number;
+  previous_total: number;
+  change_percent: number;
+  district_count: number;
+  high_risk_districts: number;
+  avg_temperature: number | null;
+};
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -177,9 +187,9 @@ export class AnalyticsService {
     return resp.data;
   }
 
-  async getDashboardSummary() {
+  async getDashboardSummary(): Promise<DashboardSummary> {
     const cacheKey = 'analytics:dashboard_summary';
-    const cached = await this.cacheManager.get(cacheKey);
+    const cached = await this.cacheManager.get<DashboardSummary>(cacheKey);
     if (cached) return cached;
 
     const manager = this.dataSource.manager;
@@ -706,9 +716,7 @@ export class AnalyticsService {
     const currentCases = Number(current.cases) || 0;
     const prevCases = previous ? Number(previous.cases) || 0 : 0;
     const wowChange =
-      prevCases > 0
-        ? ((currentCases - prevCases) / prevCases) * 100
-        : 0;
+      prevCases > 0 ? ((currentCases - prevCases) / prevCases) * 100 : 0;
 
     const rainfall7d = current.precipitation_sum
       ? Number(current.precipitation_sum)
@@ -769,9 +777,7 @@ export class AnalyticsService {
             ? `Cases increased ${wowChange.toFixed(1)}% week-over-week`
             : `Current case count: ${currentCases}`,
         ],
-        recommendations: [
-          'Increase surveillance in high-incidence areas',
-        ],
+        recommendations: ['Increase surveillance in high-incidence areas'],
         caveats: [
           'AI explanation service unavailable — showing basic fallback',
         ],
