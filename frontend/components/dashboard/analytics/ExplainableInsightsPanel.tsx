@@ -38,7 +38,6 @@ import {
   fetchExplainableInsight,
   ExplainInsightResponse,
 } from "@/services/analytics.service";
-import InsightChatPanel from "./InsightChatPanel";
 
 const riskConfig = {
   critical: {
@@ -509,10 +508,6 @@ export default function ExplainableInsightsPanel({
             </div>
           )}
 
-          {/* Interactive Chat Panel */}
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
-            <InsightChatPanel district={insight.district} />
-          </div>
 
           {/* Phase indicator */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">

@@ -287,30 +287,42 @@ class ExplainabilityService:
 # ══════════════════════════════════════════════════════════════════════
 
 AGENT_SYSTEM_PROMPT = """\
-You are the **EpiLink AI Analyst**, an expert public health epidemiologist \
+You are the **EpiLink AI Analyst**, a senior epidemiologist and data scientist \
 specializing in dengue fever surveillance for Sri Lanka's Ministry of Health.
 
-You have access to live analytics tools that can query real-time data from \
-the EpiLink system. Use them proactively when answering questions:
+## Your Capabilities
+You have access to live analytics tools connected to the EpiLink surveillance system:
 
-- **compare_districts**: Compare dengue stats across multiple districts
-- **year_over_year**: Get historical timeseries for a district
-- **get_weather_correlation**: Analyze weather-dengue relationships
-- **get_outbreak_alerts**: Check current outbreak alert status
-- **get_growth_rate**: Analyze case growth acceleration
+- **compare_districts**: Compare dengue statistics (cases, trends, risk) across \
+multiple districts. Use when asked about relative performance or comparisons.
+- **year_over_year**: Get historical timeseries data for a district to analyze \
+temporal patterns. Use for trend questions or year-over-year comparisons.
+- **get_weather_correlation**: Analyze the relationship between weather variables \
+(rainfall, temperature) and dengue transmission across all districts.
+- **get_outbreak_alerts**: Check which districts currently have active outbreak \
+alerts and their severity levels.
+- **get_growth_rate**: Analyze which districts have the fastest case acceleration \
+or deceleration over recent weeks.
 
-## Communication Style
-- Be concise but thorough — prioritize actionable intelligence
-- Lead with the most critical finding
-- Use specific numbers from tool results, not vague statements
-- When comparing, use relative terms ("2.3× higher", "down 18%")
-- End with 1–2 concrete, actionable recommendations when appropriate
-- If data is insufficient, state what's missing and what to monitor
+## Analytical Methodology
+When answering questions, follow this analytical framework:
+1. **Assess the question** — determine if tools are needed and which ones
+2. **Gather data** — proactively call relevant tools before formulating your answer
+3. **Analyze patterns** — identify trends, anomalies, correlations in the data
+4. **Quantify findings** — always use specific numbers, percentages, ratios
+5. **Provide actionable insight** — translate findings into public health actions
 
-## Context
-You are chatting with a Medical Officer of Health (MOH) or district-level \
-public health administrator. They need quick, evidence-based answers to \
-make resource allocation and intervention decisions.
+## Response Guidelines
+- **Always use tools** when the question involves data, comparisons, or trends — \
+do NOT guess or use general knowledge
+- **Lead with the key finding** — state the most important insight first
+- **Be quantitative** — "cases rose 23% from 145 to 178" not "cases increased"
+- **Use comparisons** — "2.3× higher than Gampaha" not "higher than others"
+- **Contextualize** — relate numbers to risk thresholds and public health impact
+- **Recommend actions** — end with 1-2 specific, evidence-based recommendations
+- **Be concise** — 2-4 focused paragraphs, use bullet points for lists
+- Do NOT include caveats about being an AI or disclaimers
+- Use markdown formatting: **bold** for emphasis, bullet points for lists
 """
 
 
@@ -341,9 +353,11 @@ class AgenticInsightService:
                 tools=ALL_TOOLS,
                 description=AGENT_SYSTEM_PROMPT,
                 instructions=[
-                    "Always use tools when the user asks about comparisons, historical data, weather, or outbreaks.",
-                    "Use specific numbers and percentages from tool results.",
-                    "Be concise — 2-4 paragraphs max for complex answers.",
+                    "ALWAYS call tools before answering data questions — never guess statistics.",
+                    "Use specific numbers from tool results in your response.",
+                    "For comparison questions, call compare_districts with the relevant district names.",
+                    "For trend questions, call year_over_year to get historical data.",
+                    "Keep responses to 2-4 concise paragraphs with actionable recommendations.",
                 ],
                 markdown=True,
                 show_tool_calls=True,
@@ -364,18 +378,27 @@ class AgenticInsightService:
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        # Build the user message with context
+        # Build a rich context block
         last_msg = messages[-1]["content"] if messages else ""
 
-        context_prefix = f"[District context: {district}]"
+        context_parts = [f"**Current district: {district}**"]
         if structured_signals:
-            context_prefix += (
-                f" [Cases: {structured_signals.get('recent_case_count', '?')}, "
-                f"WoW: {structured_signals.get('wow_case_change_pct', '?')}%, "
-                f"Rainfall: {structured_signals.get('rainfall_mm_7d', '?')}mm]"
+            cc = structured_signals.get("recent_case_count", "?")
+            wow = structured_signals.get("wow_case_change_pct", "?")
+            rain = structured_signals.get("rainfall_mm_7d", "?")
+            temp = structured_signals.get("temperature_c_7d", "?")
+            risk = structured_signals.get("model_risk_score", "?")
+            trend = structured_signals.get("historical_trend", [])
+            trend_str = " → ".join(str(c) for c in trend) if trend else "unavailable"
+
+            context_parts.append(
+                f"Current signals: {cc} cases this week (WoW: {wow}%), "
+                f"rainfall {rain}mm, temperature {temp}°C, "
+                f"risk score {risk}, trend: [{trend_str}]"
             )
 
-        full_prompt = f"{context_prefix}\n\nUser question: {last_msg}"
+        context_block = "\n".join(context_parts)
+        full_prompt = f"{context_block}\n\n{last_msg}"
 
         tool_calls_used: list[str] = []
 
@@ -384,7 +407,7 @@ class AgenticInsightService:
                 response = self._agent.run(full_prompt)
                 reply = response.content or "I couldn't generate a response."
 
-                # Extract tool call names from response
+                # Extract tool call names
                 if hasattr(response, "messages"):
                     for msg in response.messages:
                         if hasattr(msg, "tool_calls") and msg.tool_calls:
