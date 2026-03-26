@@ -280,3 +280,164 @@ class ExplainabilityService:
             return self._generate_with_gemini(payload, baseline)
         except Exception:
             return baseline
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Phase 3: Agno-powered agentic chat
+# ══════════════════════════════════════════════════════════════════════
+
+AGENT_SYSTEM_PROMPT = """\
+You are the **EpiLink AI Analyst**, an expert public health epidemiologist \
+specializing in dengue fever surveillance for Sri Lanka's Ministry of Health.
+
+You have access to live analytics tools that can query real-time data from \
+the EpiLink system. Use them proactively when answering questions:
+
+- **compare_districts**: Compare dengue stats across multiple districts
+- **year_over_year**: Get historical timeseries for a district
+- **get_weather_correlation**: Analyze weather-dengue relationships
+- **get_outbreak_alerts**: Check current outbreak alert status
+- **get_growth_rate**: Analyze case growth acceleration
+
+## Communication Style
+- Be concise but thorough — prioritize actionable intelligence
+- Lead with the most critical finding
+- Use specific numbers from tool results, not vague statements
+- When comparing, use relative terms ("2.3× higher", "down 18%")
+- End with 1–2 concrete, actionable recommendations when appropriate
+- If data is insufficient, state what's missing and what to monitor
+
+## Context
+You are chatting with a Medical Officer of Health (MOH) or district-level \
+public health administrator. They need quick, evidence-based answers to \
+make resource allocation and intervention decisions.
+"""
+
+
+class AgenticInsightService:
+    """Phase 3 service: Agno Agent with tools for interactive chat."""
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, list[dict]] = {}
+        self._agent = None
+        self._init_agent()
+
+    def _init_agent(self) -> None:
+        if not settings.enable_agent_mode:
+            return
+        if not settings.gemini_api_key:
+            return
+
+        try:
+            from agno.agent import Agent
+            from agno.models.google import Gemini
+            from explain_analytics.services.tools import ALL_TOOLS
+
+            self._agent = Agent(
+                model=Gemini(
+                    id=settings.llm_model,
+                    api_key=settings.gemini_api_key,
+                ),
+                tools=ALL_TOOLS,
+                description=AGENT_SYSTEM_PROMPT,
+                instructions=[
+                    "Always use tools when the user asks about comparisons, historical data, weather, or outbreaks.",
+                    "Use specific numbers and percentages from tool results.",
+                    "Be concise — 2-4 paragraphs max for complex answers.",
+                ],
+                markdown=True,
+                show_tool_calls=True,
+            )
+        except Exception as e:
+            print(f"[AgenticInsightService] Failed to init Agno agent: {e}")
+            self._agent = None
+
+    def chat(
+        self,
+        district: str,
+        messages: list[dict],
+        session_id: str,
+        structured_signals: dict | None = None,
+    ) -> dict:
+        import uuid
+
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        # Build the user message with context
+        last_msg = messages[-1]["content"] if messages else ""
+
+        context_prefix = f"[District context: {district}]"
+        if structured_signals:
+            context_prefix += (
+                f" [Cases: {structured_signals.get('recent_case_count', '?')}, "
+                f"WoW: {structured_signals.get('wow_case_change_pct', '?')}%, "
+                f"Rainfall: {structured_signals.get('rainfall_mm_7d', '?')}mm]"
+            )
+
+        full_prompt = f"{context_prefix}\n\nUser question: {last_msg}"
+
+        tool_calls_used: list[str] = []
+
+        if self._agent is not None:
+            try:
+                response = self._agent.run(full_prompt)
+                reply = response.content or "I couldn't generate a response."
+
+                # Extract tool call names from response
+                if hasattr(response, "messages"):
+                    for msg in response.messages:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                fname = getattr(tc, "function", None)
+                                if fname and hasattr(fname, "name"):
+                                    tool_calls_used.append(fname.name)
+
+                return {
+                    "reply": reply,
+                    "tool_calls_used": tool_calls_used,
+                    "session_id": session_id,
+                }
+            except Exception as e:
+                print(f"[AgenticInsightService] Agent error: {e}")
+
+        # Fallback: direct Gemini call without tools
+        if settings.gemini_api_key:
+            try:
+                from google import genai
+
+                client = genai.Client(api_key=settings.gemini_api_key)
+                resp = client.models.generate_content(
+                    model=settings.llm_model,
+                    contents=[
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": AGENT_SYSTEM_PROMPT
+                                    + "\n\n"
+                                    + full_prompt
+                                }
+                            ],
+                        }
+                    ],
+                    config={"temperature": settings.default_temperature},
+                )
+                return {
+                    "reply": resp.text or "No response generated.",
+                    "tool_calls_used": [],
+                    "session_id": session_id,
+                }
+            except Exception as e:
+                return {
+                    "reply": f"AI service error: {e}",
+                    "tool_calls_used": [],
+                    "session_id": session_id,
+                }
+
+        return {
+            "reply": "Agent mode is not available. Please configure EXPLAIN_GEMINI_API_KEY.",
+            "tool_calls_used": [],
+            "session_id": session_id,
+        }
+

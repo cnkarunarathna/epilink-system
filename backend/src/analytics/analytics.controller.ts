@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -98,5 +98,13 @@ export class AnalyticsController {
     @Query('question') question: string,
   ) {
     return this.analyticsService.askFollowUpQuestion(district, question);
+  }
+
+  @Post('explain/:district/chat')
+  async chatWithAgent(
+    @Param('district') district: string,
+    @Body() body: { messages: { role: string; content: string }[]; sessionId?: string },
+  ) {
+    return this.analyticsService.chatWithAgent(district, body.messages, body.sessionId);
   }
 }
