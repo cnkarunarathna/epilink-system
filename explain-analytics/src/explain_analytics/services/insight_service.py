@@ -19,6 +19,17 @@ Your task: given structured surveillance signals for a single district, \
 produce a concise but insightful JSON analysis that a Medical Officer of \
 Health (MOH) can immediately act upon.
 
+## Sri Lanka Dengue Context
+- Sri Lanka has two peak transmission seasons driven by monsoons:
+  southwest monsoon (May–September, affects western/southern/central provinces)
+  and northeast monsoon (October–January, affects eastern/northern provinces).
+- Aedes aegypti is the primary vector; its larval development accelerates
+  above 28 °C and stalls below 16 °C.
+- A 7-day rainfall total above 80 mm creates significant standing-water
+  breeding sites; above 120 mm signals extensive risk.
+- A week-over-week (WoW) case increase ≥ 15 % is an early outbreak signal.
+- Districts with ≥ 100 cases/week require emergency-level response.
+
 ## Output JSON schema (all fields required)
 {
   "risk_level": "low | moderate | high | critical",
@@ -29,8 +40,7 @@ the main reason for the assigned risk level.",
 driving the risk assessment, e.g. rainfall, temperature, WoW change, \
 historical trajectory"],
   "recommendations": ["3–5 specific, actionable public-health \
-recommendations tailored to the risk level and drivers, e.g. fogging, \
-source reduction, hospital bed allocation"],
+recommendations tailored to the risk level and drivers"],
   "caveats": ["1–3 short caveats about model limitations or data gaps"],
   "confidence_score": 0-100,
   "trend_direction": "rising | falling | stable"
@@ -38,8 +48,8 @@ source reduction, hospital bed allocation"],
 
 ## Guidelines
 - Be specific to dengue in Sri Lanka; reference tropical weather patterns.
-- If rainfall > 80 mm / 7 days, highlight vector breeding risk.
-- If WoW change > 15%, emphasize the acceleration.
+- If rainfall > 80 mm / 7 days, highlight vector breeding risk explicitly.
+- If WoW change > 15 %, emphasize the acceleration and early-warning status.
 - Derive trend_direction from the historical_trend array: compare recent \
 weeks to detect rising/falling/stable patterns.
 - confidence_score should reflect data completeness (all signals present → \
@@ -66,6 +76,7 @@ class ExplainabilityService:
     def _derive_trend(historical: list[int]) -> TrendDirection:
         if len(historical) < 2:
             return "stable"
+        # historical_trend is most-recent first: [week_n, week_n-1, week_n-2, ...]
         recent_half = historical[: len(historical) // 2]
         older_half = historical[len(historical) // 2 :]
         avg_recent = sum(recent_half) / len(recent_half)
@@ -134,7 +145,7 @@ class ExplainabilityService:
         temp = signals.temperature_c_7d
         if temp is not None and temp >= 28:
             drivers.append(
-                f"Elevated temperature ({temp:.1f}°C) shortening mosquito development cycle and increasing biting frequency"
+                f"Elevated temperature ({temp:.1f} °C) shortening mosquito development cycle and increasing biting frequency"
             )
 
         if signals.historical_trend:
@@ -146,16 +157,17 @@ class ExplainabilityService:
                 f"Model risk score of {signals.model_risk_score:.2f} is the primary risk indicator"
             )
 
-        recommendations = []
-        if risk_level in ("critical",):
+        recommendations: list[str] = []
+        if risk_level == "critical":
             recommendations.extend([
                 "Activate emergency response protocol with rapid response teams in all affected MOH areas",
-                "Deploy targeted spatial fogging within 200m radius of confirmed clusters",
+                "Deploy targeted spatial fogging within 200 m radius of confirmed clusters",
                 "Coordinate hospital preparedness: ensure adequate IV fluid, platelet monitoring, and ICU capacity",
+                "Initiate case investigation and source identification within 48 hours",
             ])
         elif risk_level == "high":
             recommendations.extend([
-                "Prioritize mobile vector control teams for targeted fogging in hotspot neighborhoods",
+                "Prioritize mobile vector control teams for targeted fogging in hotspot neighbourhoods",
                 "Intensify active case surveillance with fever clinics in high-incidence areas",
                 "Launch community source-reduction drives focusing on stored water containers and construction sites",
             ])
@@ -176,7 +188,6 @@ class ExplainabilityService:
                 f"Model forecast uncertainty range: {signals.uncertainty_lower:.2f} – {signals.uncertainty_upper:.2f}"
             )
 
-        # Confidence score
         filled = sum([
             signals.wow_case_change_pct is not None,
             signals.rainfall_mm_7d is not None,
@@ -186,10 +197,12 @@ class ExplainabilityService:
         ])
         confidence = min(100, 30 + filled * 14)
 
+        wow_arrow = "↑" if (wow or 0) > 0 else "↓" if (wow or 0) < 0 else "→"
         summary = (
-            f"{payload.district} is assessed at **{risk_level}** risk for {payload.prediction_week or 'the current week'} "
+            f"{payload.district} is assessed at {risk_level.upper()} risk "
+            f"for {payload.prediction_week or 'the current week'} "
             f"with {signals.recent_case_count} reported cases "
-            f"({'↑' if (wow or 0) > 0 else '↓' if (wow or 0) < 0 else '→'} {abs(wow or 0):.1f}% WoW). "
+            f"({wow_arrow} {abs(wow or 0):.1f}% WoW). "
             f"The case trajectory is {trend}."
         )
 
@@ -216,10 +229,10 @@ class ExplainabilityService:
         if not settings.gemini_api_key:
             return baseline
 
-        # Build a rich data block for the LLM
         data_block = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
-
-        user_prompt = f"Analyze the following dengue surveillance data and return the JSON analysis:\n\n{data_block}"
+        user_prompt = (
+            f"Analyze the following dengue surveillance data and return the JSON analysis:\n\n{data_block}"
+        )
 
         if payload.user_question:
             user_prompt += (
@@ -263,11 +276,15 @@ class ExplainabilityService:
             ),
             references=payload.rag_context[:3],
             implementation_phase="phase-1-gemini",
-            confidence_score=max(0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))),
+            confidence_score=max(
+                0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))
+            ),
             trend_direction=self._normalize_trend(
                 generated.get("trend_direction"), baseline.trend_direction
             ),
-            follow_up_answer=str(generated["follow_up_answer"]) if "follow_up_answer" in generated else None,
+            follow_up_answer=(
+                str(generated["follow_up_answer"]) if "follow_up_answer" in generated else None
+            ),
         )
 
     # ── Public entry point ───────────────────────────────────────────
@@ -287,42 +304,66 @@ class ExplainabilityService:
 # ══════════════════════════════════════════════════════════════════════
 
 AGENT_SYSTEM_PROMPT = """\
-You are the **EpiLink AI Analyst**, a senior epidemiologist and data scientist \
-specializing in dengue fever surveillance for Sri Lanka's Ministry of Health.
+You are the **EpiLink AI Analyst**, a senior epidemiologist and data \
+scientist specialising in dengue fever surveillance for Sri Lanka's \
+Ministry of Health.
 
-## Your Capabilities
-You have access to live analytics tools connected to the EpiLink surveillance system:
+## Epidemiological Context — Sri Lanka
+- **Transmission seasons**: southwest monsoon (May–Sep) affects western, \
+southern, and central provinces; northeast monsoon (Oct–Jan) affects \
+eastern and northern provinces.
+- **Vector biology**: Aedes aegypti breeds in clean standing water; larval \
+development accelerates above 28 °C. Extrinsic incubation period is \
+8–12 days at 28–32 °C.
+- **Alert thresholds**: WoW increase ≥ 15 % = early warning; current cases \
+≥ 2× 4-week average = outbreak alert; ≥ 100 cases/week = high-burden district.
+- **Key risk provinces**: Colombo, Gampaha, Kalutara, Kandy, and Ratnapura \
+historically account for the majority of national cases.
 
-- **compare_districts**: Compare dengue statistics (cases, trends, risk) across \
-multiple districts. Use when asked about relative performance or comparisons.
-- **year_over_year**: Get historical timeseries data for a district to analyze \
-temporal patterns. Use for trend questions or year-over-year comparisons.
-- **get_weather_correlation**: Analyze the relationship between weather variables \
-(rainfall, temperature) and dengue transmission across all districts.
-- **get_outbreak_alerts**: Check which districts currently have active outbreak \
-alerts and their severity levels.
-- **get_growth_rate**: Analyze which districts have the fastest case acceleration \
-or deceleration over recent weeks.
+## Available Analytics Tools
+- **compare_districts**: Side-by-side latest cases, WoW%, 4-week avg, and \
+risk level for multiple districts. Pass an empty string to compare all.
+- **year_over_year**: 12-week timeseries with WoW changes, peak detection, \
+and momentum for a single district. Use for trend or seasonal questions.
+- **get_weather_correlation**: Pearson correlation (temp & rainfall vs \
+dengue) per district, with strength classification and ranked insights.
+- **get_outbreak_alerts**: Current outbreak/warning alerts with ratio-to-\
+average metrics for all flagged districts.
+- **get_growth_rate**: Avg growth rate per district over N weeks, ranked \
+fastest-growing first, with accelerating/stable/declining counts.
+- **get_district_details**: Comprehensive single-district snapshot — latest \
+cases, WoW, 8-week history, peak, weather, and risk level. Use first when \
+answering detailed questions about one specific district.
 
 ## Analytical Methodology
-When answering questions, follow this analytical framework:
-1. **Assess the question** — determine if tools are needed and which ones
-2. **Gather data** — proactively call relevant tools before formulating your answer
-3. **Analyze patterns** — identify trends, anomalies, correlations in the data
-4. **Quantify findings** — always use specific numbers, percentages, ratios
-5. **Provide actionable insight** — translate findings into public health actions
+1. **Identify the question type** — single-district detail, multi-district \
+comparison, trend/seasonal, weather impact, or alert status.
+2. **Call the right tool(s)** — always fetch live data before answering; \
+never guess statistics.
+3. **Analyse the data** — identify trends, anomalies, ratios, thresholds.
+4. **Quantify every finding** — "cases rose 23 % from 145 to 178", not \
+"cases increased".
+5. **Recommend action** — end with 1–2 specific, evidence-based public \
+health actions.
 
-## Response Guidelines
-- **Always use tools** when the question involves data, comparisons, or trends — \
-do NOT guess or use general knowledge
-- **Lead with the key finding** — state the most important insight first
-- **Be quantitative** — "cases rose 23% from 145 to 178" not "cases increased"
-- **Use comparisons** — "2.3× higher than Gampaha" not "higher than others"
-- **Contextualize** — relate numbers to risk thresholds and public health impact
-- **Recommend actions** — end with 1-2 specific, evidence-based recommendations
-- **Be concise** — 2-4 focused paragraphs, use bullet points for lists
-- Do NOT include caveats about being an AI or disclaimers
-- Use markdown formatting: **bold** for emphasis, bullet points for lists
+## Tool Selection Guide
+| Question type | Primary tool | Secondary tool |
+|---|---|---|
+| Current status for one district | get_district_details | year_over_year |
+| Compare two or more districts | compare_districts | get_growth_rate |
+| Weather / climate impact | get_weather_correlation | get_district_details |
+| Active outbreaks | get_outbreak_alerts | compare_districts |
+| Fastest growing / accelerating | get_growth_rate | compare_districts |
+| Historical trend / seasonal | year_over_year | compare_districts |
+
+## Response Format
+- **Lead with the key finding** — state the single most important insight first.
+- **Use specific numbers** — ratios, percentages, absolute counts.
+- **Structure with markdown** — bold key terms, use bullet lists for \
+multiple items.
+- **2–4 paragraphs** — concise; do not pad with disclaimers or repetition.
+- **End with action** — at least one concrete public health recommendation.
+- Do NOT disclaim being an AI or hedge with "I think / I believe".
 """
 
 
@@ -330,7 +371,6 @@ class AgenticInsightService:
     """Phase 3 service: Agno Agent with tools for interactive chat."""
 
     def __init__(self) -> None:
-        self._sessions: dict[str, list[dict]] = {}
         self._agent = None
         self._init_agent()
 
@@ -353,18 +393,98 @@ class AgenticInsightService:
                 tools=ALL_TOOLS,
                 description=AGENT_SYSTEM_PROMPT,
                 instructions=[
-                    "ALWAYS call tools before answering data questions — never guess statistics.",
-                    "Use specific numbers from tool results in your response.",
-                    "For comparison questions, call compare_districts with the relevant district names.",
-                    "For trend questions, call year_over_year to get historical data.",
-                    "Keep responses to 2-4 concise paragraphs with actionable recommendations.",
+                    "ALWAYS call tools before answering any data question — never guess statistics.",
+                    "For single-district questions, call get_district_details first.",
+                    "For comparison questions, call compare_districts with the relevant districts.",
+                    "For trend/historical questions, call year_over_year.",
+                    "For weather impact, call get_weather_correlation.",
+                    "Use specific numbers from tool results: percentages, ratios, absolute counts.",
+                    "Keep responses to 2–4 concise paragraphs with one concrete recommendation.",
                 ],
                 markdown=True,
-                show_tool_calls=True,
+                show_tool_calls=False,
             )
         except Exception as e:
             print(f"[AgenticInsightService] Failed to init Agno agent: {e}")
             self._agent = None
+
+    @staticmethod
+    def _clean_response(text: str) -> str:
+        """Strip residual tool_code / tool_result fenced blocks from agent output."""
+        import re
+
+        text = re.sub(r"```tool_code\s*\n.*?```", "", text, flags=re.DOTALL)
+        text = re.sub(r"```tool_result\s*\n.*?```", "", text, flags=re.DOTALL)
+        text = re.sub(
+            r"```\w*\s*\n\s*\w+\(.*?\)\s*\n\s*```", "", text, flags=re.DOTALL
+        )
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    @staticmethod
+    def _format_signals_context(signals: dict) -> str:
+        """Format structured signals into a readable context string."""
+        parts: list[str] = []
+
+        cc = signals.get("recent_case_count")
+        if cc is not None:
+            parts.append(f"{cc} cases this week")
+
+        wow = signals.get("wow_case_change_pct")
+        if wow is not None:
+            sign = "+" if wow >= 0 else ""
+            parts.append(f"WoW change: {sign}{wow:.1f}%")
+
+        rain = signals.get("rainfall_mm_7d")
+        if rain is not None:
+            parts.append(f"rainfall: {rain:.0f} mm/7d")
+
+        temp = signals.get("temperature_c_7d")
+        if temp is not None:
+            parts.append(f"temperature: {temp:.1f} °C")
+
+        risk = signals.get("model_risk_score")
+        if risk is not None:
+            parts.append(f"model risk score: {risk:.2f}")
+
+        trend = signals.get("historical_trend", [])
+        if trend:
+            parts.append(f"4-week trend: {' → '.join(str(c) for c in trend)}")
+
+        unc_l = signals.get("uncertainty_lower")
+        unc_u = signals.get("uncertainty_upper")
+        if unc_l is not None and unc_u is not None:
+            parts.append(f"uncertainty band: {unc_l:.2f}–{unc_u:.2f}")
+
+        return ", ".join(parts) if parts else "no signals available"
+
+    @staticmethod
+    def _extract_tool_calls(response: object) -> list[str]:
+        """Robustly extract tool call names from an Agno RunResponse."""
+        tool_calls: list[str] = []
+        messages = getattr(response, "messages", None) or []
+        for msg in messages:
+            # Method 1: tool_calls attribute with function.name
+            tcs = getattr(msg, "tool_calls", None) or []
+            for tc in tcs:
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", None) if fn else None
+                if name and name not in tool_calls:
+                    tool_calls.append(name)
+
+            # Method 2: role == "tool" or "function" with a name attribute
+            role = getattr(msg, "role", "")
+            if role in ("tool", "function"):
+                name = getattr(msg, "name", None) or getattr(msg, "tool_name", None)
+                if name and name not in tool_calls:
+                    tool_calls.append(name)
+
+            # Method 3: tool_name directly on the message (some Agno versions)
+            tool_name = getattr(msg, "tool_name", None)
+            if tool_name and tool_name not in tool_calls:
+                tool_calls.append(tool_name)
+
+        return tool_calls
 
     def chat(
         self,
@@ -378,43 +498,42 @@ class AgenticInsightService:
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        # Build a rich context block
-        last_msg = messages[-1]["content"] if messages else ""
-
-        context_parts = [f"**Current district: {district}**"]
+        # ── Build district context block ──────────────────────────────
+        context_lines = [f"**Current district context: {district}**"]
         if structured_signals:
-            cc = structured_signals.get("recent_case_count", "?")
-            wow = structured_signals.get("wow_case_change_pct", "?")
-            rain = structured_signals.get("rainfall_mm_7d", "?")
-            temp = structured_signals.get("temperature_c_7d", "?")
-            risk = structured_signals.get("model_risk_score", "?")
-            trend = structured_signals.get("historical_trend", [])
-            trend_str = " → ".join(str(c) for c in trend) if trend else "unavailable"
-
-            context_parts.append(
-                f"Current signals: {cc} cases this week (WoW: {wow}%), "
-                f"rainfall {rain}mm, temperature {temp}°C, "
-                f"risk score {risk}, trend: [{trend_str}]"
+            context_lines.append(
+                f"Live signals — {self._format_signals_context(structured_signals)}"
             )
+        context_block = "\n".join(context_lines)
 
-        context_block = "\n".join(context_parts)
-        full_prompt = f"{context_block}\n\n{last_msg}"
+        # ── Include conversation history (all messages except the last) ──
+        history_block = ""
+        if len(messages) > 1:
+            history_lines: list[str] = []
+            for msg in messages[:-1]:
+                role = msg.get("role", "user")
+                content = msg.get("content", "").strip()
+                if content:
+                    prefix = "User" if role == "user" else "Assistant"
+                    history_lines.append(f"{prefix}: {content}")
+            if history_lines:
+                history_block = (
+                    "\n\n**Conversation history (for context):**\n"
+                    + "\n".join(history_lines)
+                )
 
-        tool_calls_used: list[str] = []
+        # ── Current user question ─────────────────────────────────────
+        last_msg = messages[-1]["content"].strip() if messages else ""
+        full_prompt = f"{context_block}{history_block}\n\n**Question:** {last_msg}"
 
+        # ── Agent path ────────────────────────────────────────────────
         if self._agent is not None:
             try:
                 response = self._agent.run(full_prompt)
-                reply = response.content or "I couldn't generate a response."
-
-                # Extract tool call names
-                if hasattr(response, "messages"):
-                    for msg in response.messages:
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                fname = getattr(tc, "function", None)
-                                if fname and hasattr(fname, "name"):
-                                    tool_calls_used.append(fname.name)
+                reply = self._clean_response(
+                    response.content or "I couldn't generate a response."
+                )
+                tool_calls_used = self._extract_tool_calls(response)
 
                 return {
                     "reply": reply,
@@ -424,23 +543,19 @@ class AgenticInsightService:
             except Exception as e:
                 print(f"[AgenticInsightService] Agent error: {e}")
 
-        # Fallback: direct Gemini call without tools
+        # ── Fallback: direct Gemini call without tools ────────────────
         if settings.gemini_api_key:
             try:
-                from google import genai
+                from google import genai as _genai
 
-                client = genai.Client(api_key=settings.gemini_api_key)
+                client = _genai.Client(api_key=settings.gemini_api_key)
                 resp = client.models.generate_content(
                     model=settings.llm_model,
                     contents=[
                         {
                             "role": "user",
                             "parts": [
-                                {
-                                    "text": AGENT_SYSTEM_PROMPT
-                                    + "\n\n"
-                                    + full_prompt
-                                }
+                                {"text": AGENT_SYSTEM_PROMPT + "\n\n" + full_prompt}
                             ],
                         }
                     ],
@@ -463,4 +578,3 @@ class AgenticInsightService:
             "tool_calls_used": [],
             "session_id": session_id,
         }
-

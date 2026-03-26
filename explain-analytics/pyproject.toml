@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-explain-analytics = "explain_analytics:main"
+analytics = "explain_analytics:main"
 
 [build-system]
 requires = ["uv_build>=0.9.15,<0.10.0"]
