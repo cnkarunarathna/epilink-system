@@ -7,6 +7,16 @@ RiskLevel = Literal["low", "moderate", "high", "critical"]
 TrendDirection = Literal["rising", "falling", "stable"]
 
 
+class DocumentReference(BaseModel):
+    """A citable source document retrieved from the RAG corpus."""
+
+    title: str
+    source: str
+    published_date: str | None = None
+    excerpt: str
+    relevance_score: float | None = Field(default=None, ge=0, le=1)
+
+
 class StructuredSignals(BaseModel):
     recent_case_count: int = Field(ge=0)
     wow_case_change_pct: float | None = None
@@ -47,12 +57,34 @@ class ExplainInsightResponse(BaseModel):
     recommendations: list[str]
     caveats: list[str]
     references: list[str]
+    document_references: list[DocumentReference] = Field(
+        default_factory=list,
+        description="Structured source documents retrieved from the RAG corpus (Phase 2+)",
+    )
     implementation_phase: str
     confidence_score: int = Field(
         default=50, ge=0, le=100, description="AI confidence 0-100"
     )
     trend_direction: TrendDirection = "stable"
     follow_up_answer: str | None = None
+
+
+# ── RAG ingestion models (Phase 2) ────────────────────────────────
+
+class RagIngestDocument(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    source: str = Field(min_length=2, max_length=300)
+    published_date: str | None = None
+    content: str = Field(min_length=10)
+
+
+class RagIngestRequest(BaseModel):
+    documents: list[RagIngestDocument] = Field(min_length=1)
+
+
+class RagIngestResponse(BaseModel):
+    ingested: int
+    message: str
 
 
 # ── Chat models (Phase 3) ──────────────────────────────────────────
