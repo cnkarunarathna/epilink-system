@@ -7,6 +7,7 @@ from explain_analytics.models import (
     ExplainInsightRequest,
     ExplainInsightResponse,
     RiskLevel,
+    StructuredSignals,
     TrendDirection,
 )
 
@@ -46,6 +47,19 @@ recommendations tailored to the risk level and drivers"],
   "trend_direction": "rising | falling | stable"
 }
 
+## Feature Importance Interpretation
+- If `structured_signals.feature_importances` is present, it contains \
+SHAP-based feature contributions from the XGBoost/LightGBM ensemble. \
+Values are fractional (0.0–1.0) representing each feature's share of \
+the predicted risk score.
+- When feature_importances is provided, derive `key_drivers` from the \
+top 3–5 features ranked by their importance value. State the percentage \
+contribution explicitly for each.
+- Example key_driver format: "Rainfall (7-day total: 95 mm) is the \
+dominant driver, contributing 42% of the model's predicted risk score."
+- If feature_importances is absent, infer key drivers from signal \
+thresholds as usual.
+
 ## Guidelines
 - Be specific to dengue in Sri Lanka; reference tropical weather patterns.
 - If rainfall > 80 mm / 7 days, highlight vector breeding risk explicitly.
@@ -53,10 +67,30 @@ recommendations tailored to the risk level and drivers"],
 - Derive trend_direction from the historical_trend array: compare recent \
 weeks to detect rising/falling/stable patterns.
 - confidence_score should reflect data completeness (all signals present → \
-higher) and consistency of trend signals.
+higher) and model certainty (narrow uncertainty_lower/upper band → higher). \
+Presence of feature_importances indicates a fully explainable prediction \
+and should increase confidence.
 - Keep each string concise (max 2 sentences per bullet).
 - Do NOT include any markdown, only valid JSON.
 """
+
+
+# Human-readable labels for known ML feature names.
+# Unknown feature names fall back to title-cased snake_case.
+_FEATURE_LABELS: dict[str, str] = {
+    "rainfall_mm_7d": "Rainfall (7-day cumulative)",
+    "temperature_c_7d": "Average temperature (7-day)",
+    "wow_case_change_pct": "Week-over-week case change",
+    "recent_case_count": "Current case burden",
+    "historical_trend": "Historical case trajectory",
+    "humidity_pct": "Relative humidity",
+    "population_density": "Population density",
+    "urbanization_index": "Urbanization level",
+    "vector_index": "Mosquito vector index",
+    "lag_1w_cases": "Lagged cases (1 week prior)",
+    "lag_2w_cases": "Lagged cases (2 weeks prior)",
+    "lag_3w_cases": "Lagged cases (3 weeks prior)",
+}
 
 
 class ExplainabilityService:
@@ -106,6 +140,43 @@ class ExplainabilityService:
         cleaned = [str(item).strip() for item in value if str(item).strip()]
         return cleaned if cleaned else fallback
 
+    @staticmethod
+    def _format_feature_driver(
+        name: str, importance: float, signals: StructuredSignals
+    ) -> str:
+        """Build a human-readable key-driver string from a SHAP feature entry."""
+        pct = importance * 100
+        label = _FEATURE_LABELS.get(name, name.replace("_", " ").title())
+
+        if name == "rainfall_mm_7d" and signals.rainfall_mm_7d is not None:
+            return (
+                f"{label} ({signals.rainfall_mm_7d:.0f} mm) contributes {pct:.0f}% "
+                f"of the model's predicted risk score"
+            )
+        if name == "temperature_c_7d" and signals.temperature_c_7d is not None:
+            return (
+                f"{label} ({signals.temperature_c_7d:.1f} \u00b0C) contributes {pct:.0f}% "
+                f"of the model's predicted risk score"
+            )
+        if name == "wow_case_change_pct" and signals.wow_case_change_pct is not None:
+            sign = "+" if signals.wow_case_change_pct >= 0 else ""
+            return (
+                f"{label} ({sign}{signals.wow_case_change_pct:.1f}%) contributes {pct:.0f}% "
+                f"of the model's predicted risk score"
+            )
+        if name == "recent_case_count":
+            return (
+                f"{label} ({signals.recent_case_count} cases/week) contributes {pct:.0f}% "
+                f"of the model's predicted risk score"
+            )
+        if name == "historical_trend" and signals.historical_trend:
+            trajectory = " \u2192 ".join(str(c) for c in signals.historical_trend)
+            return (
+                f"{label} ({trajectory}) contributes {pct:.0f}% "
+                f"of the model's predicted risk score"
+            )
+        return f"{label} contributes {pct:.0f}% of the model's predicted risk score"
+
     # ── Rule-based fallback ──────────────────────────────────────────
 
     def _generate_rule_based_insight(
@@ -114,43 +185,55 @@ class ExplainabilityService:
         signals = payload.structured_signals
         risk_level = self._classify_risk(signals.model_risk_score)
         trend = self._derive_trend(signals.historical_trend)
+        wow = signals.wow_case_change_pct
         drivers: list[str] = []
 
-        wow = signals.wow_case_change_pct
-        if wow is not None:
-            if wow >= 15:
-                drivers.append(
-                    f"Significant case surge: reported cases increased by {wow:.1f}% week-over-week, indicating rapid transmission acceleration"
-                )
-            elif wow >= 10:
-                drivers.append(
-                    f"Cases increased by {wow:.1f}% week-over-week, showing an upward trend"
-                )
-            elif wow <= -10:
-                drivers.append(
-                    f"Cases decreased by {abs(wow):.1f}% week-over-week, suggesting improving conditions"
-                )
-
-        rain = signals.rainfall_mm_7d
-        if rain is not None:
-            if rain >= 120:
-                drivers.append(
-                    f"Very heavy rainfall ({rain:.0f} mm in 7 days) creating extensive standing water and high Aedes breeding potential"
-                )
-            elif rain >= 80:
-                drivers.append(
-                    f"High rainfall ({rain:.0f} mm in 7 days) increasing mosquito breeding sites"
-                )
-
-        temp = signals.temperature_c_7d
-        if temp is not None and temp >= 28:
-            drivers.append(
-                f"Elevated temperature ({temp:.1f} °C) shortening mosquito development cycle and increasing biting frequency"
+        # ── SHAP-based drivers (authoritative when available) ─────────
+        if signals.feature_importances:
+            sorted_fi = sorted(
+                signals.feature_importances.items(), key=lambda x: x[1], reverse=True
             )
+            for feature_name, importance in sorted_fi[:5]:
+                if importance > 0.01:  # skip negligible contributions
+                    drivers.append(
+                        self._format_feature_driver(feature_name, importance, signals)
+                    )
+        else:
+            # ── Heuristic fallback (no SHAP data) ────────────────────
+            if wow is not None:
+                if wow >= 15:
+                    drivers.append(
+                        f"Significant case surge: reported cases increased by {wow:.1f}% week-over-week, indicating rapid transmission acceleration"
+                    )
+                elif wow >= 10:
+                    drivers.append(
+                        f"Cases increased by {wow:.1f}% week-over-week, showing an upward trend"
+                    )
+                elif wow <= -10:
+                    drivers.append(
+                        f"Cases decreased by {abs(wow):.1f}% week-over-week, suggesting improving conditions"
+                    )
 
-        if signals.historical_trend:
-            trend_str = " → ".join(str(c) for c in signals.historical_trend)
-            drivers.append(f"4-week case trajectory: {trend_str} ({trend})")
+            rain = signals.rainfall_mm_7d
+            if rain is not None:
+                if rain >= 120:
+                    drivers.append(
+                        f"Very heavy rainfall ({rain:.0f} mm in 7 days) creating extensive standing water and high Aedes breeding potential"
+                    )
+                elif rain >= 80:
+                    drivers.append(
+                        f"High rainfall ({rain:.0f} mm in 7 days) increasing mosquito breeding sites"
+                    )
+
+            temp = signals.temperature_c_7d
+            if temp is not None and temp >= 28:
+                drivers.append(
+                    f"Elevated temperature ({temp:.1f} °C) shortening mosquito development cycle and increasing biting frequency"
+                )
+
+            if signals.historical_trend:
+                trend_str = " \u2192 ".join(str(c) for c in signals.historical_trend)
+                drivers.append(f"4-week case trajectory: {trend_str} ({trend})")
 
         if not drivers:
             drivers.append(
@@ -194,8 +277,10 @@ class ExplainabilityService:
             signals.temperature_c_7d is not None,
             len(signals.historical_trend) >= 3,
             signals.uncertainty_lower is not None,
+            # SHAP importances present → prediction is fully explainable
+            bool(signals.feature_importances),
         ])
-        confidence = min(100, 30 + filled * 14)
+        confidence = min(100, 30 + filled * 12)
 
         wow_arrow = "↑" if (wow or 0) > 0 else "↓" if (wow or 0) < 0 else "→"
         summary = (
@@ -455,6 +540,15 @@ class AgenticInsightService:
         unc_u = signals.get("uncertainty_upper")
         if unc_l is not None and unc_u is not None:
             parts.append(f"uncertainty band: {unc_l:.2f}–{unc_u:.2f}")
+
+        fi = signals.get("feature_importances")
+        if fi and isinstance(fi, dict):
+            top = sorted(fi.items(), key=lambda x: x[1], reverse=True)[:3]
+            fi_str = ", ".join(
+                f"{_FEATURE_LABELS.get(k, k.replace('_', ' ').title())} {v * 100:.0f}%"
+                for k, v in top
+            )
+            parts.append(f"top SHAP drivers: {fi_str}")
 
         return ", ".join(parts) if parts else "no signals available"
 
