@@ -239,7 +239,7 @@ The following enhancements are prioritised by impact and effort. Each section de
 
 | # | Enhancement | Effort | Impact | Status |
 |---|------------|--------|--------|--------|
-| 1 | SHAP / feature importances in key drivers | Medium | Critical | Planned |
+| 1 | SHAP / feature importances in key drivers | Medium | Critical | **Done** |
 | 2 | Complete Phase 2 RAG pipeline | High | Critical | Planned |
 | 3 | National summary + batch explain endpoints | Low | High | Planned |
 | 4 | Expanded agent tool library (5 new tools) | Medium | High | Planned |

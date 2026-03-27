@@ -19,6 +19,14 @@ class StructuredSignals(BaseModel):
         default_factory=list,
         description="Last 4 weekly case counts (most-recent first)",
     )
+    feature_importances: dict[str, float] | None = Field(
+        default=None,
+        description=(
+            "SHAP-based feature contributions from the XGBoost/LightGBM ensemble. "
+            "Keys are feature names, values are fractional contributions (0.0–1.0, sum ≈ 1.0). "
+            "When present, used as the authoritative source for key_drivers generation."
+        ),
+    )
 
 
 class ExplainInsightRequest(BaseModel):
