@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+
 import {
   Brain,
   Lightbulb,
@@ -32,13 +32,10 @@ import {
   Sparkles,
   ChevronRight,
   Info,
-  Send,
-  MessageCircle,
   Gauge,
 } from "lucide-react";
 import {
   fetchExplainableInsight,
-  fetchExplainFollowUp,
   ExplainInsightResponse,
 } from "@/services/analytics.service";
 
@@ -108,21 +105,12 @@ export default function ExplainableInsightsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Ask AI state
-  const [question, setQuestion] = useState("");
-  const [askingAI, setAskingAI] = useState(false);
-  const [followUpAnswer, setFollowUpAnswer] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (district) {
       loadInsight(district);
-      setFollowUpAnswer(null);
-      setQuestion("");
     } else {
       setInsight(null);
       setError(null);
-      setFollowUpAnswer(null);
     }
   }, [district]);
 
@@ -147,22 +135,7 @@ export default function ExplainableInsightsPanel({
     }
   };
 
-  const handleAskAI = async () => {
-    if (!question.trim() || !district) return;
-    try {
-      setAskingAI(true);
-      const data = await fetchExplainFollowUp(district, question.trim());
-      setFollowUpAnswer(
-        data.follow_up_answer || data.summary || "No answer available."
-      );
-    } catch {
-      setFollowUpAnswer(
-        "Failed to get AI response. Please try again."
-      );
-    } finally {
-      setAskingAI(false);
-    }
-  };
+
 
   // ── Empty state ──
   if (!district) {
@@ -535,81 +508,6 @@ export default function ExplainableInsightsPanel({
             </div>
           )}
 
-          {/* Ask AI Follow-up Section */}
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3">
-            <h4 className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
-              <div className="p-1.5 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
-                <MessageCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              </div>
-              Ask AI — Follow-up Question
-            </h4>
-            <div className="flex gap-2">
-              <Input
-                ref={inputRef}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="e.g. What were the most effective control measures in similar situations?"
-                className="flex-1 bg-white dark:bg-slate-800 border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
-                disabled={askingAI}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAskAI();
-                  }
-                }}
-              />
-              <Button
-                onClick={handleAskAI}
-                disabled={askingAI || !question.trim()}
-                className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg"
-              >
-                {askingAI ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-
-            {/* Follow-up answer */}
-            {followUpAnswer && (
-              <div className="p-4 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 border border-purple-200 dark:border-purple-800 animate-in fade-in-50 slide-in-from-bottom-3">
-                <div className="flex items-start gap-3">
-                  <div className="p-1.5 bg-purple-100 dark:bg-purple-900/50 rounded-lg mt-0.5 shrink-0">
-                    <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">
-                      AI Response
-                    </h5>
-                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                      {followUpAnswer}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Suggestion chips */}
-            <div className="flex flex-wrap gap-2">
-              {[
-                "What control measures are recommended?",
-                "How does this compare to last month?",
-                "What is the weather impact forecast?",
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => {
-                    setQuestion(suggestion);
-                    inputRef.current?.focus();
-                  }}
-                  className="text-xs px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Phase indicator */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">

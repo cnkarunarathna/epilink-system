@@ -37,6 +37,7 @@ import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
 import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
 import ExplainableInsightsPanel from "@/components/dashboard/analytics/ExplainableInsightsPanel";
+import FloatingChatBubble from "@/components/dashboard/analytics/FloatingChatBubble";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -892,6 +893,16 @@ export default function AnalyticsPage() {
           <HistoricalAnalytics />
         </TabsContent>
       </Tabs>
+
+      {/* Floating AI Chat Bubble */}
+      <FloatingChatBubble
+        district={selectedDistrict}
+        dashboardContext={{
+          totalCases: summary?.total_cases,
+          highRiskCount: summary?.high_risk_districts,
+          topDistricts: predictions.slice(0, 5).map((p) => p.district),
+        }}
+      />
     </div>
   );
 }

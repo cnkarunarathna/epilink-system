@@ -8,14 +8,16 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "agno>=1.5.0",
     "fastapi>=0.116.1",
     "google-genai>=1.17.0",
+    "httpx>=0.28.0",
     "pydantic-settings>=2.10.1",
     "uvicorn[standard]>=0.35.0",
 ]
 
 [project.scripts]
-explain-analytics = "explain_analytics:main"
+analytics = "explain_analytics:main"
 
 [build-system]
 requires = ["uv_build>=0.9.15,<0.10.0"]
