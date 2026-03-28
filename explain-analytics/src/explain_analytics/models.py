@@ -69,6 +69,56 @@ class ExplainInsightResponse(BaseModel):
     follow_up_answer: str | None = None
 
 
+# ── Batch explain models (Enhancement 3) ─────────────────────────
+
+class BatchExplainRequest(BaseModel):
+    requests: list["ExplainInsightRequest"] = Field(
+        min_length=1,
+        max_length=26,
+        description="One request per district. Maximum 26 (all Sri Lanka districts).",
+    )
+
+
+class BatchExplainResponse(BaseModel):
+    results: list["ExplainInsightResponse"]
+    total: int
+    urgent_districts: list[str] = Field(
+        description="Districts with risk_level == 'critical' or model_risk_score >= 0.85"
+    )
+    by_risk_level: dict[str, int] = Field(
+        description="Count of districts per risk level: critical, high, moderate, low"
+    )
+    prediction_week: str | None
+    generated_at: str
+
+
+# ── National summary models (Enhancement 3) ───────────────────────
+
+class DistrictHighlight(BaseModel):
+    district: str
+    risk_level: RiskLevel
+    recent_case_count: int
+    wow_pct: float | None
+    trend: TrendDirection
+    is_urgent: bool
+
+
+class NationalSummaryResponse(BaseModel):
+    situation_report: str = Field(
+        description="3-paragraph executive narrative generated for senior health officials"
+    )
+    urgent_districts: list[str]
+    district_highlights: list[DistrictHighlight] = Field(
+        description="All districts sorted by descending risk"
+    )
+    total_districts_analysed: int
+    total_national_cases: int
+    by_risk_level: dict[str, int]
+    prediction_week: str | None
+    generated_at: str
+    implementation_phase: str
+
+
 # ── RAG ingestion models (Phase 2) ────────────────────────────────
 
 class RagIngestDocument(BaseModel):
