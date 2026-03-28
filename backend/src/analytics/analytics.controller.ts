@@ -107,4 +107,28 @@ export class AnalyticsController {
   ) {
     return this.analyticsService.chatWithAgent(district, body.messages, body.sessionId);
   }
+
+  // ── Enhancement 3: National Summary & Batch Explain ───────────────
+
+  @Get('national-summary')
+  async nationalSummary(@Query('week') week?: string) {
+    return this.analyticsService.getNationalSummary(week);
+  }
+
+  @Post('batch-explain')
+  async batchExplain(@Body() body: { requests: any[] }) {
+    return this.analyticsService.batchExplain(body.requests ?? []);
+  }
+
+  // ── Enhancement 2: RAG Corpus Management ──────────────────────────
+
+  @Get('rag/status')
+  async ragStatus() {
+    return this.analyticsService.getRagStatus();
+  }
+
+  @Post('rag/ingest')
+  async ragIngest(@Body() body: { documents: any[] }) {
+    return this.analyticsService.ingestRagDocuments(body.documents ?? []);
+  }
 }

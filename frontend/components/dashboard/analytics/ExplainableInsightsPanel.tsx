@@ -37,6 +37,7 @@ import {
 import {
   fetchExplainableInsight,
   ExplainInsightResponse,
+  DocumentReference,
 } from "@/services/analytics.service";
 
 const riskConfig = {
@@ -485,8 +486,48 @@ export default function ExplainableInsightsPanel({
             </div>
           )}
 
-          {/* References */}
-          {insight.references.length > 0 && (
+          {/* Structured RAG Document References (Enhancement 2) */}
+          {insight.document_references && insight.document_references.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+                  <BookOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                MoH Reference Documents
+              </h4>
+              <div className="space-y-2">
+                {insight.document_references.map((doc: DocumentReference, idx: number) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span className="text-xs font-semibold text-indigo-800 dark:text-indigo-300 leading-tight">
+                        {doc.title}
+                      </span>
+                      {doc.relevance_score !== null && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs shrink-0 bg-indigo-100 dark:bg-indigo-900/50 border-indigo-300 dark:border-indigo-700"
+                        >
+                          {Math.round(doc.relevance_score * 100)}% match
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                      {doc.source}{doc.published_date ? ` · ${doc.published_date}` : ""}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed italic">
+                      "{doc.excerpt}"
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Plain references fallback */}
+          {(!insight.document_references || insight.document_references.length === 0) && insight.references.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
                 <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
