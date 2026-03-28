@@ -132,7 +132,10 @@ class NationalSummaryService:
         """Fetch all-district comparison data from the NestJS backend."""
         try:
             url = f"{settings.backend_api_url}/analytics/historical/districts/compare"
-            resp = httpx.get(url, timeout=_TIMEOUT)
+            headers = {}
+            if settings.backend_service_key:
+                headers["x-internal-api-key"] = settings.backend_service_key
+            resp = httpx.get(url, headers=headers, timeout=_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             return data if isinstance(data, list) else []

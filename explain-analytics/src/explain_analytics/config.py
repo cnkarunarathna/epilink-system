@@ -22,7 +22,8 @@ class Settings(BaseSettings):
 
     # Agent mode (Phase 3)
     enable_agent_mode: bool = True
-    backend_api_url: str = "http://localhost:3001"
+    backend_api_url: str = "http://localhost:3001/api"
+    backend_service_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="EXPLAIN_",

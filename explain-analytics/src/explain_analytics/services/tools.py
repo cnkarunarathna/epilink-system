@@ -14,11 +14,17 @@ from explain_analytics.config import settings
 _TIMEOUT = 15
 
 
+def _internal_headers() -> dict:
+    if settings.backend_service_key:
+        return {"x-internal-api-key": settings.backend_service_key}
+    return {}
+
+
 def _api_get(path: str, params: dict | None = None) -> dict | list | None:
     """Helper: GET from the NestJS backend, return parsed JSON or None."""
     try:
         url = f"{settings.backend_api_url}{path}"
-        resp = httpx.get(url, params=params, timeout=_TIMEOUT)
+        resp = httpx.get(url, params=params, headers=_internal_headers(), timeout=_TIMEOUT)
         resp.raise_for_status()
         return resp.json()
     except Exception:

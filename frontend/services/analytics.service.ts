@@ -138,6 +138,14 @@ export async function fetchWeeklyForecast() {
   return res.data;
 }
 
+export interface DocumentReference {
+  title: string;
+  source: string;
+  published_date: string | null;
+  excerpt: string;
+  relevance_score: number | null;
+}
+
 export interface ExplainInsightResponse {
   district: string;
   risk_level: "low" | "moderate" | "high" | "critical";
@@ -146,12 +154,73 @@ export interface ExplainInsightResponse {
   recommendations: string[];
   caveats: string[];
   references: string[];
+  document_references?: DocumentReference[];
   implementation_phase: string;
   confidence_score: number;
   trend_direction: "rising" | "falling" | "stable";
   follow_up_answer?: string | null;
   _fallback?: boolean;
   _error?: string;
+  error?: string;
+}
+
+// ── Enhancement 3: National Summary & Batch ────────────────────────
+
+export interface DistrictHighlight {
+  district: string;
+  risk_level: "low" | "moderate" | "high" | "critical";
+  recent_case_count: number;
+  wow_pct: number | null;
+  trend: "rising" | "falling" | "stable";
+  is_urgent: boolean;
+}
+
+export interface NationalSummaryResponse {
+  situation_report: string;
+  urgent_districts: string[];
+  district_highlights: DistrictHighlight[];
+  total_districts_analysed: number;
+  total_national_cases: number;
+  by_risk_level: Record<string, number>;
+  prediction_week: string | null;
+  generated_at: string;
+  implementation_phase: string;
+  _error?: string;
+}
+
+export interface BatchExplainResult extends ExplainInsightResponse {}
+
+export interface BatchExplainResponse {
+  results: BatchExplainResult[];
+  total: number;
+  urgent_districts: string[];
+  by_risk_level: Record<string, number>;
+  prediction_week: string | null;
+  generated_at: string;
+  error?: string;
+}
+
+// ── Enhancement 2: RAG Corpus Management ──────────────────────────
+
+export interface RagStatus {
+  rag_enabled: boolean;
+  pgvector_configured: boolean;
+  embedding_model: string | null;
+  top_k: number;
+  document_count: number;
+  _error?: string;
+}
+
+export interface RagIngestDocument {
+  title: string;
+  source: string;
+  published_date?: string | null;
+  content: string;
+}
+
+export interface RagIngestResponse {
+  ingested: number;
+  message: string;
   error?: string;
 }
 
@@ -199,6 +268,50 @@ export async function chatWithAgent(
     `${API_BASE}/analytics/explain/${encodeURIComponent(district)}/chat`,
     { messages, sessionId },
     { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+// ── Enhancement 3: National Summary & Batch Explain ───────────────
+
+export async function fetchNationalSummary(
+  week?: string,
+): Promise<NationalSummaryResponse> {
+  const params = week ? `?week=${encodeURIComponent(week)}` : "";
+  const res = await axios.get(
+    `${API_BASE}/analytics/national-summary${params}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function batchExplain(
+  requests: ExplainInsightResponse[],
+): Promise<BatchExplainResponse> {
+  const res = await axios.post(
+    `${API_BASE}/analytics/batch-explain`,
+    { requests },
+    { headers: getAuthHeaders(), timeout: 120000 },
+  );
+  return res.data;
+}
+
+// ── Enhancement 2: RAG Corpus Management ─────────────────────────
+
+export async function fetchRagStatus(): Promise<RagStatus> {
+  const res = await axios.get(`${API_BASE}/analytics/rag/status`, {
+    headers: getAuthHeaders(),
+  });
+  return res.data;
+}
+
+export async function ingestRagDocuments(
+  documents: RagIngestDocument[],
+): Promise<RagIngestResponse> {
+  const res = await axios.post(
+    `${API_BASE}/analytics/rag/ingest`,
+    { documents },
+    { headers: getAuthHeaders(), timeout: 300000 },
   );
   return res.data;
 }
