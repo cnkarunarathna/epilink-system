@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Bell, Shield, Database, Mail, Save } from "lucide-react";
+import { Settings, Bell, Shield, Database, Mail, Save, BookOpen } from "lucide-react";
+import RAGCorpusManager from "@/components/dashboard/analytics/RAGCorpusManager";
 
 export default function SettingsPage() {
   return (
@@ -43,6 +44,10 @@ export default function SettingsPage() {
           <TabsTrigger value="data">
             <Database className="mr-2 h-4 w-4" />
             Data & ML
+          </TabsTrigger>
+          <TabsTrigger value="ai-corpus">
+            <BookOpen className="mr-2 h-4 w-4" />
+            AI Corpus
           </TabsTrigger>
         </TabsList>
 
@@ -292,6 +297,11 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* AI Corpus Settings */}
+        <TabsContent value="ai-corpus" className="space-y-4">
+          <RAGCorpusManager />
         </TabsContent>
       </Tabs>
     </div>

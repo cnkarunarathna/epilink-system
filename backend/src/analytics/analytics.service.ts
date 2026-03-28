@@ -938,4 +938,88 @@ export class AnalyticsService {
       };
     }
   }
+
+  // ── Enhancement 3: National Summary ────────────────────────────────
+
+  async getNationalSummary(week?: string) {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const params = week ? `?week=${encodeURIComponent(week)}` : '';
+      const resp = await axios.get(
+        `${explainUrl}/v1/insights/national-summary${params}`,
+      );
+      return resp.data;
+    } catch (err: any) {
+      return {
+        situation_report:
+          'National summary could not be generated. The AI analytics service is currently unavailable.',
+        urgent_districts: [],
+        district_highlights: [],
+        total_districts_analysed: 0,
+        total_national_cases: 0,
+        by_risk_level: { critical: 0, high: 0, moderate: 0, low: 0 },
+        prediction_week: week ?? null,
+        generated_at: new Date().toISOString(),
+        implementation_phase: 'unavailable',
+        _error: err.message,
+      };
+    }
+  }
+
+  // ── Enhancement 3: Batch Explain ───────────────────────────────────
+
+  async batchExplain(requests: any[]) {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.post(
+        `${explainUrl}/v1/insights/batch-explain`,
+        { requests },
+        { timeout: 120000 }, // 2-minute timeout for batch operations
+      );
+      return resp.data;
+    } catch (err: any) {
+      return {
+        error: 'Batch explain service unavailable',
+        results: [],
+        total: 0,
+        urgent_districts: [],
+        by_risk_level: { critical: 0, high: 0, moderate: 0, low: 0 },
+        prediction_week: null,
+        generated_at: new Date().toISOString(),
+      };
+    }
+  }
+
+  // ── Enhancement 2: RAG Corpus Management ───────────────────────────
+
+  async getRagStatus() {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.get(`${explainUrl}/v1/rag/status`);
+      return resp.data;
+    } catch (err: any) {
+      return {
+        rag_enabled: false,
+        pgvector_configured: false,
+        embedding_model: null,
+        top_k: 0,
+        document_count: 0,
+        _error: 'RAG status unavailable — AI service unreachable',
+      };
+    }
+  }
+
+  async ingestRagDocuments(documents: any[]) {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    const resp = await axios.post(
+      `${explainUrl}/v1/rag/ingest`,
+      { documents },
+      { timeout: 300000 }, // 5-minute timeout — embedding can be slow for large batches
+    );
+    return resp.data;
+  }
 }

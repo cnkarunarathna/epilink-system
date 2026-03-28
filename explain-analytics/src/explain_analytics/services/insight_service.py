@@ -4,12 +4,14 @@ from google import genai
 
 from explain_analytics.config import settings
 from explain_analytics.models import (
+    DocumentReference,
     ExplainInsightRequest,
     ExplainInsightResponse,
     RiskLevel,
     StructuredSignals,
     TrendDirection,
 )
+from explain_analytics.services.rag_service import RAGService
 
 SYSTEM_PROMPT = """\
 You are a **Senior Epidemiologist** specializing in dengue fever analytics \
@@ -180,7 +182,9 @@ class ExplainabilityService:
     # ── Rule-based fallback ──────────────────────────────────────────
 
     def _generate_rule_based_insight(
-        self, payload: ExplainInsightRequest
+        self,
+        payload: ExplainInsightRequest,
+        document_references: list[DocumentReference] | None = None,
     ) -> ExplainInsightResponse:
         signals = payload.structured_signals
         risk_level = self._classify_risk(signals.model_risk_score)
@@ -263,9 +267,17 @@ class ExplainabilityService:
             "Monitor weekly epidemiological trends and reassess risk level at next reporting cycle"
         )
 
-        caveats = [
-            "Analysis based on structured surveillance signals (Phase 1); historical document retrieval (RAG) not yet active"
-        ]
+        doc_refs = document_references or []
+        if doc_refs:
+            caveats = [
+                f"Recommendations are informed by {len(doc_refs)} retrieved MoH document(s); "
+                "verify against the latest ministry guidelines before field deployment."
+            ]
+        else:
+            caveats = [
+                "Analysis based on structured surveillance signals; "
+                "no RAG corpus documents were retrieved (configure EXPLAIN_PGVECTOR_URL to enable)."
+            ]
         if signals.uncertainty_lower is not None and signals.uncertainty_upper is not None:
             caveats.append(
                 f"Model forecast uncertainty range: {signals.uncertainty_lower:.2f} – {signals.uncertainty_upper:.2f}"
@@ -291,6 +303,11 @@ class ExplainabilityService:
             f"The case trajectory is {trend}."
         )
 
+        phase = "phase-2-rag" if doc_refs else "phase-1-rule-based"
+        plain_refs = [
+            f"{r.title} ({r.source})" for r in doc_refs
+        ] or payload.rag_context[:3]
+
         return ExplainInsightResponse(
             district=payload.district,
             risk_level=risk_level,
@@ -298,8 +315,9 @@ class ExplainabilityService:
             key_drivers=drivers,
             recommendations=recommendations,
             caveats=caveats,
-            references=payload.rag_context[:3],
-            implementation_phase="phase-1-rule-based",
+            references=plain_refs,
+            document_references=doc_refs,
+            implementation_phase=phase,
             confidence_score=confidence,
             trend_direction=trend,
         )
@@ -307,7 +325,10 @@ class ExplainabilityService:
     # ── Gemini LLM generation ────────────────────────────────────────
 
     def _generate_with_gemini(
-        self, payload: ExplainInsightRequest, baseline: ExplainInsightResponse
+        self,
+        payload: ExplainInsightRequest,
+        baseline: ExplainInsightResponse,
+        document_references: list[DocumentReference] | None = None,
     ) -> ExplainInsightResponse:
         if settings.llm_provider.lower() != "gemini":
             return baseline
@@ -318,6 +339,22 @@ class ExplainabilityService:
         user_prompt = (
             f"Analyze the following dengue surveillance data and return the JSON analysis:\n\n{data_block}"
         )
+
+        # Inject retrieved RAG documents as grounding context
+        doc_refs = document_references or []
+        if doc_refs:
+            rag_block = "\n\n".join(
+                f"[{i + 1}] {ref.title} ({ref.source}"
+                + (f", {ref.published_date}" if ref.published_date else "")
+                + f")\n{ref.excerpt}"
+                for i, ref in enumerate(doc_refs)
+            )
+            user_prompt += (
+                f"\n\n## Retrieved MoH Reference Documents\n"
+                f"The following documents were retrieved from the Ministry of Health corpus "
+                f"as relevant context. Ground your recommendations in these sources where applicable:\n\n"
+                f"{rag_block}"
+            )
 
         if payload.user_question:
             user_prompt += (
@@ -344,6 +381,11 @@ class ExplainabilityService:
 
         generated = json.loads(text)
 
+        phase = "phase-2-rag-gemini" if doc_refs else "phase-1-gemini"
+        plain_refs = [
+            f"{r.title} ({r.source})" for r in doc_refs
+        ] or payload.rag_context[:3]
+
         return ExplainInsightResponse(
             district=payload.district,
             risk_level=self._normalize_risk_level(
@@ -359,8 +401,9 @@ class ExplainabilityService:
             caveats=self._ensure_list_of_strings(
                 generated.get("caveats"), baseline.caveats
             ),
-            references=payload.rag_context[:3],
-            implementation_phase="phase-1-gemini",
+            references=plain_refs,
+            document_references=doc_refs,
+            implementation_phase=phase,
             confidence_score=max(
                 0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))
             ),
@@ -375,11 +418,25 @@ class ExplainabilityService:
     # ── Public entry point ───────────────────────────────────────────
 
     def generate_insight(
-        self, payload: ExplainInsightRequest
+        self,
+        payload: ExplainInsightRequest,
+        rag_service: RAGService | None = None,
     ) -> ExplainInsightResponse:
-        baseline = self._generate_rule_based_insight(payload)
+        # Phase 2: retrieve relevant MoH documents before generating the insight
+        doc_refs: list[DocumentReference] = []
+        if rag_service and rag_service.is_ready:
+            sig = payload.structured_signals
+            doc_refs = rag_service.retrieve(
+                district=payload.district,
+                model_risk_score=sig.model_risk_score,
+                rainfall_mm_7d=sig.rainfall_mm_7d,
+                temperature_c_7d=sig.temperature_c_7d,
+                wow_case_change_pct=sig.wow_case_change_pct,
+            )
+
+        baseline = self._generate_rule_based_insight(payload, doc_refs)
         try:
-            return self._generate_with_gemini(payload, baseline)
+            return self._generate_with_gemini(payload, baseline, doc_refs)
         except Exception:
             return baseline
 

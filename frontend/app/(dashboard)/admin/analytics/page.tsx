@@ -29,6 +29,7 @@ import {
   Wifi,
   WifiOff,
   Brain,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -38,6 +39,7 @@ import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
 import ExplainableInsightsPanel from "@/components/dashboard/analytics/ExplainableInsightsPanel";
 import FloatingChatBubble from "@/components/dashboard/analytics/FloatingChatBubble";
+import NationalSummaryPanel from "@/components/dashboard/analytics/NationalSummaryPanel";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -288,7 +290,7 @@ export default function AnalyticsPage() {
       </div>
 
       <Tabs defaultValue="predictions" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 h-14 p-1 bg-muted/50 backdrop-blur-sm">
+        <TabsList className="grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
           <TabsTrigger
             value="predictions"
             className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
@@ -302,6 +304,13 @@ export default function AnalyticsPage() {
           >
             <History className="h-5 w-5 mr-2" />
             Historical Analytics
+          </TabsTrigger>
+          <TabsTrigger
+            value="national"
+            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
+          >
+            <Globe className="h-5 w-5 mr-2" />
+            National Report
           </TabsTrigger>
         </TabsList>
 
@@ -891,6 +900,11 @@ export default function AnalyticsPage() {
         {/* Historical Analytics Tab */}
         <TabsContent value="historical">
           <HistoricalAnalytics />
+        </TabsContent>
+
+        {/* National Report Tab */}
+        <TabsContent value="national" className="animate-in fade-in-50 duration-500">
+          <NationalSummaryPanel />
         </TabsContent>
       </Tabs>
 

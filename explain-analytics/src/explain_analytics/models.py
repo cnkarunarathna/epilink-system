@@ -7,6 +7,16 @@ RiskLevel = Literal["low", "moderate", "high", "critical"]
 TrendDirection = Literal["rising", "falling", "stable"]
 
 
+class DocumentReference(BaseModel):
+    """A citable source document retrieved from the RAG corpus."""
+
+    title: str
+    source: str
+    published_date: str | None = None
+    excerpt: str
+    relevance_score: float | None = Field(default=None, ge=0, le=1)
+
+
 class StructuredSignals(BaseModel):
     recent_case_count: int = Field(ge=0)
     wow_case_change_pct: float | None = None
@@ -47,12 +57,84 @@ class ExplainInsightResponse(BaseModel):
     recommendations: list[str]
     caveats: list[str]
     references: list[str]
+    document_references: list[DocumentReference] = Field(
+        default_factory=list,
+        description="Structured source documents retrieved from the RAG corpus (Phase 2+)",
+    )
     implementation_phase: str
     confidence_score: int = Field(
         default=50, ge=0, le=100, description="AI confidence 0-100"
     )
     trend_direction: TrendDirection = "stable"
     follow_up_answer: str | None = None
+
+
+# ── Batch explain models (Enhancement 3) ─────────────────────────
+
+class BatchExplainRequest(BaseModel):
+    requests: list["ExplainInsightRequest"] = Field(
+        min_length=1,
+        max_length=26,
+        description="One request per district. Maximum 26 (all Sri Lanka districts).",
+    )
+
+
+class BatchExplainResponse(BaseModel):
+    results: list["ExplainInsightResponse"]
+    total: int
+    urgent_districts: list[str] = Field(
+        description="Districts with risk_level == 'critical' or model_risk_score >= 0.85"
+    )
+    by_risk_level: dict[str, int] = Field(
+        description="Count of districts per risk level: critical, high, moderate, low"
+    )
+    prediction_week: str | None
+    generated_at: str
+
+
+# ── National summary models (Enhancement 3) ───────────────────────
+
+class DistrictHighlight(BaseModel):
+    district: str
+    risk_level: RiskLevel
+    recent_case_count: int
+    wow_pct: float | None
+    trend: TrendDirection
+    is_urgent: bool
+
+
+class NationalSummaryResponse(BaseModel):
+    situation_report: str = Field(
+        description="3-paragraph executive narrative generated for senior health officials"
+    )
+    urgent_districts: list[str]
+    district_highlights: list[DistrictHighlight] = Field(
+        description="All districts sorted by descending risk"
+    )
+    total_districts_analysed: int
+    total_national_cases: int
+    by_risk_level: dict[str, int]
+    prediction_week: str | None
+    generated_at: str
+    implementation_phase: str
+
+
+# ── RAG ingestion models (Phase 2) ────────────────────────────────
+
+class RagIngestDocument(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    source: str = Field(min_length=2, max_length=300)
+    published_date: str | None = None
+    content: str = Field(min_length=10)
+
+
+class RagIngestRequest(BaseModel):
+    documents: list[RagIngestDocument] = Field(min_length=1)
+
+
+class RagIngestResponse(BaseModel):
+    ingested: int
+    message: str
 
 
 # ── Chat models (Phase 3) ──────────────────────────────────────────
