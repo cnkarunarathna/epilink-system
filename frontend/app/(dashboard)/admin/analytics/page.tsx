@@ -40,6 +40,7 @@ import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelat
 import ExplainableInsightsPanel from "@/components/dashboard/analytics/ExplainableInsightsPanel";
 import FloatingChatBubble from "@/components/dashboard/analytics/FloatingChatBubble";
 import NationalSummaryPanel from "@/components/dashboard/analytics/NationalSummaryPanel";
+import AdvancedAnalyticsPanel from "@/components/dashboard/analytics/AdvancedAnalyticsPanel";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -778,6 +779,10 @@ export default function AnalyticsPage() {
                     setSelectedDistrict(d);
                     handleDistrictClick(d);
                   }}
+                />
+
+                <AdvancedAnalyticsPanel
+                  districts={predictions.map((p) => p.district)}
                 />
               </div>
             </TabsContent>

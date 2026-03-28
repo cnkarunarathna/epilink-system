@@ -1,18 +1,30 @@
 version: "3.9"
 
 services:
-  postgres:
-    image: postgres:16
-    container_name: epilink-db
+  # postgres:
+  #   image: postgres:16
+  #   container_name: epilink-db
+  #   restart: always
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: admin
+  #     POSTGRES_DB: epilink
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    container_name: epilink-redis
     restart: always
+    command:
+      ["redis-server", "--requirepass", "ZytgpWDhcFeosIzeheccQsRj4Sq1BOqx"]
     ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: epilink
+      - "11801:6379"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - redisdata:/data
 
 volumes:
-  pgdata:
+  # pgdata:
+  redisdata:
