@@ -26,6 +26,12 @@ const TOOL_LABELS: Record<string, string> = {
   get_weather_correlation: "Weather Correlation",
   get_outbreak_alerts: "Outbreak Alerts",
   get_growth_rate: "Growth Rate",
+  get_district_details: "District Details",
+  get_seasonal_pattern: "Seasonal Pattern",
+  get_cross_district_spillover: "Spillover Risk",
+  get_intervention_history: "Intervention History",
+  get_model_performance_metrics: "Model Performance",
+  get_demographic_hotspots: "Demographic Hotspots",
 };
 
 const PRESETS = [
@@ -35,6 +41,11 @@ const PRESETS = [
   "What's the weather impact on dengue?",
   "Are there any active outbreak alerts?",
   "Compare the top 3 risk districts",
+  "What is the seasonal pattern for this district?",
+  "Are neighboring districts also rising?",
+  "When was the last successful intervention here?",
+  "How accurate are the model predictions?",
+  "Which zones within the district need urgent action?",
 ];
 
 interface ChatEntry {

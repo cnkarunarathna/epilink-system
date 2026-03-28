@@ -442,7 +442,7 @@ class ExplainabilityService:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Phase 3: Agno-powered agentic chat
+# Phase 3: Gemini-native function calling agent
 # ══════════════════════════════════════════════════════════════════════
 
 AGENT_SYSTEM_PROMPT = """\
@@ -476,10 +476,20 @@ fastest-growing first, with accelerating/stable/declining counts.
 - **get_district_details**: Comprehensive single-district snapshot — latest \
 cases, WoW, 8-week history, peak, weather, and risk level. Use first when \
 answering detailed questions about one specific district.
+- **get_seasonal_pattern**: Multi-year week-by-week seasonal overlay showing \
+peak season windows, current vs baseline comparison for a district.
+- **get_cross_district_spillover**: Geographic spillover risk — focal district \
+plus all neighbouring districts, simultaneous-rise detection.
+- **get_intervention_history**: Inferred past intervention response events \
+from post-peak case declines (≥30% drops) in the timeseries.
+- **get_model_performance_metrics**: ML prediction accuracy — predicted vs \
+actual cases, absolute/percentage error, naive-persistence MAE benchmark.
+- **get_demographic_hotspots**: Sub-district zone risk breakdown with \
+intervention priority ranking by settlement type (urban/coastal/rural).
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
-comparison, trend/seasonal, weather impact, or alert status.
+comparison, trend/seasonal, weather impact, alert status, or geographic spread.
 2. **Call the right tool(s)** — always fetch live data before answering; \
 never guess statistics.
 3. **Analyse the data** — identify trends, anomalies, ratios, thresholds.
@@ -496,11 +506,16 @@ health actions.
 | Weather / climate impact | get_weather_correlation | get_district_details |
 | Active outbreaks | get_outbreak_alerts | compare_districts |
 | Fastest growing / accelerating | get_growth_rate | compare_districts |
-| Historical trend / seasonal | year_over_year | compare_districts |
+| Historical trend / seasonal | year_over_year | get_seasonal_pattern |
+| Seasonal peak timing | get_seasonal_pattern | year_over_year |
+| Spread to neighbours | get_cross_district_spillover | compare_districts |
+| Past interventions / control | get_intervention_history | year_over_year |
+| Model prediction accuracy | get_model_performance_metrics | get_district_details |
+| Sub-district zone targeting | get_demographic_hotspots | get_district_details |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
-- **Use specific numbers** — ratios, percentages, absolute counts.
+- **Use specific numbers** — ratios, percentages, absolute counts from tool results.
 - **Structure with markdown** — bold key terms, use bullet lists for \
 multiple items.
 - **2–4 paragraphs** — concise; do not pad with disclaimers or repetition.
@@ -508,96 +523,248 @@ multiple items.
 - Do NOT disclaim being an AI or hedge with "I think / I believe".
 """
 
+# ── Gemini function declarations for all 11 tools ────────────────────
+
+def _build_gemini_tools():
+    """Build Gemini FunctionDeclaration list for all analytics tools."""
+    from google.genai import types as _t
+
+    district_param = _t.Schema(
+        type=_t.Type.STRING,
+        description="Name of the Sri Lanka district, e.g. 'Colombo'.",
+    )
+
+    return _t.Tool(
+        function_declarations=[
+            _t.FunctionDeclaration(
+                name="compare_districts",
+                description=(
+                    "Compare dengue statistics across multiple districts. "
+                    "Returns latest cases, WoW change, 4-week average, and risk level per district."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "districts": _t.Schema(
+                            type=_t.Type.STRING,
+                            description=(
+                                "Comma-separated district names, e.g. 'Colombo,Gampaha,Kandy'. "
+                                "Pass an empty string '' to compare all districts."
+                            ),
+                        )
+                    },
+                    required=["districts"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="year_over_year",
+                description=(
+                    "Get 12-week timeseries with WoW changes, peak detection, and momentum "
+                    "for a single district. Use for trend, historical, or seasonal questions."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_weather_correlation",
+                description=(
+                    "Pearson correlation between weather variables (temperature, rainfall) "
+                    "and dengue cases across all districts, ranked by correlation strength."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={},
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_outbreak_alerts",
+                description=(
+                    "Current outbreak/warning alert status for all districts. "
+                    "Returns ratio-to-4-week-average metrics and alert severity."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={},
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_growth_rate",
+                description=(
+                    "Average case growth rate per district over N weeks, "
+                    "ranked fastest-growing first, with accelerating/stable/declining counts."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "weeks": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="Number of weeks to compute growth over (default: 4).",
+                        )
+                    },
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_district_details",
+                description=(
+                    "Comprehensive single-district snapshot: latest cases, WoW change, "
+                    "8-week history, peak, weather context, and risk level."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_seasonal_pattern",
+                description=(
+                    "Multi-year week-by-week seasonal overlay: identifies peak season windows, "
+                    "current week vs historical baseline, and whether district is in peak season."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": district_param,
+                        "years": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="Number of past years to overlay (default: 3, max: 10).",
+                        ),
+                    },
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_cross_district_spillover",
+                description=(
+                    "Geographic spillover risk for a focal district: fetches the focal district "
+                    "plus all its land-border neighbours, detects simultaneous rises, "
+                    "and classifies spillover risk as low/moderate/high."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_intervention_history",
+                description=(
+                    "Infers past vector-control intervention response events from the timeseries: "
+                    "identifies peaks ≥25 cases followed by ≥30% case decline within 6 weeks."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_model_performance_metrics",
+                description=(
+                    "Evaluates ML prediction accuracy for a district: compares the latest "
+                    "ML-predicted case count against actual reported cases and computes "
+                    "absolute error, percentage error, accuracy class, and naive-persistence MAE."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_demographic_hotspots",
+                description=(
+                    "Sub-district zone risk breakdown using MOH divisional classification. "
+                    "Distributes district case load across urban/coastal/rural zones with "
+                    "intervention priority ranking and weather-adjusted context flags."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={"district": district_param},
+                    required=["district"],
+                ),
+            ),
+        ]
+    )
+
+
+# Map function names to actual callables
+def _build_tool_map():
+    from explain_analytics.services.tools import (
+        compare_districts,
+        get_cross_district_spillover,
+        get_demographic_hotspots,
+        get_district_details,
+        get_growth_rate,
+        get_intervention_history,
+        get_model_performance_metrics,
+        get_outbreak_alerts,
+        get_seasonal_pattern,
+        get_weather_correlation,
+        year_over_year,
+    )
+    return {
+        "compare_districts": compare_districts,
+        "year_over_year": year_over_year,
+        "get_weather_correlation": get_weather_correlation,
+        "get_outbreak_alerts": get_outbreak_alerts,
+        "get_growth_rate": get_growth_rate,
+        "get_district_details": get_district_details,
+        "get_seasonal_pattern": get_seasonal_pattern,
+        "get_cross_district_spillover": get_cross_district_spillover,
+        "get_intervention_history": get_intervention_history,
+        "get_model_performance_metrics": get_model_performance_metrics,
+        "get_demographic_hotspots": get_demographic_hotspots,
+    }
+
 
 class AgenticInsightService:
-    """Phase 3 service: Agno Agent with tools for interactive chat."""
+    """Phase 3 service: Gemini-native function calling agent."""
+
+    _MAX_TOOL_ROUNDS = 5  # prevent runaway loops
 
     def __init__(self) -> None:
-        self._agent = None
-        self._init_agent()
+        self._tool_map: dict = {}
+        self._gemini_tool = None
+        self._ready = False
+        self._init()
 
-    def _init_agent(self) -> None:
-        if not settings.enable_agent_mode:
-            return
+    def _init(self) -> None:
         if not settings.gemini_api_key:
+            print("[AgenticInsightService] EXPLAIN_GEMINI_API_KEY not set — agent disabled.")
             return
-
         try:
-            from agno.agent import Agent
-            from agno.models.google import Gemini
-            from explain_analytics.services.tools import ALL_TOOLS
-
-            self._agent = Agent(
-                model=Gemini(
-                    id=settings.llm_model,
-                    api_key=settings.gemini_api_key,
-                ),
-                tools=ALL_TOOLS,
-                description=AGENT_SYSTEM_PROMPT,
-                instructions=[
-                    "ALWAYS call tools before answering any data question — never guess statistics.",
-                    "For single-district questions, call get_district_details first.",
-                    "For comparison questions, call compare_districts with the relevant districts.",
-                    "For trend/historical questions, call year_over_year.",
-                    "For weather impact, call get_weather_correlation.",
-                    "Use specific numbers from tool results: percentages, ratios, absolute counts.",
-                    "Keep responses to 2–4 concise paragraphs with one concrete recommendation.",
-                ],
-                markdown=True,
-                show_tool_calls=False,
-            )
+            self._tool_map = _build_tool_map()
+            self._gemini_tool = _build_gemini_tools()
+            self._ready = True
         except Exception as e:
-            print(f"[AgenticInsightService] Failed to init Agno agent: {e}")
-            self._agent = None
-
-    @staticmethod
-    def _clean_response(text: str) -> str:
-        """Strip residual tool_code / tool_result fenced blocks from agent output."""
-        import re
-
-        text = re.sub(r"```tool_code\s*\n.*?```", "", text, flags=re.DOTALL)
-        text = re.sub(r"```tool_result\s*\n.*?```", "", text, flags=re.DOTALL)
-        text = re.sub(
-            r"```\w*\s*\n\s*\w+\(.*?\)\s*\n\s*```", "", text, flags=re.DOTALL
-        )
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text.strip()
+            print(f"[AgenticInsightService] Init failed: {e}")
 
     @staticmethod
     def _format_signals_context(signals: dict) -> str:
-        """Format structured signals into a readable context string."""
         parts: list[str] = []
-
         cc = signals.get("recent_case_count")
         if cc is not None:
             parts.append(f"{cc} cases this week")
-
         wow = signals.get("wow_case_change_pct")
         if wow is not None:
             sign = "+" if wow >= 0 else ""
             parts.append(f"WoW change: {sign}{wow:.1f}%")
-
         rain = signals.get("rainfall_mm_7d")
         if rain is not None:
             parts.append(f"rainfall: {rain:.0f} mm/7d")
-
         temp = signals.get("temperature_c_7d")
         if temp is not None:
             parts.append(f"temperature: {temp:.1f} °C")
-
         risk = signals.get("model_risk_score")
         if risk is not None:
             parts.append(f"model risk score: {risk:.2f}")
-
         trend = signals.get("historical_trend", [])
         if trend:
             parts.append(f"4-week trend: {' → '.join(str(c) for c in trend)}")
-
-        unc_l = signals.get("uncertainty_lower")
-        unc_u = signals.get("uncertainty_upper")
-        if unc_l is not None and unc_u is not None:
-            parts.append(f"uncertainty band: {unc_l:.2f}–{unc_u:.2f}")
-
         fi = signals.get("feature_importances")
         if fi and isinstance(fi, dict):
             top = sorted(fi.items(), key=lambda x: x[1], reverse=True)[:3]
@@ -606,36 +773,20 @@ class AgenticInsightService:
                 for k, v in top
             )
             parts.append(f"top SHAP drivers: {fi_str}")
-
         return ", ".join(parts) if parts else "no signals available"
 
-    @staticmethod
-    def _extract_tool_calls(response: object) -> list[str]:
-        """Robustly extract tool call names from an Agno RunResponse."""
-        tool_calls: list[str] = []
-        messages = getattr(response, "messages", None) or []
-        for msg in messages:
-            # Method 1: tool_calls attribute with function.name
-            tcs = getattr(msg, "tool_calls", None) or []
-            for tc in tcs:
-                fn = getattr(tc, "function", None)
-                name = getattr(fn, "name", None) if fn else None
-                if name and name not in tool_calls:
-                    tool_calls.append(name)
-
-            # Method 2: role == "tool" or "function" with a name attribute
-            role = getattr(msg, "role", "")
-            if role in ("tool", "function"):
-                name = getattr(msg, "name", None) or getattr(msg, "tool_name", None)
-                if name and name not in tool_calls:
-                    tool_calls.append(name)
-
-            # Method 3: tool_name directly on the message (some Agno versions)
-            tool_name = getattr(msg, "tool_name", None)
-            if tool_name and tool_name not in tool_calls:
-                tool_calls.append(tool_name)
-
-        return tool_calls
+    def _invoke_tool(self, name: str, args: dict) -> str:
+        """Execute a tool by name and return its JSON string result."""
+        fn = self._tool_map.get(name)
+        if fn is None:
+            return json.dumps({"error": f"Unknown tool: {name}"})
+        try:
+            # Tools that take no arguments
+            if name in ("get_weather_correlation", "get_outbreak_alerts"):
+                return fn()
+            return fn(**args)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
 
     def chat(
         self,
@@ -645,87 +796,112 @@ class AgenticInsightService:
         structured_signals: dict | None = None,
     ) -> dict:
         import uuid
+        from google import genai as _genai
+        from google.genai import types as _t
 
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        # ── Build district context block ──────────────────────────────
-        context_lines = [f"**Current district context: {district}**"]
+        # ── Build initial user message ────────────────────────────────
+        context_lines = [f"Current district context: {district}"]
         if structured_signals:
             context_lines.append(
                 f"Live signals — {self._format_signals_context(structured_signals)}"
             )
-        context_block = "\n".join(context_lines)
 
-        # ── Include conversation history (all messages except the last) ──
-        history_block = ""
-        if len(messages) > 1:
-            history_lines: list[str] = []
-            for msg in messages[:-1]:
-                role = msg.get("role", "user")
-                content = msg.get("content", "").strip()
-                if content:
-                    prefix = "User" if role == "user" else "Assistant"
-                    history_lines.append(f"{prefix}: {content}")
-            if history_lines:
-                history_block = (
-                    "\n\n**Conversation history (for context):**\n"
-                    + "\n".join(history_lines)
-                )
+        history_parts: list[str] = []
+        for msg in messages[:-1]:
+            role = msg.get("role", "user")
+            content = msg.get("content", "").strip()
+            if content:
+                history_parts.append(f"{'User' if role == 'user' else 'Assistant'}: {content}")
 
-        # ── Current user question ─────────────────────────────────────
-        last_msg = messages[-1]["content"].strip() if messages else ""
-        full_prompt = f"{context_block}{history_block}\n\n**Question:** {last_msg}"
+        last_question = messages[-1]["content"].strip() if messages else ""
 
-        # ── Agent path ────────────────────────────────────────────────
-        if self._agent is not None:
-            try:
-                response = self._agent.run(full_prompt)
-                reply = self._clean_response(
-                    response.content or "I couldn't generate a response."
-                )
-                tool_calls_used = self._extract_tool_calls(response)
+        user_text = "\n".join(context_lines)
+        if history_parts:
+            user_text += "\n\nConversation history:\n" + "\n".join(history_parts)
+        user_text += f"\n\nQuestion: {last_question}"
 
-                return {
-                    "reply": reply,
-                    "tool_calls_used": tool_calls_used,
-                    "session_id": session_id,
-                }
-            except Exception as e:
-                print(f"[AgenticInsightService] Agent error: {e}")
+        if not self._ready or not settings.gemini_api_key:
+            return {
+                "reply": "Agent mode is unavailable. Please configure EXPLAIN_GEMINI_API_KEY.",
+                "tool_calls_used": [],
+                "session_id": session_id,
+            }
 
-        # ── Fallback: direct Gemini call without tools ────────────────
-        if settings.gemini_api_key:
-            try:
-                from google import genai as _genai
+        try:
+            client = _genai.Client(api_key=settings.gemini_api_key)
+            config = _t.GenerateContentConfig(
+                tools=[self._gemini_tool],
+                system_instruction=AGENT_SYSTEM_PROMPT,
+                temperature=settings.default_temperature,
+            )
 
-                client = _genai.Client(api_key=settings.gemini_api_key)
-                resp = client.models.generate_content(
+            # Multi-turn contents list — grows with each tool round
+            contents: list = [
+                _t.Content(role="user", parts=[_t.Part(text=user_text)])
+            ]
+
+            tool_calls_used: list[str] = []
+
+            # ── Agentic tool-calling loop ─────────────────────────────
+            for _ in range(self._MAX_TOOL_ROUNDS):
+                response = client.models.generate_content(
                     model=settings.llm_model,
-                    contents=[
-                        {
-                            "role": "user",
-                            "parts": [
-                                {"text": AGENT_SYSTEM_PROMPT + "\n\n" + full_prompt}
-                            ],
-                        }
-                    ],
-                    config={"temperature": settings.default_temperature},
+                    contents=contents,
+                    config=config,
                 )
-                return {
-                    "reply": resp.text or "No response generated.",
-                    "tool_calls_used": [],
-                    "session_id": session_id,
-                }
-            except Exception as e:
-                return {
-                    "reply": f"AI service error: {e}",
-                    "tool_calls_used": [],
-                    "session_id": session_id,
-                }
 
-        return {
-            "reply": "Agent mode is not available. Please configure EXPLAIN_GEMINI_API_KEY.",
-            "tool_calls_used": [],
-            "session_id": session_id,
-        }
+                # Collect function calls from response
+                function_calls = response.function_calls or []
+                if not function_calls:
+                    # No more tool calls — final answer
+                    break
+
+                # Append model's turn (contains function_call parts)
+                contents.append(response.candidates[0].content)
+
+                # Execute each tool and collect responses
+                tool_response_parts: list[_t.Part] = []
+                for fc in function_calls:
+                    tool_name = fc.name
+                    tool_args = dict(fc.args) if fc.args else {}
+                    if tool_name not in tool_calls_used:
+                        tool_calls_used.append(tool_name)
+                    print(f"[AgenticInsightService] Tool call: {tool_name}({tool_args})")
+
+                    result_str = self._invoke_tool(tool_name, tool_args)
+                    tool_response_parts.append(
+                        _t.Part(
+                            function_response=_t.FunctionResponse(
+                                id=getattr(fc, "id", tool_name),
+                                name=tool_name,
+                                response={"result": result_str},
+                            )
+                        )
+                    )
+
+                # Append tool results as a user turn
+                contents.append(
+                    _t.Content(role="user", parts=tool_response_parts)
+                )
+
+            # Extract final text response
+            reply = (response.text or "").strip()
+            if not reply:
+                reply = "I was unable to generate a response. Please try again."
+
+            return {
+                "reply": reply,
+                "tool_calls_used": tool_calls_used,
+                "session_id": session_id,
+            }
+
+        except Exception as e:
+            print(f"[AgenticInsightService] Error: {e}")
+            return {
+                "reply": f"An error occurred while processing your request: {e}",
+                "tool_calls_used": [],
+                "session_id": session_id,
+            }
