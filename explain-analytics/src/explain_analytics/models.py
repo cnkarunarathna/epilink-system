@@ -19,6 +19,14 @@ class StructuredSignals(BaseModel):
         default_factory=list,
         description="Last 4 weekly case counts (most-recent first)",
     )
+    feature_importances: dict[str, float] | None = Field(
+        default=None,
+        description=(
+            "SHAP-based feature contributions from the XGBoost/LightGBM ensemble. "
+            "Keys are feature names, values are fractional contributions (0.0–1.0, sum ≈ 1.0). "
+            "When present, used as the authoritative source for key_drivers generation."
+        ),
+    )
 
 
 class ExplainInsightRequest(BaseModel):
@@ -45,3 +53,25 @@ class ExplainInsightResponse(BaseModel):
     )
     trend_direction: TrendDirection = "stable"
     follow_up_answer: str | None = None
+
+
+# ── Chat models (Phase 3) ──────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    tool_calls: list[str] | None = None
+
+
+class ChatRequest(BaseModel):
+    district: str = Field(min_length=2, max_length=120)
+    messages: list[ChatMessage]
+    session_id: str | None = None
+    structured_signals: StructuredSignals | None = None
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    tool_calls_used: list[str] = Field(default_factory=list)
+    session_id: str
+

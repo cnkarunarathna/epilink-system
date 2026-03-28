@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     max_context_documents: int = 5
     default_temperature: float = 0.2
 
+    # Agent mode (Phase 3)
+    enable_agent_mode: bool = True
+    backend_api_url: str = "http://localhost:3001"
+
     model_config = SettingsConfigDict(
         env_prefix="EXPLAIN_",
         env_file=".env",

@@ -865,4 +865,77 @@ export class AnalyticsService {
       };
     }
   }
+
+  async chatWithAgent(
+    districtName: string,
+    messages: { role: string; content: string }[],
+    sessionId?: string,
+  ) {
+    // Gather district signals for context
+    const manager = this.dataSource.manager;
+    const district = await manager
+      .getRepository(District)
+      .findOne({ where: { name: districtName } });
+
+    let structuredSignals: any = null;
+    if (district) {
+      const recentWeeks = await manager.query(
+        `SELECT dc.year, dc.week, dc.cases,
+                w.temperature_2m_mean, w.precipitation_sum
+         FROM dengue_cases dc
+         LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
+         WHERE dc.district_id = $1
+         ORDER BY dc.year DESC, dc.week DESC
+         LIMIT 4`,
+        [district.id],
+      );
+
+      if (recentWeeks.length > 0) {
+        const current = recentWeeks[0];
+        const previous = recentWeeks.length > 1 ? recentWeeks[1] : null;
+        const currentCases = Number(current.cases) || 0;
+        const prevCases = previous ? Number(previous.cases) || 0 : 0;
+        const wowChange =
+          prevCases > 0 ? ((currentCases - prevCases) / prevCases) * 100 : 0;
+        const maxCasesRow = await manager.query(
+          `SELECT MAX(cases) as max_cases FROM dengue_cases`,
+        );
+        const maxCases = Number(maxCasesRow[0]?.max_cases) || 200;
+        const riskScore = Math.min(currentCases / maxCases, 1.0);
+
+        structuredSignals = {
+          recent_case_count: currentCases,
+          wow_case_change_pct: Number(wowChange.toFixed(1)),
+          rainfall_mm_7d: current.precipitation_sum
+            ? Number(current.precipitation_sum)
+            : null,
+          temperature_c_7d: current.temperature_2m_mean
+            ? Number(current.temperature_2m_mean)
+            : null,
+          model_risk_score: Number(riskScore.toFixed(3)),
+          historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
+        };
+      }
+    }
+
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+
+    try {
+      const resp = await axios.post(`${explainUrl}/v1/insights/chat`, {
+        district: districtName,
+        messages,
+        session_id: sessionId || undefined,
+        structured_signals: structuredSignals,
+      });
+      return resp.data;
+    } catch (err: any) {
+      return {
+        reply:
+          'The AI agent service is currently unavailable. Please try again later.',
+        tool_calls_used: [],
+        session_id: sessionId || 'fallback',
+      };
+    }
+  }
 }

@@ -175,3 +175,30 @@ export async function fetchExplainFollowUp(
   );
   return res.data;
 }
+
+// ── Chat (Phase 3) ─────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  tool_calls?: string[];
+}
+
+export interface ChatResponse {
+  reply: string;
+  tool_calls_used: string[];
+  session_id: string;
+}
+
+export async function chatWithAgent(
+  district: string,
+  messages: ChatMessage[],
+  sessionId?: string,
+): Promise<ChatResponse> {
+  const res = await axios.post(
+    `${API_BASE}/analytics/explain/${encodeURIComponent(district)}/chat`,
+    { messages, sessionId },
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
