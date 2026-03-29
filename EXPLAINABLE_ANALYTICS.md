@@ -14,31 +14,71 @@ By integrating a RAG (Retrieval-Augmented Generation) system, you can bridge the
 
 ---
 
-## Proposed Architecture
+## Target Architecture
 
-### 1. Data Sources (The Context)
+The following is the production-grade RAG pipeline planned for the `explain-analytics` service:
 
-- **Structured Data**: Recent dengue case counts, weather data, and the latest predictions from your ML ensemble.
-- **Unstructured Data (RAG Corpus)**: Historical outbreak reports, standard operating procedures (SOPs) for dengue control, and past successful interventions.
+```
+[PostgreSQL] ──┐
+               ├──> [FastAPI ETL Layer]  ←── Automated weekly scheduler
+[Weather API] ─┘          │
+                           ↓
+              [Text + Insight Generation]
+              (structured weekly records → embeddable text)
+                           │
+                           ↓
+                   [Embedding Model]
+                (Google text-embedding-004, 768-dim)
+                           │
+                           ↓
+                   [Qdrant Vector DB]
+            (HNSW index, payload filters, snapshots)
+                           │
+                           ↓
+         [Retriever — Hybrid + Time-aware]
+         (BM25 keyword + vector cosine, RRF fusion,
+          recency decay on publication date)
+                           │
+                           ↓
+           [LLM — Gemini 2.0 Flash (Explainable Prompt)]
+           (grounded in retrieved MoH documents)
+                           │
+                           ↓
+            [Admin Dashboard Insights / Chat]
+```
 
-### 2. The Engine (Backend - NestJS & Python AI Service)
+### Component Responsibilities
 
-- **Vector Database**: Store vector embeddings of your unstructured text (e.g., Postgres `pgvector` since you use TypeORM, or a dedicated vector DB like Pinecone/Milvus/Qdrant).
-- **AI Agent Framework (Agno)**: Use **Agno** (a fast, lightweight Python framework for building AI agents) to handle LLM orchestration, memory, and tools.
-- **Integration**: The NestJS backend will communicate with the Agno-powered Python service via REST or gRPC.
-- **Process Flow**:
-  1.  User views the dashboard for a specific district (e.g., Colombo).
-  2.  Frontend requests "Insights" for Colombo from the NestJS backend.
-  3.  Backend pulls the latest structured stats (weather, case counts, prediction score) and forwards the request to the Agno AI service.
-  4.  The Agno Agent queries the Vector DB for similar historical situations (e.g., past outbreaks with similar weather patterns).
-  5.  The Agno Agent constructs a prompt combining: `[System Prompt]` + `[Current Stats]` + `[Historical Context from RAG]`.
-  6.  The Agent generates the insight summary and actionable recommendations, which are returned via NestJS to the frontend.
+| Component | Technology | Role |
+|---|---|---|
+| Data Sources | PostgreSQL + NestJS Analytics API | Weekly case counts, weather, ML predictions |
+| ETL Layer | FastAPI + APScheduler | Auto-pulls, transforms to embeddable text, upserts |
+| Embedding Model | Google `text-embedding-004` (768-dim) | Dense vector representation |
+| Vector DB | **Qdrant** (HNSW, payload filtering) | Stores and searches document vectors |
+| Retriever | Hybrid BM25 + vector, RRF fusion, time-decay | Precision + recall + recency |
+| LLM | Gemini 2.0 Flash | Grounded narrative generation |
+| Interface | FastAPI → NestJS → React Admin | Insight cards, chat, national reports |
+
+### Why Qdrant over pgvector
+
+The current implementation uses pgvector (PostgreSQL extension) which works for a prototype but has limitations at production scale:
+
+| Capability | pgvector | Qdrant |
+|---|---|---|
+| Index type | IVFFlat | HNSW (faster, more accurate) |
+| Payload filtering | None | Native (filter by district, date, source) |
+| Quantization | None | Scalar + product quantization |
+| Backup / snapshots | Manual | Built-in REST snapshots |
+| Hybrid search | Manual | Built-in sparse + dense fusion |
+| Sharding | None | Built-in horizontal scaling |
+
+Qdrant enables filtered retrieval — e.g., "retrieve only documents relevant to Colombo district published after 2023" — which is critical for grounding insights in geographically and temporally relevant context.
 
 ### 3. The Interface (Frontend - React/React Native)
 
 - **Insight Cards**: Display brief, human-readable insights next to complex charts.
 - **"Explain This" Button**: A tooltip or modal that users can click to get a natural language breakdown of a specific chart or prediction.
-- **Interactive Chat (Optional)**: A specialized chat interface where users can ask questions like, "What were the most effective actions taken during the similar 2024 outbreak?"
+- **Interactive Chat**: A specialized chat interface where users can ask questions like, "What were the most effective actions taken during the similar 2024 outbreak?"
 
 ---
 
@@ -54,11 +94,13 @@ By integrating a RAG (Retrieval-Augmented Generation) system, you can bridge the
   - Signal-completeness confidence scoring and uncertainty range passthrough.
   - Sri Lanka-specific system prompt (monsoon seasons, vector biology, MoH alert thresholds).
 
-### Phase 2: Introducing RAG (Adding Unstructured Data) — IN PROGRESS
+### Phase 2: RAG Pipeline — COMPLETED (pgvector baseline)
 
-- Request/response models already carry `rag_context` and `references` fields.
-- **Remaining work**: wire pgvector retrieval inside the service so the LLM can cite actual MoH documents rather than receiving pre-retrieved strings from the NestJS backend.
-- **Goal**: The LLM can now state, _"Based on the Ministry of Health's 2023 guidelines and similar past trends, recommended actions are..."_
+- `rag_service.py` implements semantic retrieval over a pgvector-backed `rag_documents` table using Google `text-embedding-004` (768-dim) with cosine similarity (threshold 0.55, top-5).
+- Query is constructed from district signals (risk level, rainfall, temperature, WoW change) and appended to the LLM prompt as "MoH Reference Documents."
+- Manual ingestion via `POST /v1/rag/ingest`; corpus status via `GET /v1/rag/status`.
+- **Goal achieved**: The LLM cites retrieved MoH documents in recommendations.
+- **Next**: migrate to Qdrant with hybrid retrieval and automated ETL (see Enhancements 12–15 below).
 
 ### Phase 3: Agentic Workflows — COMPLETED (baseline)
 
@@ -235,17 +277,118 @@ The following enhancements are prioritised by impact and effort. Each section de
 
 ---
 
+## Production-Grade RAG Pipeline (Planned)
+
+The following enhancements implement the target architecture described above — migrating from the pgvector baseline to a fully production-grade Qdrant-backed RAG system with automated ETL and hybrid retrieval.
+
+---
+
+### Enhancement 12 — Migrate Vector Store to Qdrant (Priority: Critical)
+
+**Gap**: Current `rag_service.py` uses pgvector with IVFFlat indexing. It has no payload filtering, no built-in backup strategy, and no support for hybrid sparse+dense retrieval. These limitations block the retrieval quality improvements in Enhancements 13 and 14.
+
+**Change**:
+- Replace `psycopg` pgvector logic in `rag_service.py` with `qdrant-client` (Python SDK).
+- Create a Qdrant collection `epilink_rag` with:
+  - Vector size: 768, distance: Cosine
+  - HNSW index parameters: `m=16`, `ef_construct=100`
+  - Payload schema: `{ district, source, source_type, published_date, content_preview }`
+- Migrate ingestion: embed via `text-embedding-004`, upsert points with full payload into Qdrant.
+- Migrate retrieval: use `qdrant_client.search()` with optional payload filters.
+- Add `docker-compose` service for Qdrant (port 6333/6334) with a mounted volume for persistence.
+- Environment variable: `EXPLAIN_QDRANT_URL` (default: `http://localhost:6333`), `EXPLAIN_QDRANT_COLLECTION`.
+
+**Why Qdrant**:
+- HNSW index provides significantly better ANN recall vs IVFFlat at the same latency budget.
+- Payload filters enable district-scoped retrieval: only surface documents relevant to the queried district or neighbouring districts.
+- Built-in REST snapshots for production backup without pg_dump complexity.
+- Path to sparse+dense hybrid search (Enhancement 13) is native in Qdrant via sparse vectors.
+
+**Outcome**: Vector store is production-grade — faster retrieval, payload-filtered queries, backup-ready, and unblocks hybrid search.
+
+---
+
+### Enhancement 13 — Hybrid Retrieval with BM25 + RRF Fusion (Priority: Critical)
+
+**Gap**: Current retrieval is purely semantic (dense vector cosine similarity). This misses exact keyword matches — e.g., a query for "Colombo fogging campaign 2023" may not surface a document that literally contains those words if its embedding is not close enough. Keyword search and semantic search are complementary.
+
+**Change**:
+- Enable Qdrant's sparse vector support using BM25 via `fastembed` (Qdrant's recommended sparse encoder).
+- On ingestion: generate both dense (`text-embedding-004`) and sparse (BM25 via `fastembed`) vectors per document.
+- On retrieval: issue a `QueryRequest` with `prefetch` for both dense and sparse searches, then apply **Reciprocal Rank Fusion (RRF)** fusion in a single Qdrant `query` call (Qdrant 1.10+ native support).
+- Configurable weight: `EXPLAIN_HYBRID_ALPHA` (0.0 = pure BM25, 1.0 = pure vector, default: 0.7).
+- Add `retrieval_mode: "hybrid" | "dense" | "sparse"` to config.
+
+**Outcome**: Retrieval combines the precision of keyword matching with the recall of semantic search — the same document corpus surfaces more relevant results for both clinical terminology queries and natural language questions.
+
+---
+
+### Enhancement 14 — Time-aware Retrieval with Recency Decay (Priority: High)
+
+**Gap**: A document from 2018 and one from 2025 rank equally if their embedding similarity is the same. For dengue surveillance, recent MoH guidelines, updated SOPs, and post-outbreak reports from the last 1–2 years should rank higher than older documents.
+
+**Change**:
+- Store `published_date` as a Unix timestamp in the Qdrant point payload.
+- Post-retrieval scoring: multiply raw similarity score by a time-decay factor: `score × e^(-λ × days_since_published)` where λ controls decay rate (default: `0.001`, meaning ~2-year half-life).
+- Configurable: `EXPLAIN_RECENCY_DECAY_LAMBDA` env var.
+- Add `published_date` to the `DocumentReference` response model so the frontend can display document age alongside citations.
+- For district-specific queries: apply an additional payload filter boost — documents matching the queried district in payload get a +0.1 score bonus before decay.
+
+**Outcome**: LLM grounds its recommendations in the most current available guidelines. Users see source dates on citations, enabling trust calibration.
+
+---
+
+### Enhancement 15 — Automated ETL Pipeline for RAG Corpus (Priority: High)
+
+**Gap**: The RAG corpus is populated entirely by manual `POST /v1/rag/ingest` calls. There is no automated pipeline that continuously updates the vector store from live surveillance data. This means the RAG corpus goes stale immediately after manual ingestion and does not reflect the ongoing weekly dengue situation.
+
+**Change**:
+- Add `APScheduler` to the FastAPI service with a weekly background job (`etl_service.py`):
+  1. **Fetch**: Call NestJS backend for the latest weekly district data across all 26 districts.
+  2. **Transform**: Convert each district's weekly record into embeddable text:
+     ```
+     Week 12 2025 | Colombo | 145 cases | +22% WoW | 92mm rainfall | 29.5°C
+     Risk: high. Trend: rising. Neighbours (Gampaha, Kalutara) also rising.
+     ```
+  3. **Embed**: Generate dense + sparse vectors via `text-embedding-004` + BM25.
+  4. **Upsert**: Insert into Qdrant with payload `{ district, week, year, source: "surveillance", published_date }`. Use point IDs deterministic on `district + week + year` to avoid duplicates on re-run.
+  5. **Log**: Emit structured log with counts of upserted, skipped, and failed records.
+- Schedule: Every Monday at 06:00 LKT (aligned with RDHS weekly reporting cycle).
+- Manual trigger endpoint: `POST /v1/rag/etl/run` (admin-only, protected by `x-internal-api-key`).
+- ETL status endpoint: `GET /v1/rag/etl/status` — returns last run time, records upserted, next scheduled run.
+- Separate corpus type from automated data: `source_type: "surveillance" | "guideline" | "report"` in payload, so retrieval can be filtered by corpus type.
+
+**Outcome**: The RAG corpus stays current with weekly surveillance data automatically. The LLM can cite specific recent weeks ("In Week 11 2025, a similar pattern in Gampaha preceded a 40% case spike") rather than only static MoH documents.
+
+---
+
 ## Enhancement Priority Summary
+
+### Completed
 
 | # | Enhancement | Effort | Impact | Status |
 |---|------------|--------|--------|--------|
 | 1 | SHAP / feature importances in key drivers | Medium | Critical | **Done** |
-| 2 | Complete Phase 2 RAG pipeline | High | Critical | **Done** |
+| 2 | RAG pipeline — pgvector baseline | High | Critical | **Done** |
 | 3 | National summary + batch explain endpoints | Low | High | **Done** |
 | 4 | Expanded agent tool library (5 new tools) | Medium | High | **Done** |
 | 5 | Spatial / geographic cluster analysis | Medium | High | **Done** |
 | 6 | Meaningful confidence and uncertainty fields | Low | Medium | **Done** |
 | 7 | Session persistence for agentic chat (Redis) | Medium | Medium | **Done** |
+
+### Planned — Production RAG Pipeline
+
+| # | Enhancement | Effort | Impact | Status |
+|---|------------|--------|--------|--------|
+| 12 | Migrate vector store to Qdrant | Medium | Critical | Planned |
+| 13 | Hybrid retrieval — BM25 + vector + RRF fusion | High | Critical | Planned |
+| 14 | Time-aware retrieval with recency decay | Medium | High | Planned |
+| 15 | Automated ETL pipeline (APScheduler) | Medium | High | Planned |
+
+### Planned — Operational Improvements
+
+| # | Enhancement | Effort | Impact | Status |
+|---|------------|--------|--------|--------|
 | 8 | Lightweight follow-up question endpoint | Low | Medium | Planned |
 | 9 | Structured logging and observability | Low | Medium | Planned |
 | 10 | Response caching for insight stability | Low | Medium | Planned |
@@ -286,4 +429,22 @@ def generate_explainable_insight(district: str, current_prediction: dict, histor
 
 Building this completely elevates the EpiLink project from a standard data visualization tool into a **Proactive Decision Support System**. It perfectly complements your existing XGBoost/LightGBM machine learning outputs by demystifying them for the end-user.
 
-The current implementation has delivered Phase 1 and Phase 3 baselines. The enhancements above close the gap between a functional prototype and a production-grade, trustworthy public health decision support tool — with genuine explainability rooted in model internals (SHAP), grounded recommendations from MoH documents (RAG), and operational reliability (caching, logging, session persistence).
+### Current State
+
+Phases 1–3 and Enhancements 1–7 are complete. The service delivers:
+- SHAP-grounded explainable insights via Gemini 2.0 Flash
+- RAG retrieval over a pgvector-backed MoH document corpus
+- 11-tool agentic chat with Redis session persistence
+- National situation reports and 26-district batch processing
+- Geographic spillover detection and confidence splitting
+
+### Road to Production
+
+The next milestone is the **Production RAG Pipeline** (Enhancements 12–15):
+
+1. **Enhancement 12** — Swap pgvector for Qdrant. Unblocks payload-filtered retrieval and hybrid search.
+2. **Enhancement 13** — Add BM25 sparse vectors and RRF fusion. Improves retrieval precision for exact MoH terminology.
+3. **Enhancement 14** — Apply time-decay scoring. Prioritises recent guidelines and current-year outbreak data.
+4. **Enhancement 15** — Automate weekly ETL via APScheduler. Keeps the corpus current with live surveillance data without manual intervention.
+
+Together these four enhancements close the gap between the current prototype and the architecture described in `RAG_ARCHITECTURE.md`, producing a system where the LLM is continuously grounded in up-to-date, district-relevant, document-cited evidence.
