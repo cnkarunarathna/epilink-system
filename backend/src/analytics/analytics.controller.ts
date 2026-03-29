@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -103,9 +103,21 @@ export class AnalyticsController {
   @Post('explain/:district/chat')
   async chatWithAgent(
     @Param('district') district: string,
-    @Body() body: { messages: { role: string; content: string }[]; sessionId?: string },
+    @Body() body: { message: string; sessionId?: string },
   ) {
-    return this.analyticsService.chatWithAgent(district, body.messages, body.sessionId);
+    return this.analyticsService.chatWithAgent(district, body.message, body.sessionId);
+  }
+
+  // ── Enhancement 7: session history and management ─────────────────
+
+  @Get('chat/:sessionId/history')
+  async getChatHistory(@Param('sessionId') sessionId: string) {
+    return this.analyticsService.getChatHistory(sessionId);
+  }
+
+  @Delete('chat/:sessionId')
+  async deleteChatSession(@Param('sessionId') sessionId: string) {
+    return this.analyticsService.deleteChatSession(sessionId);
   }
 
   // ── Enhancement 3: National Summary & Batch Explain ───────────────

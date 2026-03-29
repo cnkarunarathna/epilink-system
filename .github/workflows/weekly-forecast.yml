@@ -22,6 +22,9 @@ env:
 jobs:
     generate-forecast:
         runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ml-model
 
         steps:
             - name: Checkout code
@@ -59,9 +62,9 @@ jobs:
                     echo "Enhanced model not found at models/enhanced/"
                     
                     # Check legacy paths
-                    if [ -f "models/dengue_ensemble_model.pkl" ]; then
-                      echo "Found model at legacy path: models/dengue_ensemble_model.pkl"
-                    elif [ -f "models/dengue_xgb_model.pkl" ]; then
+                    if [ -f "models/legacy/dengue_ensemble_model.pkl" ]; then
+                      echo "Found model at legacy path: models/legacy/dengue_ensemble_model.pkl"
+                    elif [ -f "models/legacy/dengue_xgb_model.pkl" ]; then
                       echo "Only legacy XGBoost model found, enhanced features not available"
                     else
                       echo "No model found! Run setup first."

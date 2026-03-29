@@ -204,7 +204,7 @@ class RagIngestResponse(BaseModel):
     message: str
 
 
-# ── Chat models (Phase 3) ──────────────────────────────────────────
+# ── Chat models (Phase 3 + Enhancement 7) ─────────────────────────
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -214,8 +214,18 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     district: str = Field(min_length=2, max_length=120)
-    messages: list[ChatMessage]
-    session_id: str | None = None
+    # Enhancement 7: clients send only the new user message; history is
+    # stored server-side in Redis.  `messages` is kept for backward
+    # compatibility — ignored when `message` is present.
+    message: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="The new user message to send. Server retrieves full history from Redis.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Existing session ID to continue, or None to start a new session.",
+    )
     structured_signals: StructuredSignals | None = None
 
 
@@ -223,4 +233,24 @@ class ChatResponse(BaseModel):
     reply: str
     tool_calls_used: list[str] = Field(default_factory=list)
     session_id: str
+    # Enhancement 7 additions
+    turn_count: int = Field(
+        default=0,
+        description="Total number of user turns stored in this session.",
+    )
+    context_compressed: bool = Field(
+        default=False,
+        description="True when older messages were summarised in this response cycle.",
+    )
+
+
+# ── Enhancement 7: session history models ─────────────────────────
+
+class ChatSessionHistoryResponse(BaseModel):
+    session_id: str
+    messages: list[ChatMessage]
+    message_count: int
+    turn_count: int = Field(
+        description="Number of completed user+assistant pairs in the session.",
+    )
 

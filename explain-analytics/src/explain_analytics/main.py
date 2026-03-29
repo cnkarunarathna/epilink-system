@@ -8,6 +8,8 @@ from explain_analytics.models import (
     BatchExplainResponse,
     ChatRequest,
     ChatResponse,
+    ChatSessionHistoryResponse,
+    ChatMessage,
     ExplainInsightRequest,
     ExplainInsightResponse,
     NationalSummaryResponse,
@@ -20,6 +22,7 @@ from explain_analytics.services.insight_service import (
 )
 from explain_analytics.services.national_service import NationalSummaryService
 from explain_analytics.services.rag_service import RAGService
+from explain_analytics.services.session_service import SessionService
 from explain_analytics.services.tools import (
     get_cross_district_spillover,
     get_demographic_hotspots,
@@ -34,7 +37,12 @@ app = FastAPI(
     description="Explainable insights service for EpiLink risk analytics",
 )
 insight_service = ExplainabilityService()
-agent_service = AgenticInsightService()
+session_service = SessionService(
+    redis_url=settings.redis_url,
+    ttl_seconds=settings.session_ttl_seconds,
+    summarize_after_turns=settings.session_summarize_after_turns,
+)
+agent_service = AgenticInsightService(session_service=session_service)
 rag_service = RAGService()
 national_service = NationalSummaryService()
 
@@ -47,6 +55,7 @@ def health() -> dict[str, object]:
         "environment": settings.environment,
         "agent_mode": settings.enable_agent_mode,
         "rag_enabled": rag_service.is_ready,
+        "session_persistence": session_service.is_ready,  # Enhancement 7
     }
 
 
@@ -57,15 +66,58 @@ def explain(payload: ExplainInsightRequest) -> ExplainInsightResponse:
 
 @app.post("/v1/insights/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
-    messages = [{"role": m.role, "content": m.content} for m in payload.messages]
+    """Send a new message to the agentic chat session.
+
+    Enhancement 7: only the new `message` string + optional `session_id` are
+    required.  Full history is managed server-side in Redis.
+    """
     signals = payload.structured_signals.model_dump() if payload.structured_signals else None
     result = agent_service.chat(
         district=payload.district,
-        messages=messages,
+        new_message=payload.message,
         session_id=payload.session_id or "",
         structured_signals=signals,
     )
     return ChatResponse(**result)
+
+
+# ── Enhancement 7: session history and management endpoints ──────────
+
+@app.get("/v1/insights/chat/{session_id}/history", response_model=ChatSessionHistoryResponse)
+def get_chat_history(session_id: str) -> ChatSessionHistoryResponse:
+    """Retrieve all stored messages for a chat session.
+
+    Returns the full message history as it is currently stored in Redis.
+    Returns an empty history (not a 404) when the session does not exist or
+    Redis is not configured.
+    """
+    messages_raw = session_service.get_messages(session_id)
+    messages = [
+        ChatMessage(role=m["role"], content=m["content"])
+        for m in messages_raw
+    ]
+    turn_count = len(messages) // 2
+    return ChatSessionHistoryResponse(
+        session_id=session_id,
+        messages=messages,
+        message_count=len(messages),
+        turn_count=turn_count,
+    )
+
+
+@app.delete("/v1/insights/chat/{session_id}", status_code=200)
+def delete_chat_session(session_id: str) -> dict[str, object]:
+    """Explicitly end a chat session and remove its history from Redis."""
+    deleted = session_service.delete_session(session_id)
+    return {
+        "session_id": session_id,
+        "deleted": deleted,
+        "message": (
+            f"Session {session_id} deleted."
+            if deleted
+            else f"Session {session_id} not found (may have already expired)."
+        ),
+    }
 
 
 # ── Batch and national endpoints (Enhancement 3) ─────────────────
