@@ -33,6 +33,8 @@ import {
   ChevronRight,
   Info,
   Gauge,
+  GitMerge,
+  Clock,
 } from "lucide-react";
 import {
   fetchExplainableInsight,
@@ -242,18 +244,19 @@ export default function ExplainableInsightsPanel({
 
   const config = riskConfig[insight.risk_level] || riskConfig.low;
   const trend = trendLabels[insight.trend_direction] || trendLabels.stable;
-  const confidenceColor =
-    insight.confidence_score >= 75
+
+  // Enhancement 6: prefer the new split fields, fall back to confidence_score
+  const completeness = insight.data_completeness_score ?? insight.confidence_score;
+  const modelCertainty = insight.prediction_confidence ?? 50;
+
+  const scoreColor = (val: number) =>
+    val >= 75
       ? "text-green-600 dark:text-green-400"
-      : insight.confidence_score >= 50
+      : val >= 50
         ? "text-yellow-600 dark:text-yellow-400"
         : "text-red-600 dark:text-red-400";
-  const confidenceBarColor =
-    insight.confidence_score >= 75
-      ? "bg-green-500"
-      : insight.confidence_score >= 50
-        ? "bg-yellow-500"
-        : "bg-red-500";
+  const scoreBarColor = (val: number) =>
+    val >= 75 ? "bg-green-500" : val >= 50 ? "bg-yellow-500" : "bg-red-500";
 
   return (
     <div className="space-y-4">
@@ -330,37 +333,82 @@ export default function ExplainableInsightsPanel({
         </CardHeader>
 
         <CardContent className="pt-6 space-y-6">
-          {/* Top metrics row: Confidence + Trend + Risk Score */}
-          <div className="grid grid-cols-3 gap-4">
-            {/* Confidence */}
+          {/* Enhancement 6: Data freshness warning banner */}
+          {insight.data_freshness_warning && (
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300">
+              <Clock className="h-4 w-4 shrink-0" />
+              <p className="text-xs font-medium">
+                Data freshness warning — the latest surveillance data is more
+                than 7 days old. Predictions may not reflect the current
+                situation.
+              </p>
+            </div>
+          )}
+
+          {/* Enhancement 5: Spillover risk banner */}
+          {insight.spillover_risk && (
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-orange-50 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-300">
+              <GitMerge className="h-4 w-4 shrink-0" />
+              <p className="text-xs font-medium">
+                Geographic spillover risk detected — high-burden or
+                simultaneously rising neighbouring districts suggest regional
+                spread. Inter-district coordination is recommended.
+              </p>
+            </div>
+          )}
+
+          {/* Top metrics row: Data Completeness + Model Certainty + Trend + Risk */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Data Completeness (Enhancement 6) */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Gauge className="h-4 w-4 text-slate-500" />
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <Gauge className="h-3.5 w-3.5 text-slate-500" />
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Confidence
+                  Data
                 </span>
               </div>
-              <div className={`text-3xl font-bold ${confidenceColor}`}>
-                {insight.confidence_score}%
+              <div className={`text-2xl font-bold ${scoreColor(completeness)}`}>
+                {completeness}%
               </div>
-              <div className="mt-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <p className="text-xs text-muted-foreground mt-0.5">completeness</p>
+              <div className="mt-2 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-1000 ease-out ${confidenceBarColor}`}
-                  style={{ width: `${insight.confidence_score}%` }}
+                  className={`h-full rounded-full transition-all duration-1000 ease-out ${scoreBarColor(completeness)}`}
+                  style={{ width: `${completeness}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Model Certainty (Enhancement 6) */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <Brain className="h-3.5 w-3.5 text-slate-500" />
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  Model
+                </span>
+              </div>
+              <div className={`text-2xl font-bold ${scoreColor(modelCertainty)}`}>
+                {modelCertainty}%
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">certainty</p>
+              <div className="mt-2 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ease-out ${scoreBarColor(modelCertainty)}`}
+                  style={{ width: `${modelCertainty}%` }}
                 />
               </div>
             </div>
 
             {/* Trend */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
+              <div className="flex items-center justify-center gap-1.5 mb-2">
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                   Trend
                 </span>
               </div>
               <div className="flex items-center justify-center gap-2">
                 {trendIcons[insight.trend_direction]}
-                <span className={`text-xl font-bold ${trend.color}`}>
+                <span className={`text-lg font-bold ${trend.color}`}>
                   {trend.text}
                 </span>
               </div>
@@ -369,24 +417,30 @@ export default function ExplainableInsightsPanel({
               </p>
             </div>
 
-            {/* Risk Score Bar */}
+            {/* Risk Level */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <ShieldAlert className="h-4 w-4 text-slate-500" />
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <ShieldAlert className="h-3.5 w-3.5 text-slate-500" />
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Risk Level
+                  Risk
                 </span>
               </div>
-              <div
-                className={`text-xl font-bold uppercase ${config.text}`}
-              >
+              <div className={`text-lg font-bold uppercase ${config.text}`}>
                 {insight.risk_level}
               </div>
-              <div className="mt-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div className="mt-2 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-1000 ease-out ${config.barColor}`}
                   style={{
-                    width: `${insight.risk_level === "critical" ? 100 : insight.risk_level === "high" ? 75 : insight.risk_level === "moderate" ? 50 : 25}%`,
+                    width: `${
+                      insight.risk_level === "critical"
+                        ? 100
+                        : insight.risk_level === "high"
+                          ? 75
+                          : insight.risk_level === "moderate"
+                            ? 50
+                            : 25
+                    }%`,
                   }}
                 />
               </div>

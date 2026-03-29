@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     backend_api_url: str = "http://localhost:3001/api"
     backend_service_key: str | None = None
 
+    # Session persistence (Enhancement 7)
+    redis_url: str | None = None
+    session_ttl_seconds: int = 7200          # 2-hour TTL
+    session_summarize_after_turns: int = 10  # compress after 10 user+assistant pairs
+
     model_config = SettingsConfigDict(
         env_prefix="EXPLAIN_",
         env_file=".env",

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import {
   chatWithAgent,
-  ChatMessage,
+  deleteChatSession,
 } from "@/services/analytics.service";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -78,8 +78,20 @@ export default function FloatingChatBubble({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const msgIdRef = useRef(0);
+  // Keep a ref so async callbacks always see the latest session ID
+  const sessionIdRef = useRef<string | undefined>(undefined);
 
   const nextId = () => `msg-${++msgIdRef.current}`;
+
+  const clearSession = useCallback(async (sid?: string) => {
+    if (sid) {
+      try { await deleteChatSession(sid); } catch { /* best-effort */ }
+    }
+    setMessages([]);
+    setSessionId(undefined);
+    sessionIdRef.current = undefined;
+    setInput("");
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -96,12 +108,13 @@ export default function FloatingChatBubble({
     }
   }, [open]);
 
-  // Reset when district changes
+  // Clear server session when district changes
   useEffect(() => {
     if (district) {
-      setMessages([]);
-      setSessionId(undefined);
+      const prev = sessionIdRef.current;
+      clearSession(prev);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district]);
 
   const sendMessage = useCallback(
@@ -120,19 +133,17 @@ export default function FloatingChatBubble({
       setMessages((prev) => [...prev, userEntry]);
       setInput("");
 
-      const chatMessages: ChatMessage[] = [
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: msg },
-      ];
-
       setLoading(true);
       try {
+        // Enhancement 7: send only the new message string + session_id.
+        // Full history is managed server-side in Redis.
         const resp = await chatWithAgent(
           targetDistrict,
-          chatMessages,
-          sessionId,
+          msg,
+          sessionIdRef.current,
         );
         setSessionId(resp.session_id);
+        sessionIdRef.current = resp.session_id;
         const assistantEntry: ChatEntry = {
           id: nextId(),
           role: "assistant",
@@ -156,7 +167,7 @@ export default function FloatingChatBubble({
         setLoading(false);
       }
     },
-    [input, loading, district, messages, sessionId, open],
+    [input, loading, district, open, clearSession],
   );
 
   return (
@@ -192,11 +203,7 @@ export default function FloatingChatBubble({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-white/80 hover:text-white hover:bg-white/20"
-                onClick={() => {
-                  setOpen(false);
-                  setMessages([]);
-                  setSessionId(undefined);
-                }}
+                onClick={() => { setOpen(false); clearSession(sessionIdRef.current); }}
               >
                 <X className="h-4 w-4" />
               </Button>

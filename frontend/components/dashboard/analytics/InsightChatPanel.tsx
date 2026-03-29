@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,11 @@ import {
   ChevronDown,
   ChevronUp,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import {
   chatWithAgent,
-  ChatMessage,
+  deleteChatSession,
 } from "@/services/analytics.service";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -52,15 +53,28 @@ export default function InsightChatPanel({ district }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [turnCount, setTurnCount] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset chat when district changes
-  useEffect(() => {
+  // Clear server session and local state when district changes
+  const clearSession = useCallback(async (sid?: string) => {
+    if (sid) {
+      try { await deleteChatSession(sid); } catch { /* best-effort */ }
+    }
     setMessages([]);
     setSessionId(undefined);
+    setTurnCount(0);
     setInput("");
+  }, []);
+
+  useEffect(() => {
+    // Keep a ref to the current session so the cleanup captures it
+    let currentSession: string | undefined;
+    setSessionId((prev) => { currentSession = prev; return undefined; });
+    clearSession(currentSession);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district]);
 
   // Auto-scroll to bottom
@@ -82,15 +96,13 @@ export default function InsightChatPanel({ district }: Props) {
     setMessages((prev) => [...prev, userEntry]);
     setInput("");
 
-    const chatMessages: ChatMessage[] = [
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: msg },
-    ];
-
     setLoading(true);
     try {
-      const resp = await chatWithAgent(district, chatMessages, sessionId);
+      // Enhancement 7: send only the new message + session_id.
+      // The Python service manages full history in Redis.
+      const resp = await chatWithAgent(district, msg, sessionId);
       setSessionId(resp.session_id);
+      if (resp.turn_count !== undefined) setTurnCount(resp.turn_count);
       setMessages((prev) => [
         ...prev,
         {
@@ -128,17 +140,28 @@ export default function InsightChatPanel({ district }: Props) {
           <span className="text-sm font-semibold text-purple-900 dark:text-purple-200">
             Chat with EpiLink AI Agent
           </span>
-          {messages.length > 0 && (
+          {turnCount > 0 && (
             <Badge variant="outline" className="text-xs">
-              {messages.length} messages
+              {turnCount} {turnCount === 1 ? "turn" : "turns"}
             </Badge>
           )}
         </div>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-purple-500" />
-        ) : (
-          <ChevronUp className="h-4 w-4 text-purple-500" />
-        )}
+        <div className="flex items-center gap-1">
+          {sessionId && (
+            <button
+              onClick={(e) => { e.stopPropagation(); clearSession(sessionId); }}
+              title="Clear session"
+              className="p-1 rounded text-purple-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-purple-500" />
+          ) : (
+            <ChevronUp className="h-4 w-4 text-purple-500" />
+          )}
+        </div>
       </button>
 
       {expanded && (
