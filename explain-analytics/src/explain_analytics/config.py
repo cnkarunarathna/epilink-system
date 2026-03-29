@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     rag_embedding_model: str = "models/text-embedding-004"
     rag_retrieval_mode: str = "hybrid"  # "hybrid" | "dense" | "sparse"
     rag_recency_decay_lambda: float = 0.001  # e^(-λ·days), ~2-year half-life at 0.001
+    rag_etl_enabled: bool = False
 
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"

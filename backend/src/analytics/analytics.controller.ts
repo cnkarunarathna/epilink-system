@@ -144,6 +144,16 @@ export class AnalyticsController {
     return this.analyticsService.ingestRagDocuments(body.documents ?? []);
   }
 
+  @Get('rag/etl/status')
+  async etlStatus() {
+    return this.analyticsService.getEtlStatus();
+  }
+
+  @Post('rag/etl/run')
+  async etlRun() {
+    return this.analyticsService.triggerEtlRun();
+  }
+
   // ── Enhancement 4: Direct tool endpoints ──────────────────────────
 
   @Get('tools/seasonal-pattern/:district')

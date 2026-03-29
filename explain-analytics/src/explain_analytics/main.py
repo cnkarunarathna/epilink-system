@@ -1,6 +1,7 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 
 from explain_analytics.config import settings
 from explain_analytics.models import (
@@ -20,6 +21,7 @@ from explain_analytics.services.insight_service import (
     AgenticInsightService,
     ExplainabilityService,
 )
+from explain_analytics.services.etl_service import ETLService
 from explain_analytics.services.national_service import NationalSummaryService
 from explain_analytics.services.rag_service import RAGService
 from explain_analytics.services.session_service import SessionService
@@ -31,11 +33,6 @@ from explain_analytics.services.tools import (
     get_seasonal_pattern,
 )
 
-app = FastAPI(
-    title=settings.service_name,
-    version=settings.service_version,
-    description="Explainable insights service for EpiLink risk analytics",
-)
 insight_service = ExplainabilityService()
 session_service = SessionService(
     redis_url=settings.redis_url,
@@ -45,6 +42,39 @@ session_service = SessionService(
 agent_service = AgenticInsightService(session_service=session_service)
 rag_service = RAGService()
 national_service = NationalSummaryService()
+etl_service = ETLService(rag_service=rag_service)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = None
+    if settings.rag_etl_enabled:
+        from apscheduler.schedulers.background import BackgroundScheduler
+
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(
+            etl_service.run,
+            trigger="cron",
+            day_of_week="mon",
+            hour=0,
+            minute=30,
+            id="etl_weekly",
+        )
+        scheduler.start()
+        job = scheduler.get_job("etl_weekly")
+        if job and job.next_run_time:
+            etl_service.set_next_run(job.next_run_time)
+    yield
+    if scheduler:
+        scheduler.shutdown(wait=False)
+
+
+app = FastAPI(
+    title=settings.service_name,
+    version=settings.service_version,
+    description="Explainable insights service for EpiLink risk analytics",
+    lifespan=lifespan,
+)
 
 
 @app.get("/health")
@@ -260,3 +290,27 @@ def rag_ingest(payload: RagIngestRequest) -> RagIngestResponse:
         ingested=count,
         message=f"Successfully embedded and stored {count} document(s) in the Qdrant corpus.",
     )
+
+
+@app.get("/v1/rag/etl/status")
+def rag_etl_status() -> dict[str, object]:
+    """Return the current ETL pipeline state: last run, next scheduled run, and error if any."""
+    return etl_service.status
+
+
+@app.post("/v1/rag/etl/run")
+def rag_etl_run(
+    x_internal_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Manually trigger the surveillance ETL job.
+
+    Protected by x-internal-api-key when EXPLAIN_BACKEND_SERVICE_KEY is set.
+    """
+    if settings.backend_service_key and x_internal_api_key != settings.backend_service_key:
+        raise HTTPException(status_code=403, detail="Invalid or missing x-internal-api-key.")
+    if not rag_service.is_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="RAG service is not ready. Ensure EXPLAIN_RAG_ENABLED=true and Qdrant is reachable.",
+        )
+    return etl_service.run()

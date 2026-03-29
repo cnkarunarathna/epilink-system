@@ -383,7 +383,7 @@ The following enhancements implement the target architecture described above —
 | 12 | Migrate vector store to Qdrant | Medium | Critical | **Done** |
 | 13 | Hybrid retrieval — BM25 + vector + RRF fusion | High | Critical | **Done** |
 | 14 | Time-aware retrieval with recency decay | Medium | High | **Done** |
-| 15 | Automated ETL pipeline (APScheduler) | Medium | High | Planned |
+| 15 | Automated ETL pipeline (APScheduler) | Medium | High | **Done** |
 
 ### Planned — Operational Improvements
 
