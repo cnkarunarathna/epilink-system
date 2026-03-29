@@ -1,0 +1,117 @@
+name: Weekly Forecast Update
+
+on:
+    # Manual trigger only (uncomment schedule when ready for production)
+    # schedule:
+    #   - cron: "0 0 * * 1"  # Every Monday at 00:00 UTC
+
+    workflow_dispatch:
+        inputs:
+            model_type:
+                description: "Model to use for forecast"
+                required: true
+                default: "enhanced"
+                type: choice
+                options:
+                    - enhanced
+                    - legacy
+
+env:
+    PYTHON_VERSION: "3.12"
+
+jobs:
+    generate-forecast:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install UV
+              uses: astral-sh/setup-uv@v4
+              with:
+                  enable-cache: true
+
+            - name: Set up Python
+              run: uv python install ${{ env.PYTHON_VERSION }}
+
+            - name: Install dependencies
+              run: uv sync --frozen
+
+            - name: Verify enhanced model exists
+              run: |
+                  echo "Checking for enhanced ensemble model..."
+
+                  if [ -f "models/enhanced/dengue_ensemble_model.pkl" ]; then
+                    echo "Enhanced ensemble model found (XGBoost + LightGBM)"
+                    echo "   models/enhanced/dengue_ensemble_model.pkl"
+                    
+                    # Check for feature engineer
+                    if [ -f "models/enhanced/feature_engineer.pkl" ]; then
+                      echo "Feature engineer found (60+ features including humidity)"
+                    fi
+                    
+                    # Check for uncertainty estimator
+                    if [ -f "models/enhanced/uncertainty_estimator.pkl" ]; then
+                      echo "Uncertainty estimator found (80% confidence intervals)"
+                    fi
+                  else
+                    echo "Enhanced model not found at models/enhanced/"
+                    
+                    # Check legacy paths
+                    if [ -f "models/dengue_ensemble_model.pkl" ]; then
+                      echo "Found model at legacy path: models/dengue_ensemble_model.pkl"
+                    elif [ -f "models/dengue_xgb_model.pkl" ]; then
+                      echo "Only legacy XGBoost model found, enhanced features not available"
+                    else
+                      echo "No model found! Run setup first."
+                      exit 1
+                    fi
+                  fi
+
+            - name: Generate weekly forecast
+              run: |
+                  echo "Running enhanced weekly forecast..."
+                  echo "   Weather data: temperature, precipitation, humidity"
+                  echo "   Model: XGBoost + LightGBM ensemble"
+                  echo ""
+                  uv run python -m src.forecasting.weekly
+              env:
+                  DB_HOST: ${{ secrets.DB_HOST }}
+                  DB_PORT: ${{ secrets.DB_PORT }}
+                  DB_NAME: ${{ secrets.DB_NAME }}
+                  DB_USER: ${{ secrets.DB_USER }}
+                  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+                  PGSSLMODE: require
+                  PYTHONUNBUFFERED: 1
+
+            - name: Summary
+              if: success()
+              run: |
+                  echo "## Weekly Forecast Generated" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Forecast Details" >> $GITHUB_STEP_SUMMARY
+                  echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+                  echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+                  echo "| **Model** | Enhanced Ensemble (XGBoost + LightGBM) |" >> $GITHUB_STEP_SUMMARY
+                  echo "| **Features** | 60+ (incl. humidity, trends, interactions) |" >> $GITHUB_STEP_SUMMARY
+                  echo "| **Date** | $(date -u +%Y-%m-%d) |" >> $GITHUB_STEP_SUMMARY
+                  echo "| **Districts** | 25 |" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Weather Data" >> $GITHUB_STEP_SUMMARY
+                  echo "- Temperature (mean)" >> $GITHUB_STEP_SUMMARY
+                  echo "- Precipitation (sum)" >> $GITHUB_STEP_SUMMARY
+                  echo "- Humidity (mean)" >> $GITHUB_STEP_SUMMARY
+
+            - name: Notify on failure
+              if: failure()
+              run: |
+                  echo "## Weekly Forecast Failed" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "Check the logs for details." >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Troubleshooting" >> $GITHUB_STEP_SUMMARY
+                  echo "1. Verify database secrets are configured" >> $GITHUB_STEP_SUMMARY
+                  echo "2. Check if enhanced model exists in \`models/enhanced/\`" >> $GITHUB_STEP_SUMMARY
+                  echo "3. Ensure Open-Meteo API is accessible" >> $GITHUB_STEP_SUMMARY
+                  exit 1

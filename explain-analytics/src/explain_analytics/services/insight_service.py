@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone, timedelta
 
 from google import genai
 
@@ -74,15 +75,25 @@ neighbour as a spillover source/destination risk.
 - When spillover indicators are present, include an inter-district \
 coordination recommendation (e.g., joint vector control, shared surveillance).
 
+## Confidence and Uncertainty (Enhancement 6)
+- `structured_signals.uncertainty_lower` and `uncertainty_upper` are the \
+model's 80 % confidence interval for the predicted risk score (0–1 scale). \
+When present, surface this in the `summary` field:
+  "The model predicts [risk_level] risk with an 80% interval of \
+[lower]–[upper], indicating [low/moderate/high] uncertainty."
+- A narrow interval (< 0.10) means the ensemble is confident; a wide \
+interval (> 0.30) means high model uncertainty that warrants caution.
+- `confidence_score` should reflect both data completeness AND model \
+certainty: start from the completeness base (30 + 12 per filled signal) \
+and adjust downward when the uncertainty interval is wide (> 0.25).
+
 ## Guidelines
 - Be specific to dengue in Sri Lanka; reference tropical weather patterns.
 - If rainfall > 80 mm / 7 days, highlight vector breeding risk explicitly.
 - If WoW change > 15 %, emphasize the acceleration and early-warning status.
 - Derive trend_direction from the historical_trend array: compare recent \
 weeks to detect rising/falling/stable patterns.
-- confidence_score should reflect data completeness (all signals present → \
-higher) and model certainty (narrow uncertainty_lower/upper band → higher). \
-Presence of feature_importances indicates a fully explainable prediction \
+- Presence of feature_importances indicates a fully explainable prediction \
 and should increase confidence.
 - Keep each string concise (max 2 sentences per bullet).
 - Do NOT include any markdown, only valid JSON.
@@ -248,6 +259,93 @@ class ExplainabilityService:
 
         return spillover, drivers
 
+    # ── Enhancement 6: confidence / uncertainty helpers ─────────────
+
+    @staticmethod
+    def _compute_data_completeness(signals: StructuredSignals) -> int:
+        """Signal-completeness score (0–100): 30 base + 12 pts per filled field."""
+        filled = sum([
+            signals.wow_case_change_pct is not None,
+            signals.rainfall_mm_7d is not None,
+            signals.temperature_c_7d is not None,
+            len(signals.historical_trend) >= 3,
+            signals.uncertainty_lower is not None,
+            bool(signals.feature_importances),
+        ])
+        return min(100, 30 + filled * 12)
+
+    @staticmethod
+    def _compute_prediction_confidence(signals: StructuredSignals) -> int:
+        """Model certainty score (0–100) from the ensemble's uncertainty interval.
+
+        Narrow interval (< 0.05) → ~100; wide interval (> 0.50) → ~0.
+        Falls back to 50 when bounds are unavailable.
+        """
+        lo = signals.uncertainty_lower
+        hi = signals.uncertainty_upper
+        if lo is None or hi is None:
+            return 50
+        interval = max(0.0, float(hi) - float(lo))
+        # Linear mapping: 0.0 interval → 100, 0.5 interval → 0
+        raw = 100.0 * (1.0 - interval / 0.5)
+        return max(0, min(100, round(raw)))
+
+    @staticmethod
+    def _check_data_freshness(
+        prediction_week: str | None,
+        data_last_updated: str | None,
+    ) -> bool:
+        """Return True when the latest data is more than 7 days old."""
+        now = datetime.now(timezone.utc)
+
+        # Prefer explicit timestamp if provided by the caller
+        if data_last_updated:
+            try:
+                ts = datetime.fromisoformat(data_last_updated.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                return (now - ts) > timedelta(days=7)
+            except ValueError:
+                pass
+
+        # Fall back: parse "YYYY-WWW" or "YYYY-WW" format
+        if prediction_week:
+            try:
+                # Normalise "2026-W12" → "2026-12"
+                clean = prediction_week.replace("W", "").replace("-", "")
+                # Expect YYYYWW(W) — take first 6 chars
+                year = int(clean[:4])
+                week = int(clean[4:6])
+                # Monday of that ISO week
+                jan_4 = datetime(year, 1, 4, tzinfo=timezone.utc)
+                week_monday = jan_4 + timedelta(
+                    days=-jan_4.weekday(), weeks=week - 1
+                )
+                return (now - week_monday) > timedelta(days=7)
+            except (ValueError, OverflowError):
+                pass
+
+        return False
+
+    @staticmethod
+    def _build_uncertainty_sentence(signals: StructuredSignals) -> str | None:
+        """Build the uncertainty clause for the summary sentence, or None."""
+        lo = signals.uncertainty_lower
+        hi = signals.uncertainty_upper
+        if lo is None or hi is None:
+            return None
+        interval = float(hi) - float(lo)
+        if interval < 0.10:
+            certainty = "low uncertainty"
+        elif interval < 0.25:
+            certainty = "moderate uncertainty"
+        else:
+            certainty = "high uncertainty"
+        return (
+            f"The model's 80% confidence interval is {lo:.2f}–{hi:.2f}, "
+            f"indicating {certainty}."
+        )
+
     # ── Rule-based fallback ──────────────────────────────────────────
 
     def _generate_rule_based_insight(
@@ -359,23 +457,24 @@ class ExplainabilityService:
                 "Analysis based on structured surveillance signals; "
                 "no RAG corpus documents were retrieved (configure EXPLAIN_PGVECTOR_URL to enable)."
             ]
-        if signals.uncertainty_lower is not None and signals.uncertainty_upper is not None:
+
+        # ── Enhancement 6: compute the three new confidence fields ────
+        data_completeness = self._compute_data_completeness(signals)
+        pred_confidence = self._compute_prediction_confidence(signals)
+        freshness_warning = self._check_data_freshness(
+            payload.prediction_week,
+            signals.data_last_updated,
+        )
+
+        if freshness_warning:
             caveats.append(
-                f"Model forecast uncertainty range: {signals.uncertainty_lower:.2f} – {signals.uncertainty_upper:.2f}"
+                "Data freshness warning: the latest surveillance data is more than "
+                "7 days old. Predictions may not reflect the most recent situation."
             )
 
-        filled = sum([
-            signals.wow_case_change_pct is not None,
-            signals.rainfall_mm_7d is not None,
-            signals.temperature_c_7d is not None,
-            len(signals.historical_trend) >= 3,
-            signals.uncertainty_lower is not None,
-            # SHAP importances present → prediction is fully explainable
-            bool(signals.feature_importances),
-        ])
-        confidence = min(100, 30 + filled * 12)
-
+        # Build summary with uncertainty clause when bounds are available
         wow_arrow = "↑" if (wow or 0) > 0 else "↓" if (wow or 0) < 0 else "→"
+        uncertainty_clause = self._build_uncertainty_sentence(signals)
         summary = (
             f"{payload.district} is assessed at {risk_level.upper()} risk "
             f"for {payload.prediction_week or 'the current week'} "
@@ -383,6 +482,8 @@ class ExplainabilityService:
             f"({wow_arrow} {abs(wow or 0):.1f}% WoW). "
             f"The case trajectory is {trend}."
         )
+        if uncertainty_clause:
+            summary += f" {uncertainty_clause}"
 
         phase = "phase-2-rag" if doc_refs else "phase-1-rule-based"
         plain_refs = [
@@ -399,7 +500,10 @@ class ExplainabilityService:
             references=plain_refs,
             document_references=doc_refs,
             implementation_phase=phase,
-            confidence_score=confidence,
+            confidence_score=data_completeness,
+            data_completeness_score=data_completeness,
+            prediction_confidence=pred_confidence,
+            data_freshness_warning=freshness_warning,
             trend_direction=trend,
             spillover_risk=spillover_risk,
         )
@@ -468,6 +572,11 @@ class ExplainabilityService:
             f"{r.title} ({r.source})" for r in doc_refs
         ] or payload.rag_context[:3]
 
+        # LLM may update confidence_score; clamp it and use as data_completeness
+        llm_confidence = max(
+            0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))
+        )
+
         return ExplainInsightResponse(
             district=payload.district,
             risk_level=self._normalize_risk_level(
@@ -486,9 +595,12 @@ class ExplainabilityService:
             references=plain_refs,
             document_references=doc_refs,
             implementation_phase=phase,
-            confidence_score=max(
-                0, min(100, int(generated.get("confidence_score", baseline.confidence_score)))
-            ),
+            # Enhancement 6: carry all three confidence fields from baseline
+            # (LLM gets confidence_score in its schema; map to data_completeness)
+            confidence_score=llm_confidence,
+            data_completeness_score=llm_confidence,
+            prediction_confidence=baseline.prediction_confidence,
+            data_freshness_warning=baseline.data_freshness_warning,
             trend_direction=self._normalize_trend(
                 generated.get("trend_direction"), baseline.trend_direction
             ),

@@ -1,6 +1,7 @@
 -- EpiLink ML Model Database Schema
 
 -- Drop tables if they exist (for fresh setup)
+DROP TABLE IF EXISTS weekly_forecasts CASCADE;
 DROP TABLE IF EXISTS district_metadata CASCADE;
 DROP TABLE IF EXISTS weather_data CASCADE;
 DROP TABLE IF EXISTS dengue_cases CASCADE;
@@ -52,9 +53,26 @@ CREATE TABLE district_metadata (
     UNIQUE(district_id)
 );
 
+-- Weekly ML forecasts with uncertainty and feature importances (Enhancement 6)
+CREATE TABLE weekly_forecasts (
+    id SERIAL PRIMARY KEY,
+    district_id INTEGER REFERENCES districts(id) ON DELETE CASCADE,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    predicted_cases INTEGER NOT NULL,
+    model_risk_score DECIMAL(6, 4),
+    uncertainty_lower DECIMAL(6, 4),
+    uncertainty_upper DECIMAL(6, 4),
+    feature_importances JSONB,
+    model_type VARCHAR(20) DEFAULT 'enhanced',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(district_id, year, week)
+);
+
 -- Create indexes for better query performance
 CREATE INDEX idx_dengue_cases_district_year_week ON dengue_cases(district_id, year, week);
 CREATE INDEX idx_weather_data_district_year_week ON weather_data(district_id, year, week);
+CREATE INDEX idx_weekly_forecasts_district_year_week ON weekly_forecasts(district_id, year, week);
 CREATE INDEX idx_districts_name ON districts(name);
 
 -- Insert district coordinates
