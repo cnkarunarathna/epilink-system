@@ -315,3 +315,156 @@ export async function ingestRagDocuments(
   );
   return res.data;
 }
+
+// ── Enhancement 4: Direct tool endpoints ──────────────────────────
+
+export interface SeasonalPatternResponse {
+  district: string;
+  years_analysed: number;
+  weekly_averages: Record<string, number>;
+  peak_weeks: number[];
+  peak_season_windows: { start_week: number; end_week: number }[];
+  absolute_peak_week: number | null;
+  absolute_peak_avg_cases: number;
+  current_week: number;
+  current_cases: number;
+  seasonal_baseline_this_week: number;
+  vs_baseline_pct: number | null;
+  in_peak_season: boolean;
+  narrative: string;
+  error?: string;
+}
+
+export interface SpilloverNeighbour {
+  district: string;
+  is_focal: boolean;
+  current_cases: number;
+  wow_change_pct: number | null;
+  risk_level: string;
+  is_rising: boolean;
+}
+
+export interface SpilloverResponse {
+  focal_district: string;
+  focal_stats: SpilloverNeighbour | null;
+  neighbours: SpilloverNeighbour[];
+  rising_neighbours: SpilloverNeighbour[];
+  high_risk_neighbours: SpilloverNeighbour[];
+  spillover_risk: "low" | "moderate" | "high";
+  narrative: string;
+  adjacency_known: boolean;
+  error?: string;
+}
+
+export interface ResponseEvent {
+  peak_year: number;
+  peak_week: number;
+  peak_cases: number;
+  trough_year: number;
+  trough_week: number;
+  trough_cases: number;
+  decline_pct: number;
+  weeks_to_recovery: number;
+  response_effectiveness: "rapid" | "moderate" | "slow";
+  inferred_action: string;
+}
+
+export interface InterventionHistoryResponse {
+  district: string;
+  response_events: ResponseEvent[];
+  total_events_detected: number;
+  average_weeks_to_recovery: number | null;
+  most_recent_event: ResponseEvent | null;
+  narrative: string;
+  data_note: string;
+  error?: string;
+}
+
+export interface ModelPerformanceResponse {
+  district: string;
+  actual_week: string | null;
+  actual_cases: number;
+  predicted_cases: number | null;
+  prediction_week: string | null;
+  absolute_error: number | null;
+  percentage_error_pct: number | null;
+  accuracy_class: "excellent" | "good" | "moderate" | "poor" | "unavailable";
+  observed_trend: string;
+  naive_persistence_mae_8w: number | null;
+  narrative: string;
+  error?: string;
+}
+
+export interface ZoneHotspot {
+  zone: string;
+  type: string;
+  relative_risk: "high" | "moderate" | "low";
+  estimated_cases: number;
+  context_flags: string[];
+  intervention_priority: "immediate" | "high" | "moderate" | "routine";
+}
+
+export interface DemographicHotspotsResponse {
+  district: string;
+  total_district_cases: number;
+  district_risk_level: string;
+  zone_breakdown: ZoneHotspot[];
+  top_priority_zones: string[];
+  temperature_c: number | null;
+  precipitation_mm: number | null;
+  narrative: string;
+  data_note: string;
+  error?: string;
+}
+
+export async function fetchSeasonalPattern(
+  district: string,
+  years?: number,
+): Promise<SeasonalPatternResponse> {
+  const q = years ? `?years=${years}` : "";
+  const res = await axios.get(
+    `${API_BASE}/analytics/tools/seasonal-pattern/${encodeURIComponent(district)}${q}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function fetchSpilloverRisk(
+  district: string,
+): Promise<SpilloverResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/tools/spillover/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function fetchInterventionHistory(
+  district: string,
+): Promise<InterventionHistoryResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/tools/intervention-history/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function fetchModelPerformance(
+  district: string,
+): Promise<ModelPerformanceResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/tools/model-performance/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function fetchDemographicHotspots(
+  district: string,
+): Promise<DemographicHotspotsResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/tools/demographic-hotspots/${encodeURIComponent(district)}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}

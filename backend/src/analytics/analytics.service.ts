@@ -1022,4 +1022,48 @@ export class AnalyticsService {
     );
     return resp.data;
   }
+
+  // ── Enhancement 4: Direct tool endpoints ──────────────────────────
+
+  private async _toolGet(path: string): Promise<any> {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.get(`${explainUrl}${path}`, { timeout: 30000 });
+      return resp.data;
+    } catch (err: any) {
+      return { error: err.response?.data?.detail || 'Tool endpoint unavailable' };
+    }
+  }
+
+  async getSeasonalPattern(district: string, years?: number) {
+    const q = years ? `?years=${years}` : '';
+    return this._toolGet(
+      `/v1/tools/seasonal-pattern/${encodeURIComponent(district)}${q}`,
+    );
+  }
+
+  async getCrossDistrictSpillover(district: string) {
+    return this._toolGet(
+      `/v1/tools/spillover/${encodeURIComponent(district)}`,
+    );
+  }
+
+  async getInterventionHistory(district: string) {
+    return this._toolGet(
+      `/v1/tools/intervention-history/${encodeURIComponent(district)}`,
+    );
+  }
+
+  async getModelPerformance(district: string) {
+    return this._toolGet(
+      `/v1/tools/model-performance/${encodeURIComponent(district)}`,
+    );
+  }
+
+  async getDemographicHotspots(district: string) {
+    return this._toolGet(
+      `/v1/tools/demographic-hotspots/${encodeURIComponent(district)}`,
+    );
+  }
 }

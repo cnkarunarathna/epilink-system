@@ -131,4 +131,37 @@ export class AnalyticsController {
   async ragIngest(@Body() body: { documents: any[] }) {
     return this.analyticsService.ingestRagDocuments(body.documents ?? []);
   }
+
+  // ── Enhancement 4: Direct tool endpoints ──────────────────────────
+
+  @Get('tools/seasonal-pattern/:district')
+  async seasonalPattern(
+    @Param('district') district: string,
+    @Query('years') years?: string,
+  ) {
+    return this.analyticsService.getSeasonalPattern(
+      district,
+      years ? parseInt(years) : undefined,
+    );
+  }
+
+  @Get('tools/spillover/:district')
+  async spillover(@Param('district') district: string) {
+    return this.analyticsService.getCrossDistrictSpillover(district);
+  }
+
+  @Get('tools/intervention-history/:district')
+  async interventionHistory(@Param('district') district: string) {
+    return this.analyticsService.getInterventionHistory(district);
+  }
+
+  @Get('tools/model-performance/:district')
+  async modelPerformance(@Param('district') district: string) {
+    return this.analyticsService.getModelPerformance(district);
+  }
+
+  @Get('tools/demographic-hotspots/:district')
+  async demographicHotspots(@Param('district') district: string) {
+    return this.analyticsService.getDemographicHotspots(district);
+  }
 }

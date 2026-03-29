@@ -20,6 +20,13 @@ from explain_analytics.services.insight_service import (
 )
 from explain_analytics.services.national_service import NationalSummaryService
 from explain_analytics.services.rag_service import RAGService
+from explain_analytics.services.tools import (
+    get_cross_district_spillover,
+    get_demographic_hotspots,
+    get_intervention_history,
+    get_model_performance_metrics,
+    get_seasonal_pattern,
+)
 
 app = FastAPI(
     title=settings.service_name,
@@ -120,6 +127,44 @@ def national_summary(
     Falls back to a rule-based report if the LLM is unavailable.
     """
     return national_service.generate(prediction_week=week)
+
+
+# ── Enhancement 4: Direct tool endpoints ─────────────────────────
+
+import json as _json
+
+
+@app.get("/v1/tools/seasonal-pattern/{district}")
+def tool_seasonal_pattern(
+    district: str,
+    years: int = Query(default=3, ge=1, le=10, description="Number of past years to overlay"),
+) -> dict:
+    """Week-by-week multi-year seasonal pattern for a district."""
+    return _json.loads(get_seasonal_pattern(district, years))
+
+
+@app.get("/v1/tools/spillover/{district}")
+def tool_spillover(district: str) -> dict:
+    """Cross-district spillover risk for the focal district and all its neighbours."""
+    return _json.loads(get_cross_district_spillover(district))
+
+
+@app.get("/v1/tools/intervention-history/{district}")
+def tool_intervention_history(district: str) -> dict:
+    """Inferred past response events from timeseries peaks and post-peak declines."""
+    return _json.loads(get_intervention_history(district))
+
+
+@app.get("/v1/tools/model-performance/{district}")
+def tool_model_performance(district: str) -> dict:
+    """Prediction accuracy metrics comparing ML forecast against recent actuals."""
+    return _json.loads(get_model_performance_metrics(district))
+
+
+@app.get("/v1/tools/demographic-hotspots/{district}")
+def tool_demographic_hotspots(district: str) -> dict:
+    """Sub-district zone risk breakdown with intervention priority ranking."""
+    return _json.loads(get_demographic_hotspots(district))
 
 
 # ── RAG corpus management (Phase 2) ───────────────────────────────
