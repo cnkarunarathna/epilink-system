@@ -220,6 +220,7 @@ export interface RagStatus {
   embedding_model: string | null;
   retrieval_mode: string;
   top_k: number;
+  recency_decay_lambda: number;
   document_count: number;
   _error?: string;
 }

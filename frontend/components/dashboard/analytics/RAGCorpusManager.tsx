@@ -202,6 +202,17 @@ export default function RAGCorpusManager() {
                   <span className="text-xs text-muted-foreground">retrieval mode</span>
                 </div>
               )}
+              {status.recency_decay_lambda != null && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="outline" className="text-xs font-normal font-mono">
+                    λ = {status.recency_decay_lambda}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    recency decay
+                    {status.recency_decay_lambda === 0 ? " (disabled)" : ""}
+                  </span>
+                </div>
+              )}
               {!status.rag_enabled && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />

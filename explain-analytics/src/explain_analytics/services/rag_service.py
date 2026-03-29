@@ -1,5 +1,7 @@
 import hashlib
+import math
 import uuid as _uuid
+from datetime import date, datetime
 
 from explain_analytics.config import settings
 from explain_analytics.models import DocumentReference, RagIngestDocument
@@ -76,10 +78,12 @@ class RAGService:
         try:
             mode = settings.rag_retrieval_mode
             if mode == "dense":
-                return self._dense_search(self._embed_dense(query), k)
-            if mode == "sparse":
-                return self._sparse_search(self._embed_sparse(query), k)
-            return self._hybrid_search(query, k)
+                results = self._dense_search(self._embed_dense(query), k)
+            elif mode == "sparse":
+                results = self._sparse_search(self._embed_sparse(query), k)
+            else:
+                results = self._hybrid_search(query, k)
+            return self._apply_recency_decay(results)
         except Exception as exc:
             print(f"[RAGService] retrieve failed: {exc}")
             return []
@@ -278,6 +282,48 @@ class RAGService:
                 relevance_score=round(float(r.score), 3),
             )
             for r in results
+        ]
+
+    # ── Recency decay ───────────────────────────────────────────────
+
+    def _apply_recency_decay(
+        self, docs: list[DocumentReference]
+    ) -> list[DocumentReference]:
+        """Re-score documents with a time-decay factor: score × e^(-λ × days_since_published).
+
+        Documents without a published_date are returned unchanged.
+        Results are re-sorted by decayed score and re-filtered by _MIN_RELEVANCE_SCORE.
+        """
+        lam = settings.rag_recency_decay_lambda
+        if lam == 0:
+            return docs
+
+        today = date.today()
+        decayed: list[tuple[float, DocumentReference]] = []
+        for doc in docs:
+            raw = doc.relevance_score if doc.relevance_score is not None else 1.0
+            if doc.published_date:
+                try:
+                    pub = datetime.strptime(doc.published_date, "%Y-%m-%d").date()
+                    days = (today - pub).days
+                    adjusted = raw * math.exp(-lam * max(days, 0))
+                except ValueError:
+                    adjusted = raw
+            else:
+                adjusted = raw
+            decayed.append((adjusted, doc))
+
+        decayed.sort(key=lambda x: x[0], reverse=True)
+        return [
+            DocumentReference(
+                title=d.title,
+                source=d.source,
+                published_date=d.published_date,
+                excerpt=d.excerpt,
+                relevance_score=round(score, 3),
+            )
+            for score, d in decayed
+            if score >= _MIN_RELEVANCE_SCORE
         ]
 
     # ── Query construction ──────────────────────────────────────────
