@@ -243,7 +243,7 @@ The following enhancements are prioritised by impact and effort. Each section de
 | 2 | Complete Phase 2 RAG pipeline | High | Critical | **Done** |
 | 3 | National summary + batch explain endpoints | Low | High | **Done** |
 | 4 | Expanded agent tool library (5 new tools) | Medium | High | **Done** |
-| 5 | Spatial / geographic cluster analysis | Medium | High | Planned |
+| 5 | Spatial / geographic cluster analysis | Medium | High | **Done** |
 | 6 | Meaningful confidence and uncertainty fields | Low | Medium | Planned |
 | 7 | Session persistence for agentic chat (Redis) | Medium | Medium | Planned |
 | 8 | Lightweight follow-up question endpoint | Low | Medium | Planned |

@@ -4,6 +4,7 @@ from google import genai
 
 from explain_analytics.config import settings
 from explain_analytics.models import (
+    DistrictSignal,
     DocumentReference,
     ExplainInsightRequest,
     ExplainInsightResponse,
@@ -61,6 +62,17 @@ contribution explicitly for each.
 dominant driver, contributing 42% of the model's predicted risk score."
 - If feature_importances is absent, infer key drivers from signal \
 thresholds as usual.
+
+## Spatial / Geographic Cluster Context
+- `structured_signals.neighboring_districts` contains snapshots for all \
+land-border adjacent districts. When present, consider them in your analysis.
+- If 3 or more neighbouring districts are simultaneously rising (WoW ≥ 15%), \
+flag a geographic cluster in `key_drivers`: "Geographic cluster: X \
+neighbouring districts rising simultaneously, indicating regional spread."
+- If any neighbour has `model_risk_score ≥ 0.65`, note the high-burden \
+neighbour as a spillover source/destination risk.
+- When spillover indicators are present, include an inter-district \
+coordination recommendation (e.g., joint vector control, shared surveillance).
 
 ## Guidelines
 - Be specific to dengue in Sri Lanka; reference tropical weather patterns.
@@ -179,6 +191,63 @@ class ExplainabilityService:
             )
         return f"{label} contributes {pct:.0f}% of the model's predicted risk score"
 
+    # ── Spatial cluster detection (Enhancement 5) ───────────────────
+
+    @staticmethod
+    def _detect_spillover(
+        neighbors: list[DistrictSignal],
+    ) -> tuple[bool, list[str]]:
+        """Analyse neighbouring district signals for geographic cluster spread.
+
+        Returns:
+            (spillover_risk, extra_key_drivers)
+            spillover_risk  — True when a high-burden neighbour exists OR
+                              3+ neighbours are simultaneously rising.
+            extra_key_drivers — Strings ready to append to key_drivers.
+        """
+        if not neighbors:
+            return False, []
+
+        rising = [
+            n for n in neighbors if (n.wow_case_change_pct or 0) >= 15
+        ]
+        high_burden = [
+            n for n in neighbors if n.model_risk_score >= 0.65
+        ]
+
+        drivers: list[str] = []
+        spillover = False
+
+        if len(rising) >= 3:
+            names = ", ".join(n.district for n in rising[:5])
+            drivers.append(
+                f"Geographic cluster detected: {len(rising)} neighbouring districts "
+                f"({names}) are simultaneously rising (≥15% WoW), indicating "
+                f"regional spread rather than isolated local transmission"
+            )
+            spillover = True
+
+        if high_burden:
+            names = ", ".join(
+                f"{n.district} (risk score {n.model_risk_score:.2f})"
+                for n in sorted(high_burden, key=lambda x: x.model_risk_score, reverse=True)[:3]
+            )
+            drivers.append(
+                f"High-burden neighbouring district(s) detected: {names} — "
+                f"cross-district vector movement or shared breeding sites possible"
+            )
+            spillover = True
+
+        # Softer signal: 1–2 rising neighbours worth noting but not flagging
+        if not spillover and 1 <= len(rising) < 3:
+            names = ", ".join(n.district for n in rising)
+            drivers.append(
+                f"{len(rising)} adjacent district(s) also rising ({names}); "
+                f"monitor for cluster formation"
+            )
+
+        return spillover, drivers
+
     # ── Rule-based fallback ──────────────────────────────────────────
 
     def _generate_rule_based_insight(
@@ -244,6 +313,13 @@ class ExplainabilityService:
                 f"Model risk score of {signals.model_risk_score:.2f} is the primary risk indicator"
             )
 
+        # ── Spatial cluster detection ─────────────────────────────────
+        spillover_risk, spatial_drivers = self._detect_spillover(
+            signals.neighboring_districts
+        )
+        drivers.extend(spatial_drivers)
+
+        # Add inter-district coordination recommendation when spillover is detected
         recommendations: list[str] = []
         if risk_level == "critical":
             recommendations.extend([
@@ -263,6 +339,11 @@ class ExplainabilityService:
                 "Maintain routine vector surveillance and larviciding programs",
                 "Reinforce community education on eliminating stagnant water sources around households",
             ])
+        if spillover_risk:
+            recommendations.append(
+                "Coordinate inter-district response with adjacent MOH units: share vector control "
+                "resources and align surveillance reporting to track geographic spread"
+            )
         recommendations.append(
             "Monitor weekly epidemiological trends and reassess risk level at next reporting cycle"
         )
@@ -320,6 +401,7 @@ class ExplainabilityService:
             implementation_phase=phase,
             confidence_score=confidence,
             trend_direction=trend,
+            spillover_risk=spillover_risk,
         )
 
     # ── Gemini LLM generation ────────────────────────────────────────
@@ -410,6 +492,7 @@ class ExplainabilityService:
             trend_direction=self._normalize_trend(
                 generated.get("trend_direction"), baseline.trend_direction
             ),
+            spillover_risk=baseline.spillover_risk,
             follow_up_answer=(
                 str(generated["follow_up_answer"]) if "follow_up_answer" in generated else None
             ),
