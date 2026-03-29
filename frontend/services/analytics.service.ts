@@ -215,8 +215,10 @@ export interface BatchExplainResponse {
 
 export interface RagStatus {
   rag_enabled: boolean;
-  pgvector_configured: boolean;
+  qdrant_url: string;
+  qdrant_collection: string;
   embedding_model: string | null;
+  retrieval_mode: string;
   top_k: number;
   document_count: number;
   _error?: string;

@@ -1229,8 +1229,10 @@ export class AnalyticsService {
     } catch (err: any) {
       return {
         rag_enabled: false,
-        pgvector_configured: false,
+        qdrant_url: null,
+        qdrant_collection: null,
         embedding_model: null,
+        retrieval_mode: null,
         top_k: 0,
         document_count: 0,
         _error: 'RAG status unavailable — AI service unreachable',

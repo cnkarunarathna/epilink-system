@@ -175,7 +175,7 @@ export default function RAGCorpusManager() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Vector DB</p>
-                  <StatusIndicator ok={status.pgvector_configured} label={status.pgvector_configured ? "Connected" : "Not configured"} />
+                  <StatusIndicator ok={!!status.qdrant_url} label={status.qdrant_url ? "Qdrant connected" : "Not configured"} />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Documents</p>
@@ -194,11 +194,19 @@ export default function RAGCorpusManager() {
                   <span className="text-xs text-muted-foreground">embedding model</span>
                 </div>
               )}
+              {status.retrieval_mode && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="outline" className="text-xs font-normal capitalize">
+                    {status.retrieval_mode}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">retrieval mode</span>
+                </div>
+              )}
               {!status.rag_enabled && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>
-                    RAG is disabled. Set <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_RAG_ENABLED=true</code> and configure <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_PGVECTOR_URL</code> in the explain-analytics service to enable it.
+                    RAG is disabled. Set <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_RAG_ENABLED=true</code> and <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_QDRANT_URL</code> in the explain-analytics service to enable it.
                   </span>
                 </div>
               )}
