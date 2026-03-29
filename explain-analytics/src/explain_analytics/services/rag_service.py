@@ -5,6 +5,8 @@ from explain_analytics.config import settings
 from explain_analytics.models import DocumentReference, RagIngestDocument
 
 _MIN_RELEVANCE_SCORE = 0.55
+_SPARSE_VECTOR_NAME = "bm25"
+_DENSE_VECTOR_NAME = "dense"
 
 
 def _risk_label(score: float) -> str:
@@ -24,20 +26,31 @@ def _point_id(title: str, source: str, published_date: str | None) -> str:
 
 
 class RAGService:
-    """Semantic retrieval over the MoH dengue document corpus stored in Qdrant."""
+    """
+    Hybrid retrieval over the MoH dengue document corpus stored in Qdrant.
+
+    Each document is indexed with two vectors:
+    - dense:  Google text-embedding-004 (768-dim) for semantic similarity
+    - bm25:   fastembed BM25 sparse vectors for exact keyword matching
+
+    Retrieval combines both via Qdrant's native RRF (Reciprocal Rank Fusion),
+    falling back to dense-only or sparse-only when configured.
+    """
 
     def __init__(self) -> None:
         self._ready = False
         self._client = None
+        self._sparse_model = None
         if settings.qdrant_url and settings.rag_enabled:
             try:
                 from qdrant_client import QdrantClient
 
                 self._client = QdrantClient(url=settings.qdrant_url)
+                self._load_sparse_model()
                 self._ensure_collection()
                 self._ready = True
             except Exception as exc:
-                print(f"[RAGService] Qdrant init failed: {exc}")
+                print(f"[RAGService] init failed: {exc}")
 
     @property
     def is_ready(self) -> bool:
@@ -61,14 +74,18 @@ class RAGService:
             district, model_risk_score, rainfall_mm_7d, temperature_c_7d, wow_case_change_pct
         )
         try:
-            embedding = self._embed(query)
-            return self._vector_search(embedding, k)
+            mode = settings.rag_retrieval_mode
+            if mode == "dense":
+                return self._dense_search(self._embed_dense(query), k)
+            if mode == "sparse":
+                return self._sparse_search(self._embed_sparse(query), k)
+            return self._hybrid_search(query, k)
         except Exception as exc:
             print(f"[RAGService] retrieve failed: {exc}")
             return []
 
     def ingest(self, documents: list[RagIngestDocument]) -> int:
-        """Embed and upsert documents into Qdrant. Returns count of stored documents."""
+        """Embed and upsert documents into Qdrant with both dense and sparse vectors."""
         from qdrant_client import QdrantClient
         from qdrant_client.models import PointStruct
 
@@ -79,15 +96,20 @@ class RAGService:
             )
 
         client = self._client or QdrantClient(url=settings.qdrant_url)
+        sparse_model = self._sparse_model or self._load_sparse_model(return_model=True)
         self._ensure_collection(client)
 
         stored = 0
         try:
             for doc in documents:
-                embedding = self._embed(doc.content)
+                dense_vec = self._embed_dense(doc.content)
+                sparse_vec = self._embed_sparse(doc.content, model=sparse_model)
                 point = PointStruct(
                     id=_point_id(doc.title, doc.source, doc.published_date),
-                    vector=embedding,
+                    vector={
+                        _DENSE_VECTOR_NAME: dense_vec,
+                        _SPARSE_VECTOR_NAME: sparse_vec,
+                    },
                     payload={
                         "title": doc.title,
                         "source": doc.source,
@@ -115,8 +137,15 @@ class RAGService:
         except Exception:
             return 0
 
+    # ── Collection setup ────────────────────────────────────────────
+
     def _ensure_collection(self, client=None) -> None:
-        from qdrant_client.models import Distance, VectorParams
+        from qdrant_client.models import (
+            Distance,
+            SparseIndexParams,
+            SparseVectorParams,
+            VectorParams,
+        )
 
         c = client or self._client
         if c is None:
@@ -126,14 +155,31 @@ class RAGService:
             if settings.qdrant_collection not in existing:
                 c.create_collection(
                     collection_name=settings.qdrant_collection,
-                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    vectors_config={
+                        _DENSE_VECTOR_NAME: VectorParams(size=768, distance=Distance.COSINE),
+                    },
+                    sparse_vectors_config={
+                        _SPARSE_VECTOR_NAME: SparseVectorParams(
+                            index=SparseIndexParams(on_disk=False)
+                        ),
+                    },
                 )
         except Exception as exc:
             print(f"[RAGService] Could not ensure collection: {exc}")
             self._ready = False
 
-    def _embed(self, text: str) -> list[float]:
-        """Generate a 768-dimensional embedding using Google text-embedding-004."""
+    # ── Embedding ───────────────────────────────────────────────────
+
+    def _load_sparse_model(self, return_model: bool = False):
+        from fastembed import SparseTextEmbedding
+
+        model = SparseTextEmbedding(model_name="Qdrant/bm25")
+        self._sparse_model = model
+        if return_model:
+            return model
+
+    def _embed_dense(self, text: str) -> list[float]:
+        """768-dimensional dense embedding via Google text-embedding-004."""
         from google import genai
 
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -142,6 +188,99 @@ class RAGService:
             contents=text,
         )
         return list(result.embeddings[0].values)
+
+    def _embed_sparse(self, text: str, model=None):
+        """BM25 sparse embedding via fastembed, returned as a Qdrant SparseVector."""
+        from qdrant_client.models import SparseVector
+
+        m = model or self._sparse_model
+        result = list(m.embed([text]))[0]
+        return SparseVector(
+            indices=result.indices.tolist(),
+            values=result.values.tolist(),
+        )
+
+    # ── Search strategies ───────────────────────────────────────────
+
+    def _hybrid_search(self, query: str, top_k: int) -> list[DocumentReference]:
+        """RRF fusion of dense and sparse search via Qdrant's native query API."""
+        from qdrant_client.models import FusionQuery, Prefetch, SparseVector
+
+        dense_vec = self._embed_dense(query)
+        sparse_vec = self._embed_sparse(query)
+
+        results = self._client.query_points(
+            collection_name=settings.qdrant_collection,
+            prefetch=[
+                Prefetch(
+                    query=dense_vec,
+                    using=_DENSE_VECTOR_NAME,
+                    limit=top_k * 3,
+                ),
+                Prefetch(
+                    query=sparse_vec,
+                    using=_SPARSE_VECTOR_NAME,
+                    limit=top_k * 3,
+                ),
+            ],
+            query=FusionQuery(fusion="rrf"),
+            limit=top_k,
+            with_payload=True,
+        ).points
+
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+            if r.score >= _MIN_RELEVANCE_SCORE
+        ]
+
+    def _dense_search(self, embedding: list[float], top_k: int) -> list[DocumentReference]:
+        results = self._client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=(f"{_DENSE_VECTOR_NAME}", embedding),
+            limit=top_k,
+            score_threshold=_MIN_RELEVANCE_SCORE,
+            with_payload=True,
+        )
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+        ]
+
+    def _sparse_search(self, sparse_vec, top_k: int) -> list[DocumentReference]:
+        from qdrant_client.models import NamedSparseVector
+
+        results = self._client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=NamedSparseVector(name=_SPARSE_VECTOR_NAME, vector=sparse_vec),
+            limit=top_k,
+            score_threshold=_MIN_RELEVANCE_SCORE,
+            with_payload=True,
+        )
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+        ]
+
+    # ── Query construction ──────────────────────────────────────────
 
     def _build_query(
         self,
@@ -165,22 +304,3 @@ class RAGService:
             parts.append("fogging fumigation rapid response team hospital preparedness")
 
         return " ".join(parts)
-
-    def _vector_search(self, embedding: list[float], top_k: int) -> list[DocumentReference]:
-        results = self._client.search(
-            collection_name=settings.qdrant_collection,
-            query_vector=embedding,
-            limit=top_k,
-            score_threshold=_MIN_RELEVANCE_SCORE,
-            with_payload=True,
-        )
-        return [
-            DocumentReference(
-                title=r.payload["title"],
-                source=r.payload["source"],
-                published_date=r.payload.get("published_date"),
-                excerpt=r.payload["content"][:600],
-                relevance_score=round(float(r.score), 3),
-            )
-            for r in results
-        ]

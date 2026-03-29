@@ -229,6 +229,7 @@ def rag_status() -> dict[str, object]:
         "qdrant_url": settings.qdrant_url,
         "qdrant_collection": settings.qdrant_collection,
         "embedding_model": settings.rag_embedding_model,
+        "retrieval_mode": settings.rag_retrieval_mode,
         "top_k": settings.rag_top_k,
         "document_count": rag_service.document_count(),
     }

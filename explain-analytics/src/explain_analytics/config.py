@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     rag_enabled: bool = False
     rag_top_k: int = 5
     rag_embedding_model: str = "models/text-embedding-004"
+    rag_retrieval_mode: str = "hybrid"  # "hybrid" | "dense" | "sparse"
 
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"

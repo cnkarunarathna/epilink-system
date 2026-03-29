@@ -283,7 +283,7 @@ The following enhancements implement the target architecture described above —
 
 ---
 
-### Enhancement 12 — Migrate Vector Store to Qdrant (Priority: Critical)
+### Enhancement 12 — Migrate Vector Store to Qdrant (Priority: Critical) — COMPLETED
 
 **Gap**: Current `rag_service.py` uses pgvector with IVFFlat indexing. It has no payload filtering, no built-in backup strategy, and no support for hybrid sparse+dense retrieval. These limitations block the retrieval quality improvements in Enhancements 13 and 14.
 
@@ -308,7 +308,7 @@ The following enhancements implement the target architecture described above —
 
 ---
 
-### Enhancement 13 — Hybrid Retrieval with BM25 + RRF Fusion (Priority: Critical)
+### Enhancement 13 — Hybrid Retrieval with BM25 + RRF Fusion (Priority: Critical) — COMPLETED
 
 **Gap**: Current retrieval is purely semantic (dense vector cosine similarity). This misses exact keyword matches — e.g., a query for "Colombo fogging campaign 2023" may not surface a document that literally contains those words if its embedding is not close enough. Keyword search and semantic search are complementary.
 
@@ -380,8 +380,8 @@ The following enhancements implement the target architecture described above —
 
 | # | Enhancement | Effort | Impact | Status |
 |---|------------|--------|--------|--------|
-| 12 | Migrate vector store to Qdrant | Medium | Critical | Planned |
-| 13 | Hybrid retrieval — BM25 + vector + RRF fusion | High | Critical | Planned |
+| 12 | Migrate vector store to Qdrant | Medium | Critical | **Done** |
+| 13 | Hybrid retrieval — BM25 + vector + RRF fusion | High | Critical | **Done** |
 | 14 | Time-aware retrieval with recency decay | Medium | High | Planned |
 | 15 | Automated ETL pipeline (APScheduler) | Medium | High | Planned |
 
