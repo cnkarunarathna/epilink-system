@@ -2,14 +2,20 @@
 Weekly Forecast Generator - Database to Database
 Reads last 4 weeks from database, predicts next week, stores in database.
 Designed to run weekly via GitHub Actions.
+
+Enhancement 6: Also computes and stores uncertainty bounds and SHAP-based
+feature importances in the weekly_forecasts table for the Explainable
+Analytics service.
 """
 
+import json
 import psycopg2
 import joblib
 import os
 import sys
 from datetime import datetime, timedelta
 import requests
+import numpy as np
 from pathlib import Path
 
 # Add project root to path for imports
@@ -220,6 +226,107 @@ def predict_next_week(
     return max(0, prediction)
 
 
+# Maximum expected weekly cases used to normalize raw counts to a [0, 1]
+# risk score.  Calibrated so that 100 cases/week ≈ 0.83 (near "critical")
+# and 200 cases/week clips to 1.0.
+_MAX_CASES_NORMALIZATION = 120.0
+
+
+def _cases_to_risk(cases: float) -> float:
+    """Normalize a raw case count to a risk score in [0, 1]."""
+    return float(min(1.0, max(0.0, cases / _MAX_CASES_NORMALIZATION)))
+
+
+def predict_with_full_metadata(
+    model,
+    district,
+    cases_lag1,
+    cases_lag2,
+    cases_lag3,
+    cases_lag4,
+    temperature,
+    precipitation,
+    humidity,
+    week,
+    feature_engineer,
+    shap_explainer=None,
+) -> dict:
+    """Run the enhanced ensemble and return point prediction + metadata.
+
+    Returns a dict with:
+        predicted_cases       — raw case count (int)
+        model_risk_score      — normalised [0, 1] risk score
+        uncertainty_lower     — lower 80 % CI as risk score
+        uncertainty_upper     — upper 80 % CI as risk score
+        feature_importances   — {feature: fraction} (top-10, SHAP-based if
+                                available, otherwise ensemble importance)
+    """
+    import pandas as pd
+
+    # Build feature DataFrame for the enhanced model
+    df = feature_engineer.prepare_for_prediction(
+        district=district,
+        cases_lag1=cases_lag1,
+        cases_lag2=cases_lag2,
+        cases_lag3=cases_lag3,
+        cases_lag4=cases_lag4,
+        temperature=temperature,
+        precipitation=precipitation,
+        humidity=humidity,
+        week=week,
+    )
+    cols_to_drop = ["district", "week", "population_density", "month_approx"]
+    df = df.drop(columns=[c for c in cols_to_drop if c in df.columns], errors="ignore")
+    if hasattr(model, "feature_names") and model.feature_names:
+        available = [c for c in model.feature_names if c in df.columns]
+        df = df[available]
+
+    # Point estimate + uncertainty bounds (80 % CI from model disagreement)
+    mean_pred, lower_pred, upper_pred = model.predict_with_uncertainty(df)
+    predicted_cases = max(0.0, float(mean_pred[0]))
+
+    # Feature importances — prefer SHAP, fall back to ensemble importance
+    feature_importances: dict[str, float] = {}
+    if shap_explainer is not None:
+        try:
+            shap_vals = shap_explainer(df)
+            abs_vals = np.abs(shap_vals.values[0])
+            total = abs_vals.sum()
+            if total > 0:
+                raw = {
+                    feat: float(abs_vals[i] / total)
+                    for i, feat in enumerate(df.columns)
+                }
+                # Keep top-10 features by contribution
+                feature_importances = dict(
+                    sorted(raw.items(), key=lambda x: x[1], reverse=True)[:10]
+                )
+        except Exception as shap_err:
+            print(f"      SHAP error ({district}): {shap_err} — using ensemble importance")
+
+    if not feature_importances:
+        # Fallback: use the model's built-in feature importance
+        try:
+            fi_df = model.get_feature_importance()
+            if not fi_df.empty:
+                total = fi_df["mean_importance"].sum()
+                if total > 0:
+                    feature_importances = {
+                        row["feature"]: float(row["mean_importance"] / total)
+                        for _, row in fi_df.head(10).iterrows()
+                    }
+        except Exception:
+            pass
+
+    return {
+        "predicted_cases": int(round(predicted_cases)),
+        "model_risk_score": round(_cases_to_risk(predicted_cases), 4),
+        "uncertainty_lower": round(_cases_to_risk(float(lower_pred[0])), 4),
+        "uncertainty_upper": round(_cases_to_risk(float(upper_pred[0])), 4),
+        "feature_importances": feature_importances,
+    }
+
+
 def generate_weekly_forecast():
     """Generate forecast for next week for all districts."""
 
@@ -239,7 +346,7 @@ def generate_weekly_forecast():
         try:
             from src.enhanced.ensemble_model import DengueEnsemblePredictor
             from src.enhanced.feature_engineering import FeatureEngineer
-            
+
             model = DengueEnsemblePredictor.load(str(ENHANCED_MODEL_PATH))
             feature_engineer = FeatureEngineer(include_population=True)
             model_type = "enhanced"
@@ -247,6 +354,18 @@ def generate_weekly_forecast():
         except Exception as e:
             print(f"   Enhanced model failed: {e}")
             model = None
+
+    # Build SHAP explainer for enhanced model (uses XGBoost sub-model)
+    shap_explainer = None
+    if model_type == "enhanced" and model is not None:
+        try:
+            import shap
+            xgb_model = model.models.get("xgboost")
+            if xgb_model is not None:
+                shap_explainer = shap.TreeExplainer(xgb_model)
+                print("   SHAP TreeExplainer initialised (XGBoost sub-model)")
+        except Exception as shap_err:
+            print(f"   SHAP unavailable: {shap_err} — feature importances will use ensemble importance")
     
     # Fall back to legacy model
     if model is None:
@@ -333,21 +452,46 @@ def generate_weekly_forecast():
         cases_lag3 = cases_history[-3]
         cases_lag4 = cases_history[-4] if len(cases_history) >= 4 else cases_history[0]
 
-        # Predict
-        predicted_cases = predict_next_week(
-            model,
-            district,
-            cases_lag1,
-            cases_lag2,
-            cases_lag3,
-            cases_lag4,
-            temperature,
-            precipitation,
-            humidity=humidity,
-            week=next_week,
-            model_type=model_type,
-            feature_engineer=feature_engineer,
-        )
+        # Predict — enhanced model produces full metadata; legacy produces a scalar
+        forecast_meta: dict = {}
+        if model_type == "enhanced" and feature_engineer is not None:
+            forecast_meta = predict_with_full_metadata(
+                model=model,
+                district=district,
+                cases_lag1=cases_lag1,
+                cases_lag2=cases_lag2,
+                cases_lag3=cases_lag3,
+                cases_lag4=cases_lag4,
+                temperature=temperature,
+                precipitation=precipitation,
+                humidity=humidity,
+                week=next_week,
+                feature_engineer=feature_engineer,
+                shap_explainer=shap_explainer,
+            )
+            predicted_cases = float(forecast_meta["predicted_cases"])
+        else:
+            predicted_cases = float(predict_next_week(
+                model,
+                district,
+                cases_lag1,
+                cases_lag2,
+                cases_lag3,
+                cases_lag4,
+                temperature,
+                precipitation,
+                humidity=humidity,
+                week=next_week,
+                model_type=model_type,
+                feature_engineer=feature_engineer,
+            ))
+            forecast_meta = {
+                "predicted_cases": int(round(predicted_cases)),
+                "model_risk_score": round(_cases_to_risk(predicted_cases), 4),
+                "uncertainty_lower": None,
+                "uncertainty_upper": None,
+                "feature_importances": {},
+            }
 
         forecasts.append(
             {
@@ -359,10 +503,23 @@ def generate_weekly_forecast():
                 "temperature": round(temperature, 2),
                 "precipitation": round(precipitation, 2),
                 "humidity": round(humidity, 2),
+                # Enhancement 6 metadata
+                "model_risk_score": forecast_meta.get("model_risk_score"),
+                "uncertainty_lower": forecast_meta.get("uncertainty_lower"),
+                "uncertainty_upper": forecast_meta.get("uncertainty_upper"),
+                "feature_importances": forecast_meta.get("feature_importances") or {},
             }
         )
 
-        print(f"{i:2d}. {district:20} Predicted: {predicted_cases:.1f} cases")
+        uncertainty_str = ""
+        if forecast_meta.get("uncertainty_lower") is not None:
+            uncertainty_str = (
+                f"  [CI: {forecast_meta['uncertainty_lower']:.2f}–{forecast_meta['uncertainty_upper']:.2f}]"
+            )
+        print(
+            f"{i:2d}. {district:20} Predicted: {predicted_cases:.1f} cases"
+            f"  risk={forecast_meta.get('model_risk_score', 0):.2f}{uncertainty_str}"
+        )
         successful += 1
 
     print("-" * 60)
@@ -409,9 +566,44 @@ def generate_weekly_forecast():
                 ),
             )
 
+        # Insert weekly_forecasts (Enhancement 6 — uncertainty + feature importances)
+        for f in forecasts:
+            fi_json = json.dumps(f["feature_importances"]) if f["feature_importances"] else None
+            cur.execute(
+                """
+                INSERT INTO weekly_forecasts (
+                    district_id, year, week, predicted_cases,
+                    model_risk_score, uncertainty_lower, uncertainty_upper,
+                    feature_importances, model_type
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                ON CONFLICT (district_id, year, week)
+                DO UPDATE SET
+                    predicted_cases    = EXCLUDED.predicted_cases,
+                    model_risk_score   = EXCLUDED.model_risk_score,
+                    uncertainty_lower  = EXCLUDED.uncertainty_lower,
+                    uncertainty_upper  = EXCLUDED.uncertainty_upper,
+                    feature_importances = EXCLUDED.feature_importances,
+                    model_type         = EXCLUDED.model_type,
+                    created_at         = CURRENT_TIMESTAMP
+                """,
+                (
+                    f["district_id"],
+                    f["year"],
+                    f["week"],
+                    f["cases"],
+                    f["model_risk_score"],
+                    f["uncertainty_lower"],
+                    f["uncertainty_upper"],
+                    fi_json,
+                    model_type,
+                ),
+            )
+
         conn.commit()
         print(f"   Saved {len(forecasts)} dengue_cases records")
         print(f"   Saved {len(forecasts)} weather_data records")
+        print(f"   Saved {len(forecasts)} weekly_forecasts records (with uncertainty + SHAP)")
 
     # Show summary
     print(f"\nSUMMARY")
