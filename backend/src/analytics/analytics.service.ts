@@ -19,6 +19,78 @@ type DashboardSummary = {
   avg_temperature: number | null;
 };
 
+// ── Sri Lanka district adjacency map (Enhancement 5) ────────────────
+// Each key lists land-border adjacent districts, mirroring the Python
+// service's _ADJACENCY map in explain_analytics/services/tools.py.
+const SL_ADJACENCY: Record<string, string[]> = {
+  Colombo: ['Gampaha', 'Kalutara'],
+  Gampaha: ['Colombo', 'Kalutara', 'Kandy', 'Kegalle', 'Kurunegala'],
+  Kalutara: ['Colombo', 'Gampaha', 'Ratnapura', 'Galle'],
+  Kandy: [
+    'Gampaha',
+    'Kegalle',
+    'Matale',
+    'NuwaraEliya',
+    'Badulla',
+    'Kurunegala',
+  ],
+  Matale: ['Kandy', 'Kurunegala', 'Anuradhapura', 'Polonnaruwa'],
+  NuwaraEliya: ['Kandy', 'Badulla', 'Ratnapura', 'Galle', 'Matara'],
+  Galle: ['Kalutara', 'Ratnapura', 'Matara', 'NuwaraEliya'],
+  Matara: ['Galle', 'Hambanthota', 'NuwaraEliya'],
+  Hambanthota: ['Matara', 'Ratnapura', 'Monaragala', 'Badulla'],
+  Jaffna: ['Kilinochchi', 'Mannar'],
+  Mannar: ['Jaffna', 'Vavuniya', 'Anuradhapura'],
+  Vavuniya: ['Mannar', 'Kilinochchi', 'Mullaitivu', 'Anuradhapura', 'Trincomalee'],
+  Mullaitivu: ['Kilinochchi', 'Vavuniya', 'Trincomalee', 'Batticaloa'],
+  Kilinochchi: ['Jaffna', 'Mannar', 'Vavuniya', 'Mullaitivu'],
+  Batticaloa: ['Mullaitivu', 'Trincomalee', 'Ampara', 'Badulla'],
+  Ampara: ['Batticaloa', 'Monaragala', 'Badulla', 'Polonnaruwa'],
+  Trincomalee: [
+    'Vavuniya',
+    'Mullaitivu',
+    'Batticaloa',
+    'Polonnaruwa',
+    'Anuradhapura',
+  ],
+  Kurunegala: [
+    'Gampaha',
+    'Kandy',
+    'Matale',
+    'Anuradhapura',
+    'Puttalam',
+    'Kegalle',
+  ],
+  Puttalam: ['Kurunegala', 'Anuradhapura', 'Mannar'],
+  Anuradhapura: [
+    'Mannar',
+    'Vavuniya',
+    'Trincomalee',
+    'Polonnaruwa',
+    'Matale',
+    'Kurunegala',
+    'Puttalam',
+  ],
+  Polonnaruwa: [
+    'Trincomalee',
+    'Batticaloa',
+    'Ampara',
+    'Anuradhapura',
+    'Matale',
+  ],
+  Badulla: [
+    'Kandy',
+    'NuwaraEliya',
+    'Monaragala',
+    'Ampara',
+    'Batticaloa',
+    'Hambanthota',
+  ],
+  Monaragala: ['Badulla', 'Ampara', 'Hambanthota', 'Ratnapura'],
+  Ratnapura: ['Kalutara', 'Galle', 'NuwaraEliya', 'Hambanthota', 'Monaragala', 'Kegalle'],
+  Kegalle: ['Gampaha', 'Kandy', 'Ratnapura', 'Kurunegala'],
+};
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -693,11 +765,10 @@ export class AnalyticsService {
       return { error: 'District not found', district: districtName };
     }
 
-    // Get latest 4 weeks of cases for this district
+    // Get latest 4 weeks of cases for this district (include created_at for freshness)
     const recentWeeks = await manager.query(
-      `SELECT dc.year, dc.week, dc.cases,
-              w.temperature_2m_mean, w.precipitation_sum,
-              ROW_NUMBER() OVER (ORDER BY dc.year DESC, dc.week DESC) as rn
+      `SELECT dc.year, dc.week, dc.cases, dc.created_at,
+              w.temperature_2m_mean, w.precipitation_sum
        FROM dengue_cases dc
        LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
        WHERE dc.district_id = $1
@@ -725,16 +796,100 @@ export class AnalyticsService {
       ? Number(current.temperature_2m_mean)
       : null;
 
-    // Derive a risk score from current case count (normalize to 0-1)
+    // Enhancement 6: data_last_updated from the latest record's created_at
+    const dataLastUpdated: string = current.created_at
+      ? new Date(current.created_at).toISOString()
+      : new Date().toISOString();
+
+    // Try to read richer ML metadata from weekly_forecasts (Enhancement 6)
+    // Falls back gracefully if the table doesn't exist yet.
+    let mlRiskScore: number | null = null;
+    let mlUncertaintyLower: number | null = null;
+    let mlUncertaintyUpper: number | null = null;
+    let featureImportances: Record<string, number> | null = null;
+
+    try {
+      const wfRows = await manager.query(
+        `SELECT wf.model_risk_score, wf.uncertainty_lower, wf.uncertainty_upper,
+                wf.feature_importances
+         FROM weekly_forecasts wf
+         WHERE wf.district_id = $1
+         ORDER BY wf.year DESC, wf.week DESC
+         LIMIT 1`,
+        [district.id],
+      );
+      if (wfRows.length > 0) {
+        const wf = wfRows[0];
+        mlRiskScore =
+          wf.model_risk_score != null ? Number(wf.model_risk_score) : null;
+        mlUncertaintyLower =
+          wf.uncertainty_lower != null ? Number(wf.uncertainty_lower) : null;
+        mlUncertaintyUpper =
+          wf.uncertainty_upper != null ? Number(wf.uncertainty_upper) : null;
+        featureImportances =
+          typeof wf.feature_importances === 'object' &&
+          wf.feature_importances !== null
+            ? wf.feature_importances
+            : null;
+      }
+    } catch {
+      // weekly_forecasts table may not exist on older deployments — ignore
+    }
+
+    // Fall back to heuristic risk score when ML table has no data
     const maxCasesRow = await manager.query(
       `SELECT MAX(cases) as max_cases FROM dengue_cases`,
     );
     const maxCases = Number(maxCasesRow[0]?.max_cases) || 200;
-    const riskScore = Math.min(currentCases / maxCases, 1.0);
+    const heuristicRisk = Math.min(currentCases / maxCases, 1.0);
 
-    // Uncertainty bounds (±15% of risk score)
-    const uncertaintyLower = Math.max(0, riskScore - 0.15);
-    const uncertaintyUpper = Math.min(1, riskScore + 0.15);
+    const riskScore = mlRiskScore ?? heuristicRisk;
+    const uncertaintyLower =
+      mlUncertaintyLower ?? Math.max(0, riskScore - 0.15);
+    const uncertaintyUpper =
+      mlUncertaintyUpper ?? Math.min(1, riskScore + 0.15);
+
+    // Enhancement 5: populate neighboring_districts from the adjacency map
+    const neighborNames = SL_ADJACENCY[districtName] ?? [];
+    let neighboringDistricts: any[] = [];
+    if (neighborNames.length > 0) {
+      try {
+        const neighborRows: any[] = await manager.query(
+          `WITH ranked AS (
+             SELECT d.name,
+                    dc.cases,
+                    ROW_NUMBER() OVER (PARTITION BY d.id ORDER BY dc.year DESC, dc.week DESC) AS rn
+             FROM districts d
+             JOIN dengue_cases dc ON dc.district_id = d.id
+             WHERE d.name = ANY($1)
+           )
+           SELECT r1.name,
+                  r1.cases AS current_cases,
+                  r2.cases AS prev_cases
+           FROM ranked r1
+           LEFT JOIN ranked r2 ON r1.name = r2.name AND r2.rn = 2
+           WHERE r1.rn = 1`,
+          [neighborNames],
+        );
+
+        neighboringDistricts = neighborRows.map((row: any) => {
+          const nc = Number(row.current_cases) || 0;
+          const np = row.prev_cases != null ? Number(row.prev_cases) : 0;
+          const wow = np > 0 ? ((nc - np) / np) * 100 : 0;
+          const neighborRisk = Math.min(nc / maxCases, 1.0);
+          return {
+            district: row.name,
+            recent_case_count: nc,
+            wow_case_change_pct: Number(wow.toFixed(1)),
+            model_risk_score: Number(neighborRisk.toFixed(3)),
+            trend_direction:
+              wow >= 10 ? 'rising' : wow <= -10 ? 'falling' : 'stable',
+          };
+        });
+      } catch {
+        // Non-critical — proceed without neighbor data
+      }
+    }
 
     const payload = {
       district: districtName,
@@ -748,6 +903,12 @@ export class AnalyticsService {
         uncertainty_lower: Number(uncertaintyLower.toFixed(3)),
         uncertainty_upper: Number(uncertaintyUpper.toFixed(3)),
         historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
+        // Enhancement 1: SHAP feature importances from weekly_forecasts
+        feature_importances: featureImportances,
+        // Enhancement 5: geographic neighbours for spillover detection
+        neighboring_districts: neighboringDistricts,
+        // Enhancement 6: data freshness for stale-data warning
+        data_last_updated: dataLastUpdated,
       },
       rag_context: [],
     };
@@ -761,17 +922,23 @@ export class AnalyticsService {
       );
       return resp.data;
     } catch (err: any) {
-      // If the Python service is down, return a basic fallback
+      // If the Python service is down, return a structured fallback
+      const fallbackRiskLevel =
+        riskScore >= 0.85
+          ? 'critical'
+          : riskScore >= 0.65
+            ? 'high'
+            : riskScore >= 0.4
+              ? 'moderate'
+              : 'low';
+      const interval = uncertaintyUpper - uncertaintyLower;
+      const predConfidence = Math.max(
+        0,
+        Math.min(100, Math.round(100 * (1 - interval / 0.5))),
+      );
       return {
         district: districtName,
-        risk_level:
-          riskScore >= 0.85
-            ? 'critical'
-            : riskScore >= 0.65
-              ? 'high'
-              : riskScore >= 0.4
-                ? 'moderate'
-                : 'low',
+        risk_level: fallbackRiskLevel,
         summary: `${districtName} has ${currentCases} cases this week (${wowChange >= 0 ? '+' : ''}${wowChange.toFixed(1)}% WoW). Explainable AI service is currently unavailable.`,
         key_drivers: [
           wowChange >= 10
@@ -779,11 +946,21 @@ export class AnalyticsService {
             : `Current case count: ${currentCases}`,
         ],
         recommendations: ['Increase surveillance in high-incidence areas'],
-        caveats: [
-          'AI explanation service unavailable — showing basic fallback',
-        ],
+        caveats: ['AI explanation service unavailable — showing basic fallback'],
         references: [],
+        document_references: [],
         implementation_phase: 'phase-1-fallback',
+        confidence_score: 30,
+        data_completeness_score: 30,
+        prediction_confidence: predConfidence,
+        data_freshness_warning: false,
+        trend_direction:
+          wowChange >= 10
+            ? 'rising'
+            : wowChange <= -10
+              ? 'falling'
+              : 'stable',
+        spillover_risk: false,
         _fallback: true,
         _error: err.message,
       };
@@ -801,7 +978,7 @@ export class AnalyticsService {
     }
 
     const recentWeeks = await manager.query(
-      `SELECT dc.year, dc.week, dc.cases,
+      `SELECT dc.year, dc.week, dc.cases, dc.created_at,
               w.temperature_2m_mean, w.precipitation_sum
        FROM dengue_cases dc
        LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
@@ -827,6 +1004,10 @@ export class AnalyticsService {
     const maxCases = Number(maxCasesRow[0]?.max_cases) || 200;
     const riskScore = Math.min(currentCases / maxCases, 1.0);
 
+    const dataLastUpdated: string = current.created_at
+      ? new Date(current.created_at).toISOString()
+      : new Date().toISOString();
+
     const payload = {
       district: districtName,
       prediction_week: `${current.year}-W${String(current.week).padStart(2, '0')}`,
@@ -843,6 +1024,7 @@ export class AnalyticsService {
         uncertainty_lower: Number(Math.max(0, riskScore - 0.15).toFixed(3)),
         uncertainty_upper: Number(Math.min(1, riskScore + 0.15).toFixed(3)),
         historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
+        data_last_updated: dataLastUpdated,
       },
       rag_context: [],
       user_question: question,
@@ -880,7 +1062,7 @@ export class AnalyticsService {
     let structuredSignals: any = null;
     if (district) {
       const recentWeeks = await manager.query(
-        `SELECT dc.year, dc.week, dc.cases,
+        `SELECT dc.year, dc.week, dc.cases, dc.created_at,
                 w.temperature_2m_mean, w.precipitation_sum
          FROM dengue_cases dc
          LEFT JOIN weather_data w ON w.district_id = dc.district_id AND w.year = dc.year AND w.week = dc.week
@@ -914,6 +1096,9 @@ export class AnalyticsService {
             : null,
           model_risk_score: Number(riskScore.toFixed(3)),
           historical_trend: recentWeeks.map((r: any) => Number(r.cases) || 0),
+          data_last_updated: current.created_at
+            ? new Date(current.created_at).toISOString()
+            : new Date().toISOString(),
         };
       }
     }

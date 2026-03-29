@@ -156,7 +156,18 @@ export interface ExplainInsightResponse {
   references: string[];
   document_references?: DocumentReference[];
   implementation_phase: string;
+  /** @deprecated Use data_completeness_score instead */
   confidence_score: number;
+  // ── Enhancement 6: split confidence into two distinct dimensions ──
+  /** Signal completeness (0-100): 30 base + 12 pts per filled optional field */
+  data_completeness_score?: number;
+  /** Model certainty (0-100) from ensemble uncertainty interval width */
+  prediction_confidence?: number;
+  /** True when the latest surveillance data is more than 7 days old */
+  data_freshness_warning?: boolean;
+  // ── Enhancement 5 ─────────────────────────────────────────────────
+  /** True when a high-burden neighbour or 3+ rising neighbours detected */
+  spillover_risk?: boolean;
   trend_direction: "rising" | "falling" | "stable";
   follow_up_answer?: string | null;
   _fallback?: boolean;
