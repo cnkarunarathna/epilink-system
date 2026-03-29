@@ -1,57 +1,10 @@
-"""
-Phase 2: pgvector-backed RAG retrieval service.
-
-Handles:
-- Embedding generation via Google text-embedding-004
-- Document ingestion into a pgvector table
-- Semantic retrieval using cosine similarity
-- Graceful no-op when pgvector is not configured
-"""
+import hashlib
+import uuid as _uuid
 
 from explain_analytics.config import settings
 from explain_analytics.models import DocumentReference, RagIngestDocument
 
-# Cosine similarity threshold — documents below this are too irrelevant to include.
 _MIN_RELEVANCE_SCORE = 0.55
-
-_CREATE_EXTENSION = "CREATE EXTENSION IF NOT EXISTS vector;"
-
-_CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS rag_documents (
-    id          SERIAL PRIMARY KEY,
-    title       TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    published_date TEXT,
-    content     TEXT NOT NULL,
-    embedding   vector(768),
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-"""
-
-_CREATE_INDEX = """
-CREATE INDEX IF NOT EXISTS rag_docs_embedding_idx
-    ON rag_documents
-    USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 50);
-"""
-
-_RETRIEVE_SQL = """
-SELECT
-    title,
-    source,
-    published_date,
-    LEFT(content, 600)                    AS excerpt,
-    1 - (embedding <=> %s::vector)        AS score
-FROM rag_documents
-WHERE 1 - (embedding <=> %s::vector) >= %s
-ORDER BY embedding <=> %s::vector
-LIMIT %s;
-"""
-
-_INSERT_SQL = """
-INSERT INTO rag_documents (title, source, published_date, content, embedding)
-VALUES (%s, %s, %s, %s, %s::vector);
-"""
 
 
 def _risk_label(score: float) -> str:
@@ -64,15 +17,27 @@ def _risk_label(score: float) -> str:
     return "low"
 
 
+def _point_id(title: str, source: str, published_date: str | None) -> str:
+    """Deterministic UUID derived from document identity for idempotent upserts."""
+    key = f"{title}|{source}|{published_date or ''}"
+    return str(_uuid.UUID(hashlib.md5(key.encode()).hexdigest()))
+
+
 class RAGService:
-    """Semantic retrieval over the MoH dengue document corpus stored in pgvector."""
+    """Semantic retrieval over the MoH dengue document corpus stored in Qdrant."""
 
     def __init__(self) -> None:
-        self._ready = bool(settings.pgvector_url and settings.rag_enabled)
-        if self._ready:
-            self._ensure_table()
+        self._ready = False
+        self._client = None
+        if settings.qdrant_url and settings.rag_enabled:
+            try:
+                from qdrant_client import QdrantClient
 
-    # ── Public API ──────────────────────────────────────────────────
+                self._client = QdrantClient(url=settings.qdrant_url)
+                self._ensure_collection()
+                self._ready = True
+            except Exception as exc:
+                print(f"[RAGService] Qdrant init failed: {exc}")
 
     @property
     def is_ready(self) -> bool:
@@ -103,63 +68,68 @@ class RAGService:
             return []
 
     def ingest(self, documents: list[RagIngestDocument]) -> int:
-        """Embed and store documents in pgvector. Returns count of stored documents."""
-        if not settings.pgvector_url:
+        """Embed and upsert documents into Qdrant. Returns count of stored documents."""
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointStruct
+
+        if not settings.qdrant_url:
             raise RuntimeError(
-                "EXPLAIN_PGVECTOR_URL is not set. "
+                "EXPLAIN_QDRANT_URL is not set. "
                 "Configure it in .env before ingesting documents."
             )
-        self._ensure_table()
+
+        client = self._client or QdrantClient(url=settings.qdrant_url)
+        self._ensure_collection(client)
+
         stored = 0
         try:
-            import psycopg
-            from pgvector.psycopg import register_vector
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                register_vector(conn)
-                for doc in documents:
-                    embedding = self._embed(doc.content)
-                    conn.execute(
-                        _INSERT_SQL,
-                        (doc.title, doc.source, doc.published_date, doc.content, embedding),
-                    )
-                    stored += 1
-                conn.commit()
+            for doc in documents:
+                embedding = self._embed(doc.content)
+                point = PointStruct(
+                    id=_point_id(doc.title, doc.source, doc.published_date),
+                    vector=embedding,
+                    payload={
+                        "title": doc.title,
+                        "source": doc.source,
+                        "published_date": doc.published_date,
+                        "content": doc.content,
+                        "source_type": "guideline",
+                    },
+                )
+                client.upsert(
+                    collection_name=settings.qdrant_collection,
+                    points=[point],
+                )
+                stored += 1
         except Exception as exc:
             raise RuntimeError(f"Ingestion failed after {stored} document(s): {exc}") from exc
         return stored
 
     def document_count(self) -> int:
-        """Return the total number of documents in the corpus."""
-        if not settings.pgvector_url:
+        """Return the total number of points in the Qdrant collection."""
+        if not self._ready or self._client is None:
             return 0
         try:
-            import psycopg
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                row = conn.execute("SELECT COUNT(*) FROM rag_documents;").fetchone()
-                return int(row[0]) if row else 0
+            info = self._client.get_collection(settings.qdrant_collection)
+            return info.points_count or 0
         except Exception:
             return 0
 
-    # ── Internal helpers ────────────────────────────────────────────
+    def _ensure_collection(self, client=None) -> None:
+        from qdrant_client.models import Distance, VectorParams
 
-    def _ensure_table(self) -> None:
-        """Create the pgvector extension and rag_documents table if absent."""
-        if not settings.pgvector_url:
+        c = client or self._client
+        if c is None:
             return
         try:
-            import psycopg
-            from pgvector.psycopg import register_vector
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                register_vector(conn)
-                conn.execute(_CREATE_EXTENSION)
-                conn.execute(_CREATE_TABLE)
-                conn.execute(_CREATE_INDEX)
-                conn.commit()
+            existing = {col.name for col in c.get_collections().collections}
+            if settings.qdrant_collection not in existing:
+                c.create_collection(
+                    collection_name=settings.qdrant_collection,
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                )
         except Exception as exc:
-            print(f"[RAGService] Could not ensure table: {exc}")
+            print(f"[RAGService] Could not ensure collection: {exc}")
             self._ready = False
 
     def _embed(self, text: str) -> list[float]:
@@ -196,26 +166,21 @@ class RAGService:
 
         return " ".join(parts)
 
-    def _vector_search(
-        self, embedding: list[float], top_k: int
-    ) -> list[DocumentReference]:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
-        with psycopg.connect(settings.pgvector_url) as conn:  # type: ignore[arg-type]
-            register_vector(conn)
-            rows = conn.execute(
-                _RETRIEVE_SQL,
-                (embedding, embedding, _MIN_RELEVANCE_SCORE, embedding, top_k),
-            ).fetchall()
-
+    def _vector_search(self, embedding: list[float], top_k: int) -> list[DocumentReference]:
+        results = self._client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=embedding,
+            limit=top_k,
+            score_threshold=_MIN_RELEVANCE_SCORE,
+            with_payload=True,
+        )
         return [
             DocumentReference(
-                title=row[0],
-                source=row[1],
-                published_date=row[2],
-                excerpt=row[3],
-                relevance_score=round(float(row[4]), 3),
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
             )
-            for row in rows
+            for r in results
         ]

@@ -226,20 +226,21 @@ def rag_status() -> dict[str, object]:
     """Report RAG readiness and corpus size."""
     return {
         "rag_enabled": rag_service.is_ready,
-        "pgvector_configured": bool(settings.pgvector_url),
+        "qdrant_url": settings.qdrant_url,
+        "qdrant_collection": settings.qdrant_collection,
         "embedding_model": settings.rag_embedding_model,
         "top_k": settings.rag_top_k,
-        "document_count": rag_service.document_count() if settings.pgvector_url else 0,
+        "document_count": rag_service.document_count(),
     }
 
 
 @app.post("/v1/rag/ingest", response_model=RagIngestResponse)
 def rag_ingest(payload: RagIngestRequest) -> RagIngestResponse:
-    """Embed and store MoH documents into the pgvector corpus."""
-    if not settings.pgvector_url:
+    """Embed and upsert MoH documents into the Qdrant corpus."""
+    if not settings.qdrant_url:
         raise HTTPException(
             status_code=503,
-            detail="EXPLAIN_PGVECTOR_URL is not configured. "
+            detail="EXPLAIN_QDRANT_URL is not configured. "
                    "Set it in .env and restart the service before ingesting documents.",
         )
     if not settings.gemini_api_key:
@@ -255,5 +256,5 @@ def rag_ingest(payload: RagIngestRequest) -> RagIngestResponse:
 
     return RagIngestResponse(
         ingested=count,
-        message=f"Successfully embedded and stored {count} document(s) in the RAG corpus.",
+        message=f"Successfully embedded and stored {count} document(s) in the Qdrant corpus.",
     )
