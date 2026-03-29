@@ -54,6 +54,13 @@ class StructuredSignals(BaseModel):
             "Used for spatial cluster detection and spillover risk assessment."
         ),
     )
+    data_last_updated: str | None = Field(
+        default=None,
+        description=(
+            "ISO-8601 datetime when this district's data was last refreshed "
+            "(e.g. '2026-03-22T00:00:00Z'). Used to compute data_freshness_warning."
+        ),
+    )
 
 
 class ExplainInsightRequest(BaseModel):
@@ -79,9 +86,44 @@ class ExplainInsightResponse(BaseModel):
         description="Structured source documents retrieved from the RAG corpus (Phase 2+)",
     )
     implementation_phase: str
+    # ── Enhancement 6: split confidence into two distinct dimensions ──────────
     confidence_score: int = Field(
-        default=50, ge=0, le=100, description="AI confidence 0-100"
+        default=50,
+        ge=0,
+        le=100,
+        description=(
+            "Backward-compatible alias for data_completeness_score. "
+            "Prefer data_completeness_score and prediction_confidence instead."
+        ),
     )
+    data_completeness_score: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description=(
+            "Signal completeness (0–100). Scores the number of input signals "
+            "that are present: base 30 pts + 12 pts per filled optional field. "
+            "Reflects how much data was available, not how certain the model is."
+        ),
+    )
+    prediction_confidence: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description=(
+            "Model certainty (0–100) derived from the ensemble's uncertainty bounds. "
+            "Narrow uncertainty_lower/upper interval → high confidence. "
+            "Returns 50 when uncertainty bounds are unavailable."
+        ),
+    )
+    data_freshness_warning: bool = Field(
+        default=False,
+        description=(
+            "True when the latest surveillance data is more than 7 days old, "
+            "indicating that predictions may not reflect the most recent situation."
+        ),
+    )
+    # ── End Enhancement 6 ─────────────────────────────────────────────────────
     trend_direction: TrendDirection = "stable"
     spillover_risk: bool = Field(
         default=False,
