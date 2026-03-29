@@ -17,6 +17,16 @@ class DocumentReference(BaseModel):
     relevance_score: float | None = Field(default=None, ge=0, le=1)
 
 
+class DistrictSignal(BaseModel):
+    """Snapshot of a neighbouring district's current dengue situation."""
+
+    district: str
+    recent_case_count: int = Field(ge=0)
+    wow_case_change_pct: float | None = None
+    model_risk_score: float = Field(ge=0, le=1)
+    trend_direction: "TrendDirection" = "stable"
+
+
 class StructuredSignals(BaseModel):
     recent_case_count: int = Field(ge=0)
     wow_case_change_pct: float | None = None
@@ -35,6 +45,13 @@ class StructuredSignals(BaseModel):
             "SHAP-based feature contributions from the XGBoost/LightGBM ensemble. "
             "Keys are feature names, values are fractional contributions (0.0–1.0, sum ≈ 1.0). "
             "When present, used as the authoritative source for key_drivers generation."
+        ),
+    )
+    neighboring_districts: list[DistrictSignal] = Field(
+        default_factory=list,
+        description=(
+            "Current surveillance snapshots for geographically adjacent districts. "
+            "Used for spatial cluster detection and spillover risk assessment."
         ),
     )
 
@@ -66,6 +83,14 @@ class ExplainInsightResponse(BaseModel):
         default=50, ge=0, le=100, description="AI confidence 0-100"
     )
     trend_direction: TrendDirection = "stable"
+    spillover_risk: bool = Field(
+        default=False,
+        description=(
+            "True when a high- or critical-risk neighbouring district is detected, "
+            "or when 3+ neighbours are simultaneously rising — indicating geographic "
+            "cluster spread rather than isolated local transmission."
+        ),
+    )
     follow_up_answer: str | None = None
 
 
