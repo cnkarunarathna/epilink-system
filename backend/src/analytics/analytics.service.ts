@@ -1229,8 +1229,10 @@ export class AnalyticsService {
     } catch (err: any) {
       return {
         rag_enabled: false,
-        pgvector_configured: false,
+        qdrant_url: null,
+        qdrant_collection: null,
         embedding_model: null,
+        retrieval_mode: null,
         top_k: 0,
         document_count: 0,
         _error: 'RAG status unavailable — AI service unreachable',
@@ -1245,6 +1247,42 @@ export class AnalyticsService {
       `${explainUrl}/v1/rag/ingest`,
       { documents },
       { timeout: 300000 }, // 5-minute timeout — embedding can be slow for large batches
+    );
+    return resp.data;
+  }
+
+  async getEtlStatus() {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.get(`${explainUrl}/v1/rag/etl/status`);
+      return resp.data;
+    } catch {
+      return {
+        etl_enabled: false,
+        last_run_at: null,
+        last_run_records: 0,
+        last_run_status: 'never',
+        last_run_error: null,
+        next_run_at: null,
+        is_running: false,
+        _error: 'ETL status unavailable — AI service unreachable',
+      };
+    }
+  }
+
+  async triggerEtlRun() {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    const serviceKey = process.env.EXPLAIN_BACKEND_SERVICE_KEY;
+    const headers: Record<string, string> = {};
+    if (serviceKey) {
+      headers['x-internal-api-key'] = serviceKey;
+    }
+    const resp = await axios.post(
+      `${explainUrl}/v1/rag/etl/run`,
+      {},
+      { headers, timeout: 600000 },
     );
     return resp.data;
   }

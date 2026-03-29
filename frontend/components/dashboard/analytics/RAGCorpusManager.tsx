@@ -26,13 +26,18 @@ import {
   BookOpen,
   FileText,
   AlertCircle,
+  Play,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchRagStatus,
   ingestRagDocuments,
+  fetchEtlStatus,
+  triggerEtlRun,
   RagStatus,
   RagIngestDocument,
+  EtlStatus,
 } from "@/services/analytics.service";
 
 const EMPTY_DOC: RagIngestDocument = {
@@ -60,12 +65,15 @@ export default function RAGCorpusManager() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [docs, setDocs] = useState<RagIngestDocument[]>([{ ...EMPTY_DOC }]);
   const [ingesting, setIngesting] = useState(false);
+  const [etlStatus, setEtlStatus] = useState<EtlStatus | null>(null);
+  const [etlRunning, setEtlRunning] = useState(false);
 
   const loadStatus = useCallback(async (showToast = false) => {
     try {
       setStatusLoading(true);
-      const s = await fetchRagStatus();
+      const [s, e] = await Promise.all([fetchRagStatus(), fetchEtlStatus()]);
       setStatus(s);
+      setEtlStatus(e);
       if (showToast) toast.success("Status refreshed");
     } catch (err: any) {
       toast.error("Failed to fetch RAG status", {
@@ -94,6 +102,27 @@ export default function RAGCorpusManager() {
 
   function removeDoc(idx: number) {
     setDocs((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleEtlRun() {
+    try {
+      setEtlRunning(true);
+      const result = await triggerEtlRun();
+      if (result.skipped) {
+        toast.info("ETL skipped", { description: result.reason });
+      } else if (result.status === "success") {
+        toast.success(`ETL complete — ${result.upserted} district records upserted`);
+        loadStatus();
+      } else {
+        toast.error("ETL failed", { description: result.error });
+      }
+    } catch (err: any) {
+      toast.error("ETL trigger failed", {
+        description: err.response?.data?.detail || err.message,
+      });
+    } finally {
+      setEtlRunning(false);
+    }
   }
 
   async function handleIngest() {
@@ -175,7 +204,7 @@ export default function RAGCorpusManager() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Vector DB</p>
-                  <StatusIndicator ok={status.pgvector_configured} label={status.pgvector_configured ? "Connected" : "Not configured"} />
+                  <StatusIndicator ok={!!status.qdrant_url} label={status.qdrant_url ? "Qdrant connected" : "Not configured"} />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Documents</p>
@@ -194,11 +223,30 @@ export default function RAGCorpusManager() {
                   <span className="text-xs text-muted-foreground">embedding model</span>
                 </div>
               )}
+              {status.retrieval_mode && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="outline" className="text-xs font-normal capitalize">
+                    {status.retrieval_mode}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">retrieval mode</span>
+                </div>
+              )}
+              {status.recency_decay_lambda != null && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="outline" className="text-xs font-normal font-mono">
+                    λ = {status.recency_decay_lambda}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    recency decay
+                    {status.recency_decay_lambda === 0 ? " (disabled)" : ""}
+                  </span>
+                </div>
+              )}
               {!status.rag_enabled && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>
-                    RAG is disabled. Set <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_RAG_ENABLED=true</code> and configure <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_PGVECTOR_URL</code> in the explain-analytics service to enable it.
+                    RAG is disabled. Set <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_RAG_ENABLED=true</code> and <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">EXPLAIN_QDRANT_URL</code> in the explain-analytics service to enable it.
                   </span>
                 </div>
               )}
@@ -326,6 +374,94 @@ export default function RAGCorpusManager() {
               Ingestion is disabled — RAG must be enabled in the service configuration.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ETL Pipeline */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Surveillance ETL Pipeline
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Automatically ingests weekly district surveillance data into the RAG corpus.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {etlStatus ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Scheduled ETL</p>
+                  <StatusIndicator
+                    ok={etlStatus.etl_enabled}
+                    label={etlStatus.etl_enabled ? "Enabled (Mon 06:00 LKT)" : "Disabled"}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Last Run</p>
+                  <p className="text-xs font-medium">
+                    {etlStatus.last_run_at
+                      ? new Date(etlStatus.last_run_at).toLocaleString()
+                      : "Never"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Records Upserted</p>
+                  <p className="text-2xl font-bold tabular-nums">{etlStatus.last_run_records}</p>
+                </div>
+              </div>
+
+              {etlStatus.last_run_status !== "never" && (
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={etlStatus.last_run_status === "success" ? "secondary" : "destructive"}
+                    className="text-xs"
+                  >
+                    {etlStatus.last_run_status}
+                  </Badge>
+                  {etlStatus.next_run_at && (
+                    <span className="text-xs text-muted-foreground">
+                      Next: {new Date(etlStatus.next_run_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {etlStatus.last_run_error && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs text-red-800 dark:text-red-300">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>{etlStatus.last_run_error}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading ETL status...
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-xs text-muted-foreground">
+              Embeds the latest per-district case counts, WoW change, and weather into Qdrant.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEtlRun}
+              disabled={etlRunning || !status?.rag_enabled || etlStatus?.is_running}
+              className="gap-2 shrink-0"
+            >
+              {etlRunning || etlStatus?.is_running ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {etlRunning || etlStatus?.is_running ? "Running..." : "Run Now"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

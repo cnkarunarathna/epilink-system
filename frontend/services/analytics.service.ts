@@ -215,9 +215,12 @@ export interface BatchExplainResponse {
 
 export interface RagStatus {
   rag_enabled: boolean;
-  pgvector_configured: boolean;
+  qdrant_url: string;
+  qdrant_collection: string;
   embedding_model: string | null;
+  retrieval_mode: string;
   top_k: number;
+  recency_decay_lambda: number;
   document_count: number;
   _error?: string;
 }
@@ -232,6 +235,25 @@ export interface RagIngestDocument {
 export interface RagIngestResponse {
   ingested: number;
   message: string;
+  error?: string;
+}
+
+export interface EtlStatus {
+  etl_enabled: boolean;
+  last_run_at: string | null;
+  last_run_records: number;
+  last_run_status: "success" | "failed" | "never";
+  last_run_error: string | null;
+  next_run_at: string | null;
+  is_running: boolean;
+  _error?: string;
+}
+
+export interface EtlRunResult {
+  upserted?: number;
+  status?: "success" | "failed";
+  skipped?: boolean;
+  reason?: string;
   error?: string;
 }
 
@@ -362,6 +384,22 @@ export async function ingestRagDocuments(
     `${API_BASE}/analytics/rag/ingest`,
     { documents },
     { headers: getAuthHeaders(), timeout: 300000 },
+  );
+  return res.data;
+}
+
+export async function fetchEtlStatus(): Promise<EtlStatus> {
+  const res = await axios.get(`${API_BASE}/analytics/rag/etl/status`, {
+    headers: getAuthHeaders(),
+  });
+  return res.data;
+}
+
+export async function triggerEtlRun(): Promise<EtlRunResult> {
+  const res = await axios.post(
+    `${API_BASE}/analytics/rag/etl/run`,
+    {},
+    { headers: getAuthHeaders(), timeout: 600000 },
   );
   return res.data;
 }
