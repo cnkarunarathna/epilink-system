@@ -256,7 +256,7 @@ export async function fetchExplainFollowUp(
   return res.data;
 }
 
-// ── Chat (Phase 3) ─────────────────────────────────────────────────
+// ── Chat (Phase 3 + Enhancement 7) ────────────────────────────────
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -268,16 +268,55 @@ export interface ChatResponse {
   reply: string;
   tool_calls_used: string[];
   session_id: string;
+  /** Total user turns stored in the session (Enhancement 7) */
+  turn_count?: number;
+  /** True when older messages were compressed in this cycle (Enhancement 7) */
+  context_compressed?: boolean;
 }
 
+/** Enhancement 7: full session history returned by the history endpoint */
+export interface ChatSessionHistoryResponse {
+  session_id: string;
+  messages: ChatMessage[];
+  message_count: number;
+  turn_count: number;
+}
+
+/**
+ * Send a single new user message to the agentic chat.
+ * Enhancement 7: only the new message text + session_id are sent;
+ * full history is managed server-side in Redis.
+ */
 export async function chatWithAgent(
   district: string,
-  messages: ChatMessage[],
+  message: string,
   sessionId?: string,
 ): Promise<ChatResponse> {
   const res = await axios.post(
     `${API_BASE}/analytics/explain/${encodeURIComponent(district)}/chat`,
-    { messages, sessionId },
+    { message, sessionId },
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+/** Enhancement 7: retrieve all stored messages for a session. */
+export async function getChatHistory(
+  sessionId: string,
+): Promise<ChatSessionHistoryResponse> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/chat/${encodeURIComponent(sessionId)}/history`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+/** Enhancement 7: explicitly end a session and remove its Redis key. */
+export async function deleteChatSession(
+  sessionId: string,
+): Promise<{ session_id: string; deleted: boolean; message: string }> {
+  const res = await axios.delete(
+    `${API_BASE}/analytics/chat/${encodeURIComponent(sessionId)}`,
     { headers: getAuthHeaders() },
   );
   return res.data;

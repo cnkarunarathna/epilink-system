@@ -1050,7 +1050,7 @@ export class AnalyticsService {
 
   async chatWithAgent(
     districtName: string,
-    messages: { role: string; content: string }[],
+    message: string,
     sessionId?: string,
   ) {
     // Gather district signals for context
@@ -1107,9 +1107,11 @@ export class AnalyticsService {
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
 
     try {
+      // Enhancement 7: send only the new message + session_id.
+      // Full history is managed server-side in the Python service via Redis.
       const resp = await axios.post(`${explainUrl}/v1/insights/chat`, {
         district: districtName,
-        messages,
+        message,
         session_id: sessionId || undefined,
         structured_signals: structuredSignals,
       });
@@ -1120,6 +1122,45 @@ export class AnalyticsService {
           'The AI agent service is currently unavailable. Please try again later.',
         tool_calls_used: [],
         session_id: sessionId || 'fallback',
+        turn_count: 0,
+        context_compressed: false,
+      };
+    }
+  }
+
+  // ── Enhancement 7: session history and management ──────────────────
+
+  async getChatHistory(sessionId: string) {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.get(
+        `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/history`,
+      );
+      return resp.data;
+    } catch {
+      return {
+        session_id: sessionId,
+        messages: [],
+        message_count: 0,
+        turn_count: 0,
+      };
+    }
+  }
+
+  async deleteChatSession(sessionId: string) {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.delete(
+        `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}`,
+      );
+      return resp.data;
+    } catch {
+      return {
+        session_id: sessionId,
+        deleted: false,
+        message: 'Session service unavailable.',
       };
     }
   }

@@ -917,14 +917,21 @@ def _build_tool_map():
 
 
 class AgenticInsightService:
-    """Phase 3 service: Gemini-native function calling agent."""
+    """Phase 3 service: Gemini-native function calling agent.
+
+    Enhancement 7: accepts a SessionService instance for Redis-backed
+    session persistence.  When Redis is available, clients only need to
+    send the new user message + session_id; full history is managed here.
+    Falls back to stateless behaviour when Redis is not configured.
+    """
 
     _MAX_TOOL_ROUNDS = 5  # prevent runaway loops
 
-    def __init__(self) -> None:
+    def __init__(self, session_service=None) -> None:
         self._tool_map: dict = {}
         self._gemini_tool = None
         self._ready = False
+        self._session_svc = session_service  # may be None
         self._init()
 
     def _init(self) -> None:
@@ -986,57 +993,103 @@ class AgenticInsightService:
     def chat(
         self,
         district: str,
-        messages: list[dict],
+        new_message: str,
         session_id: str,
         structured_signals: dict | None = None,
     ) -> dict:
+        """Process a single new user message.
+
+        Enhancement 7: full conversation history is loaded from and stored in
+        Redis (via SessionService).  When Redis is unavailable the method
+        operates statelessly — history is not persisted across requests.
+
+        Args:
+            district: Active district context.
+            new_message: The user's latest question / message text.
+            session_id: Redis session key.  A new key is created when empty.
+            structured_signals: Optional live surveillance signals dict.
+
+        Returns:
+            dict with keys: reply, tool_calls_used, session_id, turn_count,
+            context_compressed.
+        """
         import uuid
         from google import genai as _genai
         from google.genai import types as _t
 
+        svc = self._session_svc  # may be None
+
+        # ── Session ID management ────────────────────────────────────
         if not session_id:
-            session_id = str(uuid.uuid4())
+            session_id = svc.create_session() if svc and svc.is_ready else str(uuid.uuid4())
+        elif svc and svc.is_ready and not svc.session_exists(session_id):
+            # New session_id provided by client (first message)
+            svc.create_session.__func__  # ensure method exists (no-op)
+            # Initialise the key so append_messages works
+            svc._redis.setex(svc._key(session_id), svc._ttl, "[]")  # noqa: SLF001
 
-        # ── Build initial user message ────────────────────────────────
-        context_lines = [f"Current district context: {district}"]
-        if structured_signals:
-            context_lines.append(
-                f"Live signals — {self._format_signals_context(structured_signals)}"
+        # ── Load history from Redis (or empty for stateless mode) ────
+        stored_history: list[dict] = svc.get_messages(session_id) if svc and svc.is_ready else []
+        context_compressed = False
+
+        # ── Compress old context if needed ───────────────────────────
+        if svc and svc.is_ready and svc.needs_summarization(session_id) and settings.gemini_api_key:
+            try:
+                from google import genai as _genai_sum
+                _gclient = _genai_sum.Client(api_key=settings.gemini_api_key)
+                svc.summarize_and_compress(session_id, _gclient, settings.llm_model)
+                stored_history = svc.get_messages(session_id)
+                context_compressed = True
+                print(f"[AgenticInsightService] Session {session_id[:8]}… compressed.")
+            except Exception as exc:
+                print(f"[AgenticInsightService] Summarisation error: {exc}")
+
+        # ── Build Gemini contents list from stored history ───────────
+        context_header = (
+            f"Current district context: {district}"
+            + (
+                f"\nLive signals — {self._format_signals_context(structured_signals)}"
+                if structured_signals
+                else ""
             )
-
-        history_parts: list[str] = []
-        for msg in messages[:-1]:
-            role = msg.get("role", "user")
-            content = msg.get("content", "").strip()
-            if content:
-                history_parts.append(f"{'User' if role == 'user' else 'Assistant'}: {content}")
-
-        last_question = messages[-1]["content"].strip() if messages else ""
-
-        user_text = "\n".join(context_lines)
-        if history_parts:
-            user_text += "\n\nConversation history:\n" + "\n".join(history_parts)
-        user_text += f"\n\nQuestion: {last_question}"
+        )
 
         if not self._ready or not settings.gemini_api_key:
+            # Store the unanswered turn if possible
+            if svc and svc.is_ready:
+                svc.append_messages(session_id, [{"role": "user", "content": new_message}])
+            turn_count = len(stored_history) // 2 + 1
             return {
                 "reply": "Agent mode is unavailable. Please configure EXPLAIN_GEMINI_API_KEY.",
                 "tool_calls_used": [],
                 "session_id": session_id,
+                "turn_count": turn_count,
+                "context_compressed": False,
             }
 
         try:
             client = _genai.Client(api_key=settings.gemini_api_key)
             config = _t.GenerateContentConfig(
                 tools=[self._gemini_tool],
-                system_instruction=AGENT_SYSTEM_PROMPT,
+                system_instruction=AGENT_SYSTEM_PROMPT + f"\n\n## Session Context\n{context_header}",
                 temperature=settings.default_temperature,
             )
 
-            # Multi-turn contents list — grows with each tool round
-            contents: list = [
-                _t.Content(role="user", parts=[_t.Part(text=user_text)])
-            ]
+            # Convert stored history to Gemini Content objects
+            contents: list = []
+            for msg in stored_history:
+                role = msg.get("role", "user")
+                text = msg.get("content", "")
+                # Gemini only accepts "user" / "model" roles
+                gemini_role = "user" if role == "user" else "model"
+                contents.append(
+                    _t.Content(role=gemini_role, parts=[_t.Part(text=text)])
+                )
+
+            # Append the new user message
+            contents.append(
+                _t.Content(role="user", parts=[_t.Part(text=new_message)])
+            )
 
             tool_calls_used: list[str] = []
 
@@ -1048,16 +1101,12 @@ class AgenticInsightService:
                     config=config,
                 )
 
-                # Collect function calls from response
                 function_calls = response.function_calls or []
                 if not function_calls:
-                    # No more tool calls — final answer
                     break
 
-                # Append model's turn (contains function_call parts)
                 contents.append(response.candidates[0].content)
 
-                # Execute each tool and collect responses
                 tool_response_parts: list[_t.Part] = []
                 for fc in function_calls:
                     tool_name = fc.name
@@ -1077,26 +1126,39 @@ class AgenticInsightService:
                         )
                     )
 
-                # Append tool results as a user turn
                 contents.append(
                     _t.Content(role="user", parts=tool_response_parts)
                 )
 
-            # Extract final text response
             reply = (response.text or "").strip()
             if not reply:
                 reply = "I was unable to generate a response. Please try again."
+
+            # ── Persist the new turn to Redis ────────────────────────
+            if svc and svc.is_ready:
+                svc.append_messages(session_id, [
+                    {"role": "user", "content": new_message},
+                    {"role": "assistant", "content": reply},
+                ])
+                all_msgs = svc.get_messages(session_id)
+                turn_count = len(all_msgs) // 2
+            else:
+                turn_count = len(stored_history) // 2 + 1
 
             return {
                 "reply": reply,
                 "tool_calls_used": tool_calls_used,
                 "session_id": session_id,
+                "turn_count": turn_count,
+                "context_compressed": context_compressed,
             }
 
-        except Exception as e:
-            print(f"[AgenticInsightService] Error: {e}")
+        except Exception as exc:
+            print(f"[AgenticInsightService] Error: {exc}")
             return {
-                "reply": f"An error occurred while processing your request: {e}",
+                "reply": f"An error occurred while processing your request: {exc}",
                 "tool_calls_used": [],
                 "session_id": session_id,
+                "turn_count": len(stored_history) // 2,
+                "context_compressed": context_compressed,
             }
