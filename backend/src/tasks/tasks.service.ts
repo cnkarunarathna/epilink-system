@@ -23,6 +23,7 @@ import { CreateEvidenceDto } from './dto/create-evidence.dto';
 import { User, UserRole } from '../entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { StorageService } from '../storage/storage.service';
+import { CacheHelperService } from '../cache/cache-helper.service';
 
 export interface TaskFilters {
   districtId?: number;
@@ -55,7 +56,12 @@ export class TasksService {
     private userRepository: Repository<User>,
     private eventsGateway: EventsGateway,
     private storageService: StorageService,
+    private cacheHelper: CacheHelperService,
   ) {}
+
+  private async invalidateTaskCaches(): Promise<void> {
+    await this.cacheHelper.delByPattern('tasks:*');
+  }
 
   /** Replace stored S3 keys (or legacy full URLs) with fresh pre-signed URLs. */
   private async signEvidenceUrls(evidence: Evidence[]): Promise<Evidence[]> {
@@ -106,10 +112,22 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    await this.invalidateTaskCaches();
     return taskWithRelations;
   }
 
   async findAll(filters?: TaskFilters): Promise<Task[]> {
+    const filterKey = filters
+      ? Object.entries(filters)
+          .filter(([, v]) => v !== undefined)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => `${k}=${v}`)
+          .join('&')
+      : 'all';
+    const cacheKey = `tasks:list:${filterKey}`;
+    const cached = await this.cacheHelper.get<Task[]>(cacheKey);
+    if (cached) return cached;
+
     const query = this.taskRepository
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.district', 'district')
@@ -144,7 +162,9 @@ export class TasksService {
       });
     }
 
-    return query.getMany();
+    const result = await query.getMany();
+    await this.cacheHelper.set(cacheKey, result, 120000); // 2 minutes
+    return result;
   }
 
   async findOne(id: string, signUrls = false): Promise<Task> {
@@ -172,7 +192,9 @@ export class TasksService {
     }
 
     Object.assign(task, updateTaskDto);
-    return this.taskRepository.save(task);
+    const saved = await this.taskRepository.save(task);
+    await this.invalidateTaskCaches();
+    return saved;
   }
 
   async updateStatus(
@@ -237,6 +259,7 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    await this.invalidateTaskCaches();
     return taskWithRelations;
   }
 
@@ -265,6 +288,7 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    await this.invalidateTaskCaches();
     return taskWithRelations;
   }
 
@@ -275,9 +299,14 @@ export class TasksService {
     const assignedPhiId = task.assignedPhiId ?? undefined;
     await this.taskRepository.remove(task);
     this.eventsGateway.emitTaskDeleted(taskId, districtName, assignedPhiId);
+    await this.invalidateTaskCaches();
   }
 
   async getStats(districtId?: number): Promise<TaskStats> {
+    const cacheKey = `tasks:stats:${districtId ?? 'all'}`;
+    const cached = await this.cacheHelper.get<TaskStats>(cacheKey);
+    if (cached) return cached;
+
     const query = this.taskRepository.createQueryBuilder('task');
 
     if (districtId) {
@@ -287,7 +316,7 @@ export class TasksService {
     const tasks = await query.getMany();
     const now = new Date();
 
-    return {
+    const result: TaskStats = {
       total: tasks.length,
       pending: tasks.filter((t) => t.status === TaskStatus.PENDING).length,
       assigned: tasks.filter((t) => t.status === TaskStatus.ASSIGNED).length,
@@ -303,6 +332,9 @@ export class TasksService {
           ![TaskStatus.COMPLETED, TaskStatus.REJECTED].includes(t.status),
       ).length,
     };
+
+    await this.cacheHelper.set(cacheKey, result, 120000); // 2 minutes
+    return result;
   }
 
   // Evidence methods
@@ -365,9 +397,16 @@ export class TasksService {
 
   // Get PHIs by district for supervisor (including suspended)
   async getPhisByDistrict(districtName: string): Promise<User[]> {
-    return this.userRepository.find({
+    const cacheKey = `tasks:phis:${districtName}`;
+    const cached = await this.cacheHelper.get<User[]>(cacheKey);
+    if (cached) return cached;
+
+    const result = await this.userRepository.find({
       where: { district: districtName, role: UserRole.PHI },
       select: ['id', 'name', 'email', 'district', 'isActive'],
     });
+
+    await this.cacheHelper.set(cacheKey, result, 300000); // 5 minutes
+    return result;
   }
 }
