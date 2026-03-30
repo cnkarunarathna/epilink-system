@@ -2,6 +2,7 @@ import {
   IsString,
   IsEnum,
   IsOptional,
+  IsBoolean,
   IsNumber,
   IsDateString,
   IsUUID,
@@ -76,6 +77,11 @@ export class UpdateTaskStatusDto {
   @IsOptional()
   @MaxLength(500)
   rejectionReason?: string;
+
+  /** When true a supervisor/admin can bypass the normal transition guard. */
+  @IsBoolean()
+  @IsOptional()
+  force?: boolean;
 }
 
 export class AssignTaskDto {

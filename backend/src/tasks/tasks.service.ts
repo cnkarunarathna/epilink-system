@@ -188,13 +188,23 @@ export class TasksService {
       [TaskStatus.PENDING]: [TaskStatus.ASSIGNED],
       [TaskStatus.ASSIGNED]: [TaskStatus.IN_PROGRESS, TaskStatus.PENDING],
       [TaskStatus.IN_PROGRESS]: [TaskStatus.SUBMITTED],
-      [TaskStatus.SUBMITTED]: [TaskStatus.VERIFIED, TaskStatus.REJECTED],
+      [TaskStatus.SUBMITTED]: [
+        TaskStatus.VERIFIED,
+        TaskStatus.COMPLETED,
+        TaskStatus.REJECTED,
+      ],
       [TaskStatus.VERIFIED]: [TaskStatus.COMPLETED],
       [TaskStatus.COMPLETED]: [],
       [TaskStatus.REJECTED]: [TaskStatus.IN_PROGRESS],
     };
 
-    if (!validTransitions[task.status]?.includes(dto.status)) {
+    const isForceComplete =
+      dto.force === true && dto.status === TaskStatus.COMPLETED;
+
+    if (
+      !isForceComplete &&
+      !validTransitions[task.status]?.includes(dto.status)
+    ) {
       throw new BadRequestException(
         `Cannot transition from ${task.status} to ${dto.status}`,
       );
@@ -206,7 +216,10 @@ export class TasksService {
       task.rejectionReason = dto.rejectionReason;
     }
 
-    if (dto.status === TaskStatus.COMPLETED) {
+    if (
+      dto.status === TaskStatus.COMPLETED ||
+      dto.status === TaskStatus.VERIFIED
+    ) {
       task.completedAt = new Date();
     }
 

@@ -184,11 +184,12 @@ export async function updateTaskStatus(
   id: string,
   status: TaskStatus,
   rejectionReason?: string,
+  force?: boolean,
 ): Promise<Task> {
   const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/status`,
-    { status, rejectionReason },
+    { status, rejectionReason, force },
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return res.data;
