@@ -166,8 +166,8 @@ export default function PHITaskDetailPage() {
 
     setEvidenceSubmitting(true);
     try {
-      // Upload file to S3 first
-      const imageUrl = await uploadEvidenceFile(evidenceFile, setUploadProgress);
+      // Upload file to S3 — returns signed URL for preview and key to store
+      const { key: imageUrl } = await uploadEvidenceFile(evidenceFile, setUploadProgress);
 
       // Try to get current GPS location
       let latitude: number | undefined;
@@ -188,7 +188,7 @@ export default function PHITaskDetailPage() {
       }
 
       await addEvidence(taskId, {
-        imageUrl,
+        imageUrl, // stores S3 key; server signs it on every read
         notes: evidenceNotes.trim() || undefined,
         latitude,
         longitude,

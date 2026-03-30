@@ -73,7 +73,7 @@ export class TasksController {
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tasksService.findOne(id);
+    return this.tasksService.findOne(id, true);
   }
 
   @Patch(':id')

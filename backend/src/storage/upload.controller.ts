@@ -25,12 +25,15 @@ export class UploadController {
   )
   async uploadEvidence(
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; key: string }> {
     if (!file) {
       throw new BadRequestException('No file provided.');
     }
 
-    const url = await this.storageService.uploadEvidenceImage(file);
-    return { url };
+    const { key, signedUrl } =
+      await this.storageService.uploadEvidenceImage(file);
+    // url = pre-signed GET URL for immediate display
+    // key = S3 object key that should be stored in the evidence record
+    return { url: signedUrl, key };
   }
 }

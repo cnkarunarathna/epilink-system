@@ -259,11 +259,11 @@ export async function addEvidence(
 export async function uploadEvidenceFile(
   file: File,
   onUploadProgress?: (percent: number) => void,
-): Promise<string> {
+): Promise<{ url: string; key: string }> {
   const token = localStorage.getItem("accessToken");
   const formData = new FormData();
   formData.append("file", file);
-  const res = await axios.post<{ url: string }>(
+  const res = await axios.post<{ url: string; key: string }>(
     `${API_BASE}/upload/evidence`,
     formData,
     {
@@ -281,7 +281,7 @@ export async function uploadEvidenceFile(
         : undefined,
     },
   );
-  return res.data.url;
+  return res.data;
 }
 
 export async function verifyEvidence(

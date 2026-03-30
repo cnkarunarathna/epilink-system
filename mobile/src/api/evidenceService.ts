@@ -57,7 +57,7 @@ export const uploadEvidenceFile = async (
     type: mimeType,
   } as any);
 
-  const uploadResponse = await apiClient.post<{ url: string }>(
+  const uploadResponse = await apiClient.post<{ url: string; key: string }>(
     "/upload/evidence",
     fileFormData,
     {
@@ -73,7 +73,8 @@ export const uploadEvidenceFile = async (
     },
   );
 
-  const imageUrl = uploadResponse.data.url;
+  // Store the S3 key — the server signs it on every read
+  const imageUrl = uploadResponse.data.key;
 
   // Step 2: record the evidence with the returned S3 URL
   const evidenceResponse = await apiClient.post<Evidence>(

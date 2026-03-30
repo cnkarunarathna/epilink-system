@@ -13,7 +13,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { RouteProp, useRoute } from "@react-navigation/native";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TaskStackParamList } from "../../navigation/types";
@@ -40,6 +40,7 @@ import {
   TASK_TYPE_LABELS,
   TASK_PRIORITY_LABELS,
   EVIDENCE_STATUS_LABELS,
+  MIN_EVIDENCE_COUNTS,
 } from "../../utils/constants";
 import {
   formatDate,
@@ -82,6 +83,7 @@ const STATUS_ORDER: Record<string, number> = {
 
 export const TaskDetailScreen: React.FC = () => {
   const route = useRoute<TaskDetailRouteProp>();
+  const navigation = useNavigation();
   const { taskId } = route.params;
 
   const [task, setTask] = useState<Task | null>(null);
@@ -630,16 +632,51 @@ export const TaskDetailScreen: React.FC = () => {
             size="large"
           />
         )}
-        {task.status === TaskStatus.IN_PROGRESS && (
+
+        {(task.status === TaskStatus.IN_PROGRESS ||
+          task.status === TaskStatus.REJECTED) && (
           <Button
-            title="Submit Task"
-            onPress={() => handleStatusChange(TaskStatus.SUBMITTED)}
-            loading={actionLoading}
-            variant="gradient"
-            icon="send"
+            title="Add Evidence"
+            onPress={() =>
+              (navigation as any).navigate("EvidenceUpload", { taskId })
+            }
+            variant="outline"
+            icon="camera-plus"
             size="large"
           />
         )}
+
+        {task.status === TaskStatus.IN_PROGRESS && (() => {
+          const minRequired = MIN_EVIDENCE_COUNTS[task.type] ?? 1;
+          const hasEnough = evidence.length >= minRequired;
+          return (
+            <>
+              {!hasEnough && (
+                <View style={styles.evidenceWarning}>
+                  <MaterialCommunityIcons
+                    name="alert-circle-outline"
+                    size={16}
+                    color={colors.warning}
+                  />
+                  <Text style={styles.evidenceWarningText}>
+                    At least {minRequired} photo
+                    {minRequired > 1 ? "s" : ""} required before submitting
+                  </Text>
+                </View>
+              )}
+              <Button
+                title="Submit Task"
+                onPress={() => handleStatusChange(TaskStatus.SUBMITTED)}
+                loading={actionLoading}
+                disabled={!hasEnough}
+                variant="gradient"
+                icon="send"
+                size="large"
+              />
+            </>
+          );
+        })()}
+
         {task.status === TaskStatus.REJECTED && (
           <Button
             title="Restart Task"
@@ -913,5 +950,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
     gap: spacing.sm,
+  },
+  evidenceWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.warning + "14",
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  evidenceWarningText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.warning,
+    fontWeight: typography.fontWeight.medium,
   },
 });
