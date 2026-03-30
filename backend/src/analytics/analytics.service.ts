@@ -1,12 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { DengueCase } from '../entities/dengue_case.entity';
-import { WeatherData } from '../entities/weather_data.entity';
 import { District } from '../entities/district.entity';
 import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
 import axios from 'axios';
 
 type DashboardSummary = {
@@ -96,12 +93,12 @@ export class AnalyticsService {
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private readonly eventsGateway: EventsGateway,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly cacheHelper: CacheHelperService,
   ) {}
 
   async getLatestWeekPerDistrict() {
     const cacheKey = 'analytics:latest_week_districts';
-    const cached = await this.cacheManager.get(cacheKey);
+    const cached = await this.cacheHelper.get(cacheKey);
     if (cached) return cached;
 
     const manager = this.dataSource.manager;
@@ -138,11 +135,15 @@ export class AnalyticsService {
         row.precipitation_sum !== null ? Number(row.precipitation_sum) : null,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
   async getTimeSeries(districtName: string) {
+    const cacheKey = `analytics:timeseries:${districtName}`;
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
     const district = await manager
       .getRepository(District)
@@ -158,7 +159,7 @@ export class AnalyticsService {
        ORDER BY dc.year, dc.week`,
       [district.id],
     );
-    return rows.map((r: any) => ({
+    const result = rows.map((r: any) => ({
       year: r.year,
       week: r.week,
       cases: r.cases,
@@ -167,6 +168,9 @@ export class AnalyticsService {
       precipitation:
         r.precipitation_sum !== null ? Number(r.precipitation_sum) : null,
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async getDistrictFeaturesForBulk(): Promise<
@@ -181,7 +185,7 @@ export class AnalyticsService {
     }>
   > {
     const cacheKey = 'analytics:district_features_bulk';
-    const cached = await this.cacheManager.get(cacheKey);
+    const cached = await this.cacheHelper.get(cacheKey);
     if (cached) return cached as any;
 
     const manager = this.dataSource.manager;
@@ -239,7 +243,7 @@ export class AnalyticsService {
       precipitation_sum: Number(r.precipitation_sum) || 0,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
@@ -261,7 +265,7 @@ export class AnalyticsService {
 
   async getDashboardSummary(): Promise<DashboardSummary> {
     const cacheKey = 'analytics:dashboard_summary';
-    const cached = await this.cacheManager.get<DashboardSummary>(cacheKey);
+    const cached = await this.cacheHelper.get<DashboardSummary>(cacheKey);
     if (cached) return cached;
 
     const manager = this.dataSource.manager;
@@ -337,13 +341,13 @@ export class AnalyticsService {
       avg_temperature: row.avg_temp ? Number(row.avg_temp) : null,
     };
 
-    await this.cacheManager.set(cacheKey, result, 600000); // 10 minutes
+    await this.cacheHelper.set(cacheKey, result, 600000); // 10 minutes
     return result;
   }
 
   async getTrends(weeks: number = 12) {
     const cacheKey = `analytics:trends:${weeks}`;
-    const cached = await this.cacheManager.get(cacheKey);
+    const cached = await this.cacheHelper.get(cacheKey);
     if (cached) return cached;
 
     const manager = this.dataSource.manager;
@@ -370,7 +374,7 @@ export class AnalyticsService {
       avg_precipitation: row.avg_precip ? Number(row.avg_precip) : null,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
@@ -395,6 +399,10 @@ export class AnalyticsService {
     const finalEndYear = endYear || defaultEnd[0]?.year;
     const finalEndWeek = endWeek || defaultEnd[0]?.week;
 
+    const cacheKey = `analytics:historical:${finalStartYear}:${finalStartWeek}:${finalEndYear}:${finalEndWeek}`;
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const data = await manager.query(
       `
       SELECT dc.year, dc.week, d.name as district, dc.cases,
@@ -409,7 +417,7 @@ export class AnalyticsService {
       [finalStartYear, finalStartWeek, finalEndYear, finalEndWeek],
     );
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       year: row.year,
       week: row.week,
       district: row.district,
@@ -421,6 +429,9 @@ export class AnalyticsService {
         ? Number(row.precipitation_sum)
         : null,
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 7200000); // 2 hours
+    return result;
   }
 
   async compareDistricts(districts: string[]) {
@@ -433,6 +444,10 @@ export class AnalyticsService {
       `);
       districts = allDistricts.map((d: any) => d.name);
     }
+
+    const cacheKey = `analytics:compare:${[...districts].sort().join(',')}`;
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
 
     const placeholders = districts.map((_, i) => `$${i + 1}`).join(',');
     const data = await manager.query(
@@ -448,7 +463,7 @@ export class AnalyticsService {
       districts,
     );
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       year: row.year,
       week: row.week,
       district: row.district,
@@ -460,6 +475,9 @@ export class AnalyticsService {
         ? Number(row.precipitation_sum)
         : null,
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
+    return result;
   }
 
   async getYearlySummary(year?: number) {
@@ -472,6 +490,10 @@ export class AnalyticsService {
           `SELECT year FROM dengue_cases ORDER BY year DESC LIMIT 1`,
         )
       )[0]?.year;
+
+    const cacheKey = `analytics:yearly_summary:${targetYear}`;
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
 
     const summary = await manager.query(
       `
@@ -494,7 +516,7 @@ export class AnalyticsService {
       [targetYear],
     );
 
-    return {
+    const result = {
       year: targetYear,
       districts: summary.map((row: any) => ({
         district: row.district,
@@ -505,11 +527,14 @@ export class AnalyticsService {
         week_count: Number(row.week_count) || 0,
       })),
     };
+
+    await this.cacheHelper.set(cacheKey, result, 7200000); // 2 hours
+    return result;
   }
 
   async getWeatherCorrelation() {
     const cacheKey = 'analytics:weather_correlation';
-    const cached = await this.cacheManager.get(cacheKey);
+    const cached = await this.cacheHelper.get(cacheKey);
     if (cached) return cached;
 
     const manager = this.dataSource.manager;
@@ -547,11 +572,15 @@ export class AnalyticsService {
       data_points: Number(row.data_points) || 0,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
+    await this.cacheHelper.set(cacheKey, result, 3600000); // 1 hour
     return result;
   }
 
   async getGrowthRate(weeks: number = 4) {
+    const cacheKey = `analytics:growth_rate:${weeks}`;
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Calculate week-over-week growth rate per district
@@ -578,7 +607,7 @@ export class AnalyticsService {
       [weeks],
     );
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       district: row.district,
       avg_growth_rate: Number(row.avg_growth_rate) || 0,
       current_cases: Number(row.current_cases) || 0,
@@ -590,9 +619,16 @@ export class AnalyticsService {
             ? 'decreasing'
             : 'stable',
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 1800000); // 30 minutes
+    return result;
   }
 
   async getHotspots() {
+    const cacheKey = 'analytics:hotspots';
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Identify hotspots based on cases, growth rate, and density
@@ -633,7 +669,7 @@ export class AnalyticsService {
       ORDER BY l.cases DESC, growth_rate DESC
     `);
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       district: row.district,
       current_cases: Number(row.current_cases) || 0,
       previous_cases: Number(row.previous_cases) || 0,
@@ -642,9 +678,16 @@ export class AnalyticsService {
       longitude: Number(row.longitude),
       severity: row.severity,
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 900000); // 15 minutes
+    return result;
   }
 
   async getOutbreakAlerts() {
+    const cacheKey = 'analytics:outbreak_alerts';
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Generate alerts based on thresholds and trends
@@ -694,7 +737,7 @@ export class AnalyticsService {
         l.cases DESC
     `);
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       district: row.district,
       current_cases: Number(row.current_cases) || 0,
       avg_cases: Number(row.avg_cases) || 0,
@@ -707,9 +750,16 @@ export class AnalyticsService {
             ? 'high'
             : 'moderate',
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 900000); // 15 minutes
+    return result;
   }
 
   async getWeeklyForecast() {
+    const cacheKey = 'analytics:weekly_forecast';
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const manager = this.dataSource.manager;
 
     // Simple forecast based on moving average and trend
@@ -744,7 +794,7 @@ export class AnalyticsService {
       ORDER BY forecast DESC
     `);
 
-    return data.map((row: any) => ({
+    const result = data.map((row: any) => ({
       district: row.district,
       current_cases: Number(row.current) || 0,
       avg_4week: Number(row.avg_4week) || 0,
@@ -752,6 +802,9 @@ export class AnalyticsService {
       trend: row.trend,
       confidence: 'medium',
     }));
+
+    await this.cacheHelper.set(cacheKey, result, 1800000); // 30 minutes
+    return result;
   }
 
   async getExplainableInsight(districtName: string) {
