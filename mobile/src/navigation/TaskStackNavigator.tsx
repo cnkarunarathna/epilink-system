@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { TaskStackParamList } from "./types";
 import { TaskListScreen } from "../screens/tasks/TaskListScreen";
 import { TaskDetailScreen } from "../screens/tasks/TaskDetailScreen";
+import { EvidenceUploadScreen } from "../screens/tasks/EvidenceUploadScreen";
 import { colors } from "../theme";
 
 const Stack = createNativeStackNavigator<TaskStackParamList>();
@@ -30,6 +31,11 @@ export const TaskStackNavigator: React.FC = () => {
         name="TaskDetail"
         component={TaskDetailScreen}
         options={{ title: "Task Details" }}
+      />
+      <Stack.Screen
+        name="EvidenceUpload"
+        component={EvidenceUploadScreen}
+        options={{ title: "Add Evidence" }}
       />
     </Stack.Navigator>
   );

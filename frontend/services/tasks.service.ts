@@ -184,11 +184,12 @@ export async function updateTaskStatus(
   id: string,
   status: TaskStatus,
   rejectionReason?: string,
+  force?: boolean,
 ): Promise<Task> {
   const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/status`,
-    { status, rejectionReason },
+    { status, rejectionReason, force },
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return res.data;
@@ -253,6 +254,34 @@ export async function addEvidence(
   const res = await axios.post(`${API_BASE}/tasks/${taskId}/evidence`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return res.data;
+}
+
+export async function uploadEvidenceFile(
+  file: File,
+  onUploadProgress?: (percent: number) => void,
+): Promise<{ url: string; key: string }> {
+  const token = localStorage.getItem("accessToken");
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await axios.post<{ url: string; key: string }>(
+    `${API_BASE}/upload/evidence`,
+    formData,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
+      onUploadProgress: onUploadProgress
+        ? (e) => {
+            const percent = e.total
+              ? Math.round((e.loaded * 100) / e.total)
+              : 0;
+            onUploadProgress(percent);
+          }
+        : undefined,
+    },
+  );
   return res.data;
 }
 

@@ -6,9 +6,10 @@ import { GeocodingService } from './geocoding.service';
 import { Task } from './entities/task.entity';
 import { Evidence } from './entities/evidence.entity';
 import { User } from '../entities/user.entity';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Task, Evidence, User])],
+  imports: [TypeOrmModule.forFeature([Task, Evidence, User]), StorageModule],
   controllers: [TasksController],
   providers: [TasksService, GeocodingService],
   exports: [TasksService, GeocodingService],
