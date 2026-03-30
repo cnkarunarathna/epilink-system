@@ -22,6 +22,7 @@ import {
 import { CreateEvidenceDto } from './dto/create-evidence.dto';
 import { User, UserRole } from '../entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
+import { StorageService } from '../storage/storage.service';
 
 export interface TaskFilters {
   districtId?: number;
@@ -53,7 +54,24 @@ export class TasksService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private eventsGateway: EventsGateway,
+    private storageService: StorageService,
   ) {}
+
+  /** Replace stored S3 keys (or legacy full URLs) with fresh pre-signed URLs. */
+  private async signEvidenceUrls(evidence: Evidence[]): Promise<Evidence[]> {
+    return Promise.all(
+      evidence.map(async (e) => {
+        if (e.imageUrl) {
+          try {
+            e.imageUrl = await this.storageService.getSignedUrl(e.imageUrl);
+          } catch {
+            // Leave as-is if signing fails (e.g. invalid key)
+          }
+        }
+        return e;
+      }),
+    );
+  }
 
   async create(
     createTaskDto: CreateTaskDto,
@@ -129,7 +147,7 @@ export class TasksService {
     return query.getMany();
   }
 
-  async findOne(id: string): Promise<Task> {
+  async findOne(id: string, signUrls = false): Promise<Task> {
     const task = await this.taskRepository.findOne({
       where: { id },
       relations: ['district', 'assignedPhi', 'createdBy', 'evidence'],
@@ -137,6 +155,10 @@ export class TasksService {
 
     if (!task) {
       throw new NotFoundException(`Task with ID ${id} not found`);
+    }
+
+    if (signUrls && task.evidence?.length) {
+      task.evidence = await this.signEvidenceUrls(task.evidence);
     }
 
     return task;
@@ -166,13 +188,23 @@ export class TasksService {
       [TaskStatus.PENDING]: [TaskStatus.ASSIGNED],
       [TaskStatus.ASSIGNED]: [TaskStatus.IN_PROGRESS, TaskStatus.PENDING],
       [TaskStatus.IN_PROGRESS]: [TaskStatus.SUBMITTED],
-      [TaskStatus.SUBMITTED]: [TaskStatus.VERIFIED, TaskStatus.REJECTED],
+      [TaskStatus.SUBMITTED]: [
+        TaskStatus.VERIFIED,
+        TaskStatus.COMPLETED,
+        TaskStatus.REJECTED,
+      ],
       [TaskStatus.VERIFIED]: [TaskStatus.COMPLETED],
       [TaskStatus.COMPLETED]: [],
       [TaskStatus.REJECTED]: [TaskStatus.IN_PROGRESS],
     };
 
-    if (!validTransitions[task.status]?.includes(dto.status)) {
+    const isForceComplete =
+      dto.force === true && dto.status === TaskStatus.COMPLETED;
+
+    if (
+      !isForceComplete &&
+      !validTransitions[task.status]?.includes(dto.status)
+    ) {
       throw new BadRequestException(
         `Cannot transition from ${task.status} to ${dto.status}`,
       );
@@ -184,7 +216,10 @@ export class TasksService {
       task.rejectionReason = dto.rejectionReason;
     }
 
-    if (dto.status === TaskStatus.COMPLETED) {
+    if (
+      dto.status === TaskStatus.COMPLETED ||
+      dto.status === TaskStatus.VERIFIED
+    ) {
       task.completedAt = new Date();
     }
 
@@ -293,11 +328,12 @@ export class TasksService {
   }
 
   async getEvidence(taskId: string): Promise<Evidence[]> {
-    return this.evidenceRepository.find({
+    const evidence = await this.evidenceRepository.find({
       where: { taskId },
       relations: ['submittedBy', 'verifiedBy'],
       order: { submittedAt: 'DESC' },
     });
+    return this.signEvidenceUrls(evidence);
   }
 
   async verifyEvidence(

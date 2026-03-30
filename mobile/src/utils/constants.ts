@@ -86,6 +86,14 @@ export const EVIDENCE_STATUS_LABELS = {
 export const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 export const MAX_IMAGES_PER_TASK = 5;
 
+// Minimum evidence photos required before a task can be submitted
+export const MIN_EVIDENCE_COUNTS: Record<string, number> = {
+  cleanup: 2,
+  fogging: 1,
+  inspection: 1,
+  investigation: 2,
+};
+
 // Cache durations (in milliseconds)
 export const CACHE_DURATION = {
   TASKS: 5 * 60 * 1000, // 5 minutes

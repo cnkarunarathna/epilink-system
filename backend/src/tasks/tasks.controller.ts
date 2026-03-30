@@ -27,6 +27,7 @@ import {
 } from './dto/geocoding.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TaskStatus, TaskType, TaskPriority } from './entities/task.entity';
+import { UserRole } from '../entities/user.entity';
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -73,7 +74,7 @@ export class TasksController {
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tasksService.findOne(id);
+    return this.tasksService.findOne(id, true);
   }
 
   @Patch(':id')
@@ -90,6 +91,15 @@ export class TasksController {
     @Body() dto: UpdateTaskStatusDto,
     @Request() req,
   ) {
+    const role: UserRole = req.user.role;
+    const canForce =
+      role === UserRole.SUPERVISOR || role === UserRole.ADMIN;
+
+    // Strip force flag if the caller is not a privileged role
+    if (dto.force && !canForce) {
+      dto.force = false;
+    }
+
     return this.tasksService.updateStatus(id, dto, req.user.id);
   }
 

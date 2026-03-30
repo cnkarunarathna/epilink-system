@@ -121,12 +121,21 @@ export default function TaskDetailPage() {
   const handleStatusUpdate = async (
     newStatus: TaskStatus,
     rejectionReason?: string,
+    force?: boolean,
   ) => {
     if (!task) return;
     setActionLoading(true);
     try {
-      await updateTaskStatus(task.id, newStatus, rejectionReason);
-      toast.success(`Task ${newStatus.replace("_", " ")}`);
+      await updateTaskStatus(task.id, newStatus, rejectionReason, force);
+      toast.success(
+        newStatus === TaskStatus.COMPLETED
+          ? force
+            ? "Task forcefully marked as complete"
+            : "Task approved and marked as complete"
+          : newStatus === TaskStatus.REJECTED
+            ? "Task rejected"
+            : `Task ${newStatus.replace("_", " ")}`,
+      );
       loadTaskData();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to update status");
@@ -177,6 +186,13 @@ export default function TaskDetailPage() {
   // Determine available actions based on current status
   const canVerify = task.status === TaskStatus.SUBMITTED;
   const canComplete = task.status === TaskStatus.VERIFIED;
+  const isTerminal =
+    task.status === TaskStatus.COMPLETED ||
+    task.status === TaskStatus.REJECTED;
+  const canForceComplete = !isTerminal && !canVerify && !canComplete;
+  const pendingEvidenceCount = evidence.filter(
+    (e) => e.status === EvidenceStatus.PENDING,
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -204,19 +220,34 @@ export default function TaskDetailPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-2">
-          {canVerify && (
-            <>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            {canVerify && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => handleStatusUpdate(TaskStatus.REJECTED)}
+                  disabled={actionLoading}
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </Button>
+                <Button
+                  onClick={() => handleStatusUpdate(TaskStatus.COMPLETED)}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                  )}
+                  Approve &amp; Complete
+                </Button>
+              </>
+            )}
+            {canComplete && (
               <Button
-                variant="outline"
-                onClick={() => handleStatusUpdate(TaskStatus.REJECTED)}
-                disabled={actionLoading}
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Reject
-              </Button>
-              <Button
-                onClick={() => handleStatusUpdate(TaskStatus.VERIFIED)}
+                onClick={() => handleStatusUpdate(TaskStatus.COMPLETED)}
                 disabled={actionLoading}
               >
                 {actionLoading ? (
@@ -224,22 +255,32 @@ export default function TaskDetailPage() {
                 ) : (
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                 )}
-                Verify
+                Mark Complete
               </Button>
-            </>
-          )}
-          {canComplete && (
-            <Button
-              onClick={() => handleStatusUpdate(TaskStatus.COMPLETED)}
-              disabled={actionLoading}
-            >
-              {actionLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-              )}
-              Mark Complete
-            </Button>
+            )}
+            {canForceComplete && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  handleStatusUpdate(TaskStatus.COMPLETED, undefined, true)
+                }
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                )}
+                Force Complete
+              </Button>
+            )}
+          </div>
+          {canVerify && pendingEvidenceCount > 0 && (
+            <p className="text-xs text-amber-600 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {pendingEvidenceCount} evidence item
+              {pendingEvidenceCount > 1 ? "s" : ""} still pending review
+            </p>
           )}
         </div>
       </div>

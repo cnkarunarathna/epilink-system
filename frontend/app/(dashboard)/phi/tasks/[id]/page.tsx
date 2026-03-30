@@ -13,7 +13,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft,
@@ -38,6 +37,7 @@ import {
   fetchTaskEvidence,
   updateTaskStatus,
   addEvidence,
+  uploadEvidenceFile,
   Task,
   Evidence,
   TaskStatus,
@@ -68,9 +68,11 @@ export default function PHITaskDetailPage() {
 
   // Evidence form state
   const [showEvidenceForm, setShowEvidenceForm] = useState(false);
-  const [evidenceImageUrl, setEvidenceImageUrl] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidencePreview, setEvidencePreview] = useState<string | null>(null);
   const [evidenceNotes, setEvidenceNotes] = useState("");
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const loadTaskData = useCallback(async () => {
     try {
@@ -145,15 +147,28 @@ export default function PHITaskDetailPage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setEvidenceFile(file);
+    if (evidencePreview) {
+      URL.revokeObjectURL(evidencePreview);
+    }
+    setEvidencePreview(file ? URL.createObjectURL(file) : null);
+    setUploadProgress(0);
+  };
+
   const handleSubmitEvidence = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!evidenceImageUrl.trim()) {
-      toast.error("Please provide an image URL");
+    if (!evidenceFile) {
+      toast.error("Please select an image file");
       return;
     }
 
     setEvidenceSubmitting(true);
     try {
+      // Upload file to S3 — returns signed URL for preview and key to store
+      const { key: imageUrl } = await uploadEvidenceFile(evidenceFile, setUploadProgress);
+
       // Try to get current GPS location
       let latitude: number | undefined;
       let longitude: number | undefined;
@@ -173,15 +188,17 @@ export default function PHITaskDetailPage() {
       }
 
       await addEvidence(taskId, {
-        imageUrl: evidenceImageUrl.trim(),
+        imageUrl, // stores S3 key; server signs it on every read
         notes: evidenceNotes.trim() || undefined,
         latitude,
         longitude,
       });
 
       toast.success("Evidence submitted successfully");
-      setEvidenceImageUrl("");
+      setEvidenceFile(null);
+      setEvidencePreview(null);
       setEvidenceNotes("");
+      setUploadProgress(0);
       setShowEvidenceForm(false);
       loadTaskData();
     } catch (error: any) {
@@ -498,19 +515,49 @@ export default function PHITaskDetailPage() {
             >
               <div>
                 <label className="text-sm font-medium mb-1 block">
-                  Image URL
+                  Photo
                 </label>
-                <Input
-                  placeholder="https://example.com/photo.jpg"
-                  value={evidenceImageUrl}
-                  onChange={(e) => setEvidenceImageUrl(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Upload your photo to an image hosting service and paste the
-                  URL here
-                </p>
+                <label
+                  className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer bg-background hover:bg-muted/40 transition-colors"
+                >
+                  {evidencePreview ? (
+                    <img
+                      src={evidencePreview}
+                      alt="Preview"
+                      className="h-full w-full object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <Camera className="h-8 w-8" />
+                      <span className="text-sm">Click to select a photo</span>
+                      <span className="text-xs">JPEG, PNG, WebP · max 10 MB</span>
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    disabled={evidenceSubmitting}
+                  />
+                </label>
+                {evidenceFile && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {evidenceFile.name} ({(evidenceFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                )}
               </div>
+
+              {/* Upload progress bar */}
+              {evidenceSubmitting && uploadProgress > 0 && (
+                <div className="w-full bg-muted rounded-full h-1.5">
+                  <div
+                    className="bg-primary h-1.5 rounded-full transition-all"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-medium mb-1 block">
                   Notes (optional)
@@ -523,19 +570,28 @@ export default function PHITaskDetailPage() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button type="submit" disabled={evidenceSubmitting} size="sm">
+                <Button type="submit" disabled={evidenceSubmitting || !evidenceFile} size="sm">
                   {evidenceSubmitting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <Camera className="mr-2 h-4 w-4" />
                   )}
-                  Submit Evidence
+                  {evidenceSubmitting
+                    ? uploadProgress < 100
+                      ? `Uploading ${uploadProgress}%`
+                      : "Saving..."
+                    : "Submit Evidence"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowEvidenceForm(false)}
+                  onClick={() => {
+                    setShowEvidenceForm(false);
+                    setEvidenceFile(null);
+                    setEvidencePreview(null);
+                    setUploadProgress(0);
+                  }}
                 >
                   Cancel
                 </Button>
