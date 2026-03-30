@@ -11,6 +11,7 @@ import { User, UserRole } from '../entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
 
 @Injectable()
 export class UsersService {
@@ -18,7 +19,12 @@ export class UsersService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private readonly eventsGateway: EventsGateway,
+    private readonly cacheHelper: CacheHelperService,
   ) {}
+
+  private async invalidateUserCaches(): Promise<void> {
+    await this.cacheHelper.delByPattern('users:*');
+  }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     // Check if user with email already exists
@@ -58,16 +64,23 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserCreated(userWithoutPassword);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 
   async findAll(): Promise<User[]> {
+    const cacheKey = 'users:list';
+    const cached = await this.cacheHelper.get<User[]>(cacheKey);
+    if (cached) return cached;
+
     const users = await this.userRepository.find({
       order: { createdAt: 'DESC' },
     });
 
     // Remove passwords from response
-    return users.map(({ password, ...user }) => user as User);
+    const result = users.map(({ password, ...user }) => user as User);
+    await this.cacheHelper.set(cacheKey, result, 300000); // 5 minutes
+    return result;
   }
 
   async findOne(id: string): Promise<User> {
@@ -133,6 +146,7 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserUpdated(userWithoutPassword);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 
@@ -149,6 +163,7 @@ export class UsersService {
 
     // Emit WebSocket event
     this.eventsGateway.emitUserDeleted(id);
+    await this.invalidateUserCaches();
   }
 
   async toggleStatus(id: string): Promise<User> {
@@ -168,10 +183,15 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserStatusChanged(id, updatedUser.isActive);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 
   async getStats() {
+    const cacheKey = 'users:stats';
+    const cached = await this.cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
     const totalUsers = await this.userRepository.count();
     const activeUsers = await this.userRepository.count({
       where: { isActive: true },
@@ -184,7 +204,7 @@ export class UsersService {
       .groupBy('user.role')
       .getRawMany();
 
-    return {
+    const result = {
       totalUsers,
       activeUsers,
       inactiveUsers: totalUsers - activeUsers,
@@ -193,6 +213,9 @@ export class UsersService {
         return acc;
       }, {}),
     };
+
+    await this.cacheHelper.set(cacheKey, result, 300000); // 5 minutes
+    return result;
   }
 
   async createPhiForSupervisor(
@@ -229,6 +252,7 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserCreated(userWithoutPassword);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 
@@ -280,6 +304,7 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserUpdated(userWithoutPassword);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 
@@ -310,6 +335,7 @@ export class UsersService {
 
     // Emit WebSocket event
     this.eventsGateway.emitUserDeleted(phiId);
+    await this.invalidateUserCaches();
   }
 
   async togglePhiStatusForSupervisor(
@@ -343,6 +369,7 @@ export class UsersService {
     // Emit WebSocket event
     this.eventsGateway.emitUserStatusChanged(phiId, updatedUser.isActive);
 
+    await this.invalidateUserCaches();
     return userWithoutPassword as User;
   }
 }

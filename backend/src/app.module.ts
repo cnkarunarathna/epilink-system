@@ -10,6 +10,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
 import { StorageModule } from './storage/storage.module';
+import { CacheHelperModule } from './cache/cache-helper.module';
 import databaseConfig from './config/database.config';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
@@ -31,10 +32,13 @@ import * as redisStore from 'cache-manager-redis-store';
         username: configService.get('REDIS_USERNAME'),
         password: configService.get('REDIS_PASSWORD'),
         no_ready_check: true,
-        ttl: 600000, // 10 minutes default (in ms)
+        // Fallback TTL in seconds (used only when CacheHelperService cannot reach Redis).
+        // cache-manager-redis-store v2 interprets this as seconds, not milliseconds.
+        ttl: 600,
       }),
       inject: [ConfigService],
     }),
+    CacheHelperModule,
     DatabaseModule,
     SeedModule,
     AuthModule,
