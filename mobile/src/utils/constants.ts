@@ -13,14 +13,6 @@ import Constants from "expo-constants";
  *  2. Dev mode: derive from the Expo Metro bundler's host IP so the URL works
  *     on physical devices, emulators, and simulators without manual changes.
  *  3. Production fallback.
- *
- * Why hostUri?
- *  When Expo Go (or a dev build) loads the app it connects to the Metro bundler
- *  running on your machine.  `Constants.expoConfig.hostUri` contains that
- *  connection address, e.g. "192.168.1.42:8081".  The NestJS API runs on the
- *  same machine, so stripping the port and appending ":3001/api" gives us the
- *  correct URL on any device that can reach the dev machine — including a real
- *  Android phone on the same Wi-Fi network.
  */
 const getApiBaseUrl = (): string => {
   // 1. Explicit override via .env
