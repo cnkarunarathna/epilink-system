@@ -108,6 +108,7 @@ export default function AnalyticsPage() {
   const [districtTimeseries, setDistrictTimeseries] = useState<
     TimeSeriesData[]
   >([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // WebSocket connection status
   const { isConnected, connectionStatus } = useSocket();
@@ -175,6 +176,7 @@ export default function AnalyticsPage() {
       setPredictions(preds);
       setSummary(summaryData);
       setTrends(trendsData);
+      setLastUpdated(new Date());
 
       toast.success("Dashboard Loaded", {
         description: `Week ${summaryData.current_week.week}/${summaryData.current_week.year} data`,
@@ -206,8 +208,8 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Get top 5 highest risk districts
-  const topRiskDistricts = predictions.slice(0, 5);
+  // Get top 10 highest risk districts
+  const topRiskDistricts = predictions.slice(0, 10);
 
   // Calculate total predicted cases
   const totalPredictedCases = predictions.reduce(
@@ -224,13 +226,46 @@ export default function AnalyticsPage() {
     return { level: "Very Low", color: "outline" };
   };
 
+  // Semantic risk badge classes that convey severity gradient clearly
+  const getRiskBadgeClass = (level: string): string => {
+    switch (level) {
+      case "Very High":
+        return "bg-red-600 text-white border-red-700";
+      case "High":
+        return "bg-orange-500 text-white border-orange-600";
+      case "Medium":
+        return "bg-amber-400 text-amber-950 border-amber-500";
+      case "Low":
+        return "bg-sky-400 text-sky-950 border-sky-500";
+      case "Very Low":
+        return "bg-emerald-400 text-emerald-950 border-emerald-500";
+      default:
+        return "";
+    }
+  };
+
+  // Color dot for compact risk indicators in grid views
+  const getRiskDotClass = (level: string): string => {
+    switch (level) {
+      case "Very High": return "bg-red-600";
+      case "High":      return "bg-orange-500";
+      case "Medium":    return "bg-amber-400";
+      case "Low":       return "bg-sky-400";
+      case "Very Low":  return "bg-emerald-400";
+      default:          return "bg-muted-foreground";
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Gradient Background */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-600 to-green-800 p-8 text-white shadow-xl">
-        <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,white)]"></div>
+      <div className="relative overflow-hidden rounded-xl bg-linear-to-br from-green-700 via-emerald-700 to-green-900 p-8 text-white shadow-xl">
+        <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,white)]" />
+        {/* Decorative radial glow */}
+        <div className="absolute -top-16 -right-16 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-green-300/10 blur-2xl pointer-events-none" />
         <div className="relative">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               <h2 className="text-4xl font-bold tracking-tight flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
@@ -238,17 +273,17 @@ export default function AnalyticsPage() {
                 </div>
                 Dengue Risk Forecast
               </h2>
-              <div className="flex items-center gap-3">
-                <p className="text-green-100 text-lg">
-                  Real-time predictions, trends, and insights for dengue case
-                  monitoring
-                </p>
+              <p className="text-green-100 text-lg">
+                Real-time predictions, trends, and AI-driven insights for dengue
+                case monitoring
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Real-time connection indicator */}
                 <Badge
-                  variant={isConnected ? "default" : "secondary"}
-                  className={`flex items-center gap-1.5 px-2 py-1 ${
+                  variant="outline"
+                  className={`flex items-center gap-1.5 px-2.5 py-1 border font-medium text-xs ${
                     isConnected
-                      ? "bg-green-400/20 text-green-100 border-green-400/50"
+                      ? "bg-emerald-400/20 text-emerald-100 border-emerald-400/50"
                       : "bg-red-400/20 text-red-200 border-red-400/50"
                   }`}
                 >
@@ -257,32 +292,44 @@ export default function AnalyticsPage() {
                   ) : (
                     <WifiOff className="h-3 w-3" />
                   )}
-                  <span className="text-xs font-medium">
-                    {isConnected ? "Live" : "Offline"}
-                  </span>
+                  {isConnected ? "Live" : "Offline"}
                 </Badge>
+                {lastUpdated && (
+                  <span className="text-xs text-green-200/70">
+                    Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
               </div>
             </div>
             {summary && (
-              <div className="flex gap-4">
-                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
-                  <div className="text-sm text-green-100">Prediction Week</div>
-                  <div className="text-2xl font-bold">
+              <div className="flex gap-3 shrink-0">
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-20 border border-white/20">
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">Week</div>
+                  <div className="text-3xl font-bold leading-none">
                     {summary.current_week.week}
                   </div>
-                  <div className="text-xs text-green-200">
+                  <div className="text-xs text-green-300 mt-1">
                     {summary.current_week.year}
                   </div>
                 </div>
-                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
-                  <div className="text-sm text-green-100">Total Cases</div>
-                  <div className="text-2xl font-bold">
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-[100px] border border-white/20">
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">Total Cases</div>
+                  <div className="text-3xl font-bold leading-none">
                     {summary.total_cases.toLocaleString()}
                   </div>
-                  <div className="text-xs text-green-200">
-                    {summary.change_percent >= 0 ? "+" : ""}
-                    {summary.change_percent.toFixed(1)}%
+                  <div className={`text-xs mt-1 font-semibold ${
+                    summary.change_percent >= 0 ? "text-red-300" : "text-emerald-300"
+                  }`}>
+                    {summary.change_percent >= 0 ? "▲" : "▼"}{" "}
+                    {Math.abs(summary.change_percent).toFixed(1)}%
                   </div>
+                </div>
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-20 border border-white/20">
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">High Risk</div>
+                  <div className="text-3xl font-bold leading-none text-red-300">
+                    {summary.high_risk_districts}
+                  </div>
+                  <div className="text-xs text-green-300 mt-1">districts</div>
                 </div>
               </div>
             )}
@@ -321,7 +368,12 @@ export default function AnalyticsPage() {
           className="space-y-6 animate-in fade-in-50 duration-500"
         >
           {/* Refresh Button */}
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-3">
+            {lastUpdated && !loading && (
+              <span className="text-xs text-muted-foreground">
+                Last updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
             <Button
               onClick={loadDashboardData}
               disabled={loading}
@@ -333,7 +385,7 @@ export default function AnalyticsPage() {
               ) : (
                 <RefreshCw className="mr-2 h-4 w-4" />
               )}
-              Refresh Data
+              {loading ? "Loading…" : "Refresh Data"}
             </Button>
           </div>
           {/* Nested Tabs for Predictions Sections */}
@@ -363,21 +415,21 @@ export default function AnalyticsPage() {
               {summary && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded"></div>
+                    <div className="h-1 w-12 bg-linear-to-r from-emerald-500 to-green-700 rounded"></div>
                     <h3 className="text-xl font-semibold">Key Metrics</h3>
                   </div>
                   <div className="grid gap-6 md:grid-cols-4">
-                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 border-2 border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-linear-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/50 dark:to-emerald-900/30 border-2 border-emerald-200 dark:border-emerald-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
-                          <div className="p-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-lg">
+                        <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                          <div className="p-1.5 bg-emerald-200 dark:bg-emerald-800/50 rounded-lg">
                             <Activity className="h-4 w-4" />
                           </div>
                           Total Cases
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">
+                        <div className="text-3xl font-bold text-emerald-900 dark:text-emerald-100">
                           {summary.total_cases.toLocaleString()}
                         </div>
                         <div className="flex items-center gap-1 text-xs mt-2">
@@ -386,15 +438,15 @@ export default function AnalyticsPage() {
                               <TrendingUp className="h-3 w-3 text-red-600 dark:text-red-400" />
                             </div>
                           ) : (
-                            <div className="p-1 bg-green-100 dark:bg-green-900/50 rounded-full">
-                              <TrendingDown className="h-3 w-3 text-green-600 dark:text-green-400" />
+                            <div className="p-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full">
+                              <TrendingDown className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                             </div>
                           )}
                           <span
                             className={`font-bold ${
                               summary.change_percent >= 0
                                 ? "text-red-600 dark:text-red-400"
-                                : "text-green-600 dark:text-green-400"
+                                : "text-emerald-600 dark:text-emerald-400"
                             }`}
                           >
                             {Math.abs(summary.change_percent).toFixed(1)}%
@@ -406,7 +458,7 @@ export default function AnalyticsPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-linear-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
                           <div className="p-1.5 bg-red-200 dark:bg-red-800/50 rounded-lg">
@@ -425,7 +477,7 @@ export default function AnalyticsPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-linear-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-2">
                           <div className="p-1.5 bg-green-200 dark:bg-green-800/50 rounded-lg">
@@ -444,7 +496,7 @@ export default function AnalyticsPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                    <Card className="bg-linear-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-center gap-2">
                           <div className="p-1.5 bg-orange-200 dark:bg-orange-800/50 rounded-lg">
@@ -469,11 +521,11 @@ export default function AnalyticsPage() {
               )}
 
               {/* Interactive District Risk Map - Main Highlight */}
-              <Card className="border-2 border-primary/20 shadow-xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
+              <Card className="border-2 border-primary/20 shadow-xl bg-linear-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                      <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-lg">
                         <MapPin className="h-6 w-6 text-white" />
                       </div>
                       <div>
@@ -495,7 +547,7 @@ export default function AnalyticsPage() {
                 </CardHeader>
                 <CardContent>
                   {loading ? (
-                    <div className="flex items-center justify-center h-[600px] bg-muted/30 rounded-lg">
+                    <div className="flex items-center justify-center h-[480px] sm:h-[560px] lg:h-[640px] bg-muted/30 rounded-xl">
                       <div className="flex flex-col items-center gap-3">
                         <Loader2 className="h-12 w-12 animate-spin text-primary" />
                         <p className="text-muted-foreground font-medium">
@@ -505,7 +557,7 @@ export default function AnalyticsPage() {
                     </div>
                   ) : predictions.length > 0 ? (
                     <div className="grid gap-6">
-                      <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
+                      <div className="h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
                         <SriLankaMap
                           data={predictions}
                           onDistrictClick={handleDistrictClick}
@@ -514,11 +566,11 @@ export default function AnalyticsPage() {
 
                       {/* Selected District Details */}
                       {selectedDistrict && districtTimeseries.length > 0 && (
-                        <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800">
+                        <div className="grid md:grid-cols-2 gap-4 p-4 bg-muted/40 rounded-xl border border-border">
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
-                              <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                              <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                              <MapPin className="h-5 w-5 text-primary" />
+                              <h4 className="text-lg font-bold">
                                 {selectedDistrict}
                               </h4>
                             </div>
@@ -532,20 +584,23 @@ export default function AnalyticsPage() {
                                   : null;
                                 return currentData ? (
                                   <>
-                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
-                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                    <div className="flex items-center justify-between p-2 bg-card rounded-lg">
+                                      <span className="text-sm font-medium text-muted-foreground">
                                         Current Forecast
                                       </span>
-                                      <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                      <span className="text-lg font-bold">
                                         {currentData.predicted_cases.toLocaleString()}{" "}
                                         cases
                                       </span>
                                     </div>
-                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
-                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                    <div className="flex items-center justify-between p-2 bg-card rounded-lg">
+                                      <span className="text-sm font-medium text-muted-foreground">
                                         Risk Level
                                       </span>
-                                      <Badge variant={risk?.color as any}>
+                                      <Badge
+                                        variant="outline"
+                                        className={getRiskBadgeClass(risk?.level ?? "")}
+                                      >
                                         {risk?.level}
                                       </Badge>
                                     </div>
@@ -555,7 +610,7 @@ export default function AnalyticsPage() {
                             </div>
                           </div>
                           <div className="space-y-3">
-                            <h5 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                            <h5 className="text-sm font-semibold text-foreground flex items-center gap-2">
                               <Activity className="h-4 w-4" />
                               Recent Trend (Last 4 Weeks)
                             </h5>
@@ -568,26 +623,26 @@ export default function AnalyticsPage() {
                                   return (
                                     <div
                                       key={`${entry.year}-${entry.week}`}
-                                      className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors"
+                                      className="flex items-center justify-between p-2 bg-card rounded-lg hover:bg-accent transition-colors"
                                     >
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        <span className="text-xs font-medium text-muted-foreground">
                                           W{entry.week}/{entry.year}
                                         </span>
                                         {entry.temperature && (
-                                          <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                          <span className="text-xs text-muted-foreground flex items-center gap-1">
                                             <Thermometer className="h-3 w-3" />
                                             {entry.temperature.toFixed(1)}°C
                                           </span>
                                         )}
                                       </div>
                                       <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                                        <span className="text-sm font-bold">
                                           {entry.cases}
                                         </span>
                                         <Badge
                                           variant="outline"
-                                          className="text-xs"
+                                          className={`text-xs ${getRiskBadgeClass(risk.level)}`}
                                         >
                                           {risk.level}
                                         </Badge>
@@ -601,7 +656,7 @@ export default function AnalyticsPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground bg-muted/30 rounded-lg">
+                    <div className="flex flex-col items-center justify-center h-[480px] sm:h-[560px] lg:h-[640px] text-muted-foreground bg-muted/30 rounded-xl">
                       <MapPin className="h-16 w-16 mb-4 text-muted-foreground/50" />
                       <p className="text-lg font-medium">
                         No map data available
@@ -613,12 +668,19 @@ export default function AnalyticsPage() {
 
               {/* 12-Week Trend Chart */}
               {trends.length > 0 && (
-                <Card>
+                <Card className="border-2 border-primary/10">
                   <CardHeader>
-                    <CardTitle>12-Week Trend</CardTitle>
-                    <CardDescription>
-                      Historical dengue cases over the last 12 weeks
-                    </CardDescription>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-sm">
+                        <TrendingUp className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle>12-Week Trend</CardTitle>
+                        <CardDescription>
+                          Historical dengue cases over the last 12 weeks
+                        </CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="h-64 mt-4 w-full">
@@ -702,7 +764,10 @@ export default function AnalyticsPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Badge variant={risk.color as any}>
+                              <Badge
+                                variant="outline"
+                                className={getRiskBadgeClass(risk.level)}
+                              >
                                 {risk.level}
                               </Badge>
                               <Button
@@ -732,7 +797,7 @@ export default function AnalyticsPage() {
             <TabsContent value="advanced" className="space-y-6">
               <div className="space-y-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg shadow-lg">
+                  <div className="p-2 bg-linear-to-br from-amber-400 to-orange-500 rounded-lg shadow-lg">
                     <Zap className="h-6 w-6 text-white" />
                   </div>
                   <div>
@@ -761,7 +826,7 @@ export default function AnalyticsPage() {
             <TabsContent value="ai-insights" className="space-y-6">
               <div className="space-y-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
+                  <div className="p-2 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
                     <Brain className="h-6 w-6 text-white" />
                   </div>
                   <div>
@@ -811,16 +876,19 @@ export default function AnalyticsPage() {
                             }
                           >
                             <div className="flex items-center gap-2">
-                              <MapPin className="h-4 w-4 text-muted-foreground" />
+                              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${getRiskDotClass(risk.level)}`} />
                               <span className="font-medium text-sm">
                                 {district.district}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold">
+                              <span className="text-sm font-bold tabular-nums">
                                 {district.predicted_cases.toLocaleString()}
                               </span>
-                              <Badge variant="outline" className="text-xs">
+                              <Badge
+                                variant="outline"
+                                className={`text-xs ${getRiskBadgeClass(risk.level)}`}
+                              >
                                 {risk.level}
                               </Badge>
                             </div>
@@ -883,10 +951,10 @@ export default function AnalyticsPage() {
                                       : risk.level === "High"
                                         ? "bg-orange-500"
                                         : risk.level === "Medium"
-                                          ? "bg-yellow-500"
+                                          ? "bg-amber-400"
                                           : risk.level === "Low"
-                                            ? "bg-blue-500"
-                                            : "bg-green-500"
+                                            ? "bg-sky-400"
+                                            : "bg-emerald-400"
                                   }`}
                                   style={{ width: `${percentage}%` }}
                                 ></div>
