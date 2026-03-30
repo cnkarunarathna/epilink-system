@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { MapPin, Activity } from "lucide-react";
+import { MapPin, Activity, RotateCcw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Map, useMap, MapControls } from "@/components/ui/map";
 import type MapLibreGL from "maplibre-gl";
@@ -15,6 +15,12 @@ interface SriLankaMapProps {
   data: DistrictData[];
   onDistrictClick?: (district: string) => void;
 }
+
+// Tight bounding box around Sri Lanka (SW → NE corners)
+const SRI_LANKA_BOUNDS: [[number, number], [number, number]] = [
+  [79.4, 5.6],
+  [82.1, 10.0],
+];
 
 // Mapping from GeoJSON district names to API district names
 const districtNameMapping: Record<string, string> = {
@@ -45,21 +51,41 @@ const districtNameMapping: Record<string, string> = {
   Kandy: "Kandy",
 };
 
-// Reverse mapping for lookups
-const reverseDistrictNameMapping: Record<string, string> = Object.fromEntries(
-  Object.entries(districtNameMapping).map(([k, v]) => [v, k])
-);
-
-// Risk level color scale
+// Risk level color scale (aligned with legend thresholds)
 const getRiskColor = (cases: number): string => {
-  if (cases >= 100) return "#7f1d1d"; // red-900 - Very High
-  if (cases >= 50) return "#dc2626"; // red-600 - High
-  if (cases >= 25) return "#f59e0b"; // amber-500 - Medium
-  if (cases >= 10) return "#facc15"; // yellow-400 - Low
-  return "#4ade80"; // green-400 - Very Low
+  if (cases >= 100) return "#7f1d1d"; // red-900  — Very High
+  if (cases >= 50)  return "#dc2626"; // red-600  — High
+  if (cases >= 25)  return "#f59e0b"; // amber-500 — Medium
+  if (cases >= 10)  return "#facc15"; // yellow-400 — Low
+  return "#4ade80";                   // green-400  — Very Low
 };
 
-// GeoJSON Layer component that uses the map context
+// ─── Reset-view button rendered inside the Map context ───────────────────────
+function ResetViewButton() {
+  const { map } = useMap();
+
+  return (
+    <button
+      onClick={() =>
+        map?.fitBounds(SRI_LANKA_BOUNDS, { padding: 32, animate: true, duration: 600 })
+      }
+      title="Reset view — show all of Sri Lanka"
+      className="
+        absolute bottom-[120px] right-4 z-1000
+        flex items-center justify-center
+        w-9 h-9 rounded-lg shadow-md
+        bg-card/95 border border-border
+        text-muted-foreground hover:text-primary
+        hover:bg-accent transition-colors duration-150
+        backdrop-blur-sm
+      "
+    >
+      <RotateCcw className="h-4 w-4" />
+    </button>
+  );
+}
+
+// ─── GeoJSON layer + map event wiring ────────────────────────────────────────
 function GeoJSONLayer({
   data,
   onDistrictClick,
@@ -77,7 +103,7 @@ function GeoJSONLayer({
   const layerId = "districts-fill";
   const outlineLayerId = "districts-outline";
 
-  // Build the color expression for MapLibre
+  // Build the fill-color expression for MapLibre
   const buildColorExpression =
     useCallback((): MapLibreGL.ExpressionSpecification => {
       const matchExpression: [string, ...unknown[]] = [
@@ -96,7 +122,6 @@ function GeoJSONLayer({
         matchExpression.push(geoJsonName, color);
       });
 
-      // Default color for unmatched districts
       matchExpression.push(isDark ? "#374151" : "#e5e7eb");
       return matchExpression as MapLibreGL.ExpressionSpecification;
     }, [data, isDark]);
@@ -106,38 +131,31 @@ function GeoJSONLayer({
 
     const setupLayers = async () => {
       try {
-        // Wait for style to be loaded
         if (!map.isStyleLoaded()) {
           await new Promise<void>((resolve) => {
             map.once("styledata", () => resolve());
           });
         }
 
-        // Remove existing layers and source if they exist
+        // Clean up existing layers / source
         if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId);
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        if (map.getLayer(layerId))        map.removeLayer(layerId);
+        if (map.getSource(sourceId))      map.removeSource(sourceId);
 
-        // Fetch GeoJSON data
         const response = await fetch("/District_geo.json");
         const geoJsonData = await response.json();
 
-        // Add unique IDs to features for hover state
         geoJsonData.features = geoJsonData.features.map(
-          (feature: any, index: number) => ({
-            ...feature,
-            id: index,
-          })
+          (feature: any, index: number) => ({ ...feature, id: index })
         );
 
-        // Add the source
         map.addSource(sourceId, {
           type: "geojson",
           data: geoJsonData,
           generateId: true,
         });
 
-        // Add fill layer
+        // Fill layer
         map.addLayer({
           id: layerId,
           type: "fill",
@@ -147,13 +165,13 @@ function GeoJSONLayer({
             "fill-opacity": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              0.9,
-              0.7,
+              0.92,
+              0.72,
             ],
           },
         });
 
-        // Add outline layer
+        // Outline layer — emphasised on hover
         map.addLayer({
           id: outlineLayerId,
           type: "line",
@@ -162,19 +180,19 @@ function GeoJSONLayer({
             "line-color": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              isDark ? "#60a5fa" : "#1e40af",
+              isDark ? "#6ee7b7" : "#059669", // emerald on hover
               isDark ? "#1f2937" : "#ffffff",
             ],
             "line-width": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              3,
-              2,
+              2.5,
+              1.5,
             ],
           },
         });
 
-        // Mouse event handlers
+        // ── Mouse event handlers ──
         const handleMouseMove = (
           e: MapLibreGL.MapMouseEvent & {
             features?: MapLibreGL.MapGeoJSONFeature[];
@@ -184,16 +202,13 @@ function GeoJSONLayer({
 
           const feature = e.features[0];
 
-          // Update hover state
           if (hoveredIdRef.current !== null) {
             try {
               map.setFeatureState(
                 { source: sourceId, id: hoveredIdRef.current },
                 { hover: false }
               );
-            } catch {
-              // Ignore errors during cleanup
-            }
+            } catch { /* ignore */ }
           }
 
           hoveredIdRef.current = feature.id ?? null;
@@ -203,15 +218,11 @@ function GeoJSONLayer({
                 { source: sourceId, id: hoveredIdRef.current },
                 { hover: true }
               );
-            } catch {
-              // Ignore errors during cleanup
-            }
+            } catch { /* ignore */ }
           }
 
-          // Update cursor
           map.getCanvas().style.cursor = "pointer";
 
-          // Notify parent of hovered district
           const geoJsonName = feature.properties?.ADM2_EN;
           const apiName = districtNameMapping[geoJsonName];
           onDistrictHover?.(apiName || null);
@@ -224,9 +235,7 @@ function GeoJSONLayer({
                 { source: sourceId, id: hoveredIdRef.current },
                 { hover: false }
               );
-            } catch {
-              // Ignore errors during cleanup
-            }
+            } catch { /* ignore */ }
           }
           hoveredIdRef.current = null;
           map.getCanvas().style.cursor = "";
@@ -239,14 +248,9 @@ function GeoJSONLayer({
           }
         ) => {
           if (!e.features?.length) return;
-
-          const feature = e.features[0];
-          const geoJsonName = feature.properties?.ADM2_EN;
+          const geoJsonName = e.features[0].properties?.ADM2_EN;
           const apiName = districtNameMapping[geoJsonName];
-
-          if (apiName && onDistrictClick) {
-            onDistrictClick(apiName);
-          }
+          if (apiName && onDistrictClick) onDistrictClick(apiName);
         };
 
         map.on("mousemove", layerId, handleMouseMove);
@@ -268,25 +272,15 @@ function GeoJSONLayer({
     return () => {
       try {
         if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId);
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-      } catch {
-        // Ignore cleanup errors
-      }
+        if (map.getLayer(layerId))        map.removeLayer(layerId);
+        if (map.getSource(sourceId))      map.removeSource(sourceId);
+      } catch { /* ignore cleanup errors */ }
     };
-  }, [
-    isLoaded,
-    map,
-    onDistrictClick,
-    onDistrictHover,
-    isDark,
-    buildColorExpression,
-  ]);
+  }, [isLoaded, map, onDistrictClick, onDistrictHover, isDark, buildColorExpression]);
 
-  // Update colors when data changes
+  // Colour-only update when data changes (no layer rebuild / no re-fit)
   useEffect(() => {
     if (!isLoaded || !map || !map.getLayer(layerId)) return;
-
     try {
       map.setPaintProperty(layerId, "fill-color", buildColorExpression());
     } catch (error) {
@@ -297,38 +291,35 @@ function GeoJSONLayer({
   return null;
 }
 
+// ─── Public component ─────────────────────────────────────────────────────────
 export default function SriLankaMap({
   data,
   onDistrictClick,
 }: SriLankaMapProps) {
   const [hoveredDistrict, setHoveredDistrict] = useState<string | null>(null);
-  const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
-  const isDark = mounted && resolvedTheme === "dark";
+  const getDistrictData = (apiName: string): DistrictData | undefined =>
+    data.find((d) => d.district === apiName);
 
-  // Get district data by API name
-  const getDistrictData = (
-    apiDistrictName: string
-  ): DistrictData | undefined => {
-    return data.find((d) => d.district === apiDistrictName);
-  };
+  if (!mounted) return null;
 
   return (
-    <div className="relative w-full h-full min-h-[600px]">
+    <div className="relative w-full h-full">
+      {/*
+        bounds   → MapLibre fits the viewport to Sri Lanka on mount (no fixed zoom)
+        fitBoundsOptions.animate: false → instant, no jarring fly-in on first load
+        minZoom  → allow slight zoom-out for regional context, no world-panning
+        maxBounds → constrain pan to the broader island region
+      */}
       <Map
-        center={[80.7718, 7.8731]}
-        zoom={4}
-        minZoom={4}
-        maxZoom={12}
-        maxBounds={[
-          [78.5, 5.5],
-          [82.5, 10.5],
-        ]}
+        bounds={SRI_LANKA_BOUNDS}
+        fitBoundsOptions={{ padding: 32, animate: false }}
+        minZoom={6}
+        maxZoom={13}
+        maxBounds={[[77.0, 4.0], [84.5, 12.0]]}
       >
         <GeoJSONLayer
           data={data}
@@ -336,170 +327,121 @@ export default function SriLankaMap({
           onDistrictHover={setHoveredDistrict}
         />
         <MapControls position="bottom-right" showZoom showFullscreen />
+        <ResetViewButton />
       </Map>
 
-      {/* Tooltip for hovered district */}
+      {/* ── Hover tooltip (top-right, theme-token colours) ── */}
       {hoveredDistrict && (
-        <div
-          className={`absolute top-4 right-4 backdrop-blur-md p-4 rounded-xl shadow-2xl border-2 z-[1000] min-w-[200px] animate-in fade-in-0 slide-in-from-top-2 duration-200 ${
-            isDark
-              ? "bg-gray-900/95 border-blue-500/50"
-              : "bg-white/98 border-blue-200"
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <MapPin
-              className={`h-5 w-5 ${
-                isDark ? "text-blue-400" : "text-blue-600"
-              }`}
-            />
-            <h4 className="font-bold text-base">{hoveredDistrict}</h4>
+        <div className="
+          absolute top-3 right-3 z-1000
+          bg-card/95 backdrop-blur-md
+          border border-primary/25
+          rounded-xl shadow-xl p-4
+          min-w-50 max-w-60
+          animate-in fade-in-0 slide-in-from-top-2 duration-150
+        ">
+          <div className="flex items-center gap-2 mb-2.5">
+            <MapPin className="h-4 w-4 text-primary shrink-0" />
+            <h4 className="font-bold text-sm leading-tight">{hoveredDistrict}</h4>
           </div>
-          {getDistrictData(hoveredDistrict) && (
+
+          {getDistrictData(hoveredDistrict) ? (
             <div className="space-y-2">
-              <div
-                className={`flex items-center justify-between p-2 rounded-lg ${
-                  isDark ? "bg-blue-900/50" : "bg-blue-50"
-                }`}
-              >
-                <span
-                  className={`text-xs font-medium ${
-                    isDark ? "text-gray-300" : "text-slate-600"
-                  }`}
-                >
+              <div className="flex items-center justify-between px-2.5 py-1.5 bg-primary/10 rounded-lg">
+                <span className="text-xs font-medium text-muted-foreground">
                   Predicted Cases
                 </span>
-                <span
-                  className={`text-lg font-bold ${
-                    isDark ? "text-blue-300" : "text-blue-900"
-                  }`}
-                >
-                  {getDistrictData(
-                    hoveredDistrict
-                  )?.predicted_cases.toLocaleString()}
+                <span className="text-base font-bold tabular-nums text-foreground">
+                  {getDistrictData(hoveredDistrict)?.predicted_cases.toLocaleString()}
                 </span>
               </div>
-              <p
-                className={`text-xs italic ${
-                  isDark ? "text-gray-400" : "text-slate-500"
-                }`}
-              >
+              <RiskIndicator
+                cases={getDistrictData(hoveredDistrict)!.predicted_cases}
+              />
+              <p className="text-[11px] text-muted-foreground italic text-center pt-0.5">
                 Click to view detailed analysis
               </p>
             </div>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No data available</p>
           )}
         </div>
       )}
 
-      {/* Legend */}
-      <div
-        className={`absolute bottom-4 left-4 backdrop-blur-md p-5 rounded-xl shadow-2xl border-2 z-[1000] min-w-[180px] ${
-          isDark
-            ? "bg-gray-900/95 border-gray-700"
-            : "bg-white/98 border-slate-200"
-        }`}
-      >
-        <div
-          className={`flex items-center gap-2 mb-4 pb-3 border-b ${
-            isDark ? "border-gray-700" : "border-slate-200"
-          }`}
-        >
-          <div className="p-1.5 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg">
-            <Activity className="h-4 w-4 text-white" />
+      {/* ── Risk legend (bottom-left, theme-token colours) ── */}
+      <div className="
+        absolute bottom-3 left-3 z-1000
+        bg-card/95 backdrop-blur-md
+        border border-border/80
+        rounded-xl shadow-xl p-4
+        min-w-40
+      ">
+        <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-border">
+          <div className="p-1 bg-linear-to-br from-red-500 to-orange-500 rounded-md">
+            <Activity className="h-3.5 w-3.5 text-white" />
           </div>
-          <h4 className="font-bold text-sm">Risk Levels</h4>
+          <h4 className="font-bold text-xs">Risk Levels</h4>
         </div>
-        <div className="space-y-2.5">
-          {[
-            {
-              level: "Very High",
-              cases: "≥100 cases",
-              color: "#7f1d1d",
-              hoverBg: isDark ? "hover:bg-red-900/30" : "hover:bg-red-50",
-            },
-            {
-              level: "High",
-              cases: "50-99 cases",
-              color: "#dc2626",
-              hoverBg: isDark ? "hover:bg-red-900/30" : "hover:bg-red-50",
-            },
-            {
-              level: "Medium",
-              cases: "25-49 cases",
-              color: "#f59e0b",
-              hoverBg: isDark ? "hover:bg-amber-900/30" : "hover:bg-amber-50",
-            },
-            {
-              level: "Low",
-              cases: "10-24 cases",
-              color: "#facc15",
-              hoverBg: isDark ? "hover:bg-yellow-900/30" : "hover:bg-yellow-50",
-            },
-            {
-              level: "Very Low",
-              cases: "<10 cases",
-              color: "#4ade80",
-              hoverBg: isDark ? "hover:bg-green-900/30" : "hover:bg-green-50",
-            },
-          ].map((item) => (
+
+        <div className="space-y-1.5">
+          {LEGEND_ITEMS.map((item) => (
             <div
               key={item.level}
-              className={`flex items-center gap-3 p-1.5 rounded-lg transition-colors cursor-pointer ${item.hoverBg}`}
+              className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50"
             >
-              <div
-                className="w-4 h-4 rounded-md shrink-0 shadow-sm border border-black/10"
+              <span
+                className="w-3.5 h-3.5 rounded-sm shrink-0 shadow-sm border border-black/10"
                 style={{ backgroundColor: item.color }}
               />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold">{item.level}</div>
-                <div
-                  className={`text-[10px] ${
-                    isDark ? "text-gray-400" : "text-slate-500"
-                  }`}
-                >
-                  {item.cases}
-                </div>
+                <div className="text-[10px] text-muted-foreground">{item.cases}</div>
               </div>
             </div>
           ))}
-          <div
-            className={`flex items-center gap-3 p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isDark ? "hover:bg-gray-800" : "hover:bg-slate-50"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded-md shrink-0 shadow-sm border ${
-                isDark
-                  ? "bg-gray-600 border-gray-500"
-                  : "bg-gray-200 border-gray-300"
-              }`}
-            />
-            <div className="flex-1">
+          <div className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50">
+            <span className="w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted" />
+            <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold">No Data</div>
-              <div
-                className={`text-[10px] ${
-                  isDark ? "text-gray-400" : "text-slate-500"
-                }`}
-              >
-                Not available
-              </div>
+              <div className="text-[10px] text-muted-foreground">Not available</div>
             </div>
           </div>
         </div>
-        <div
-          className={`mt-4 pt-3 border-t ${
-            isDark ? "border-gray-700" : "border-slate-200"
-          }`}
-        >
-          <p
-            className={`text-[10px] text-center italic ${
-              isDark ? "text-gray-400" : "text-slate-500"
-            }`}
-          >
-            Hover over districts for details
-          </p>
-        </div>
+
+        <p className="mt-2.5 pt-2 border-t border-border text-[10px] text-center text-muted-foreground italic">
+          Hover districts for details
+        </p>
       </div>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const LEGEND_ITEMS = [
+  { level: "Very High", cases: "≥100 cases", color: "#7f1d1d" },
+  { level: "High",      cases: "50–99 cases", color: "#dc2626" },
+  { level: "Medium",    cases: "25–49 cases", color: "#f59e0b" },
+  { level: "Low",       cases: "10–24 cases", color: "#facc15" },
+  { level: "Very Low",  cases: "<10 cases",   color: "#4ade80" },
+];
+
+const RISK_META: Record<string, { label: string; dot: string }> = {
+  "#7f1d1d": { label: "Very High", dot: "bg-red-900" },
+  "#dc2626": { label: "High",      dot: "bg-red-600" },
+  "#f59e0b": { label: "Medium",    dot: "bg-amber-500" },
+  "#facc15": { label: "Low",       dot: "bg-yellow-400" },
+  "#4ade80": { label: "Very Low",  dot: "bg-green-400" },
+};
+
+function RiskIndicator({ cases }: { cases: number }) {
+  const color = getRiskColor(cases);
+  const meta = RISK_META[color];
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-muted/50 rounded-lg">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${meta?.dot}`} />
+      <span className="text-xs font-medium text-muted-foreground">Risk:</span>
+      <span className="text-xs font-bold">{meta?.label}</span>
     </div>
   );
 }

@@ -14,21 +14,22 @@ class Settings(BaseSettings):
     max_context_documents: int = 5
     default_temperature: float = 0.2
 
-    # RAG / pgvector (Phase 2)
-    pgvector_url: str | None = None
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "epilink_rag"
     rag_enabled: bool = False
     rag_top_k: int = 5
     rag_embedding_model: str = "models/text-embedding-004"
+    rag_retrieval_mode: str = "hybrid"  # "hybrid" | "dense" | "sparse"
+    rag_recency_decay_lambda: float = 0.001  # e^(-λ·days), ~2-year half-life at 0.001
+    rag_etl_enabled: bool = False
 
-    # Agent mode (Phase 3)
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"
     backend_service_key: str | None = None
 
-    # Session persistence (Enhancement 7)
     redis_url: str | None = None
-    session_ttl_seconds: int = 7200          # 2-hour TTL
-    session_summarize_after_turns: int = 10  # compress after 10 user+assistant pairs
+    session_ttl_seconds: int = 7200
+    session_summarize_after_turns: int = 10
 
     model_config = SettingsConfigDict(
         env_prefix="EXPLAIN_",

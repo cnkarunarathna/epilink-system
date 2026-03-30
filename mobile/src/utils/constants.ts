@@ -3,26 +3,43 @@
  */
 
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 
-// Get API base URL based on platform
-// iOS Simulator: localhost works
-// Android Emulator: needs 10.0.2.2 to reach host machine
-// Physical devices: need computer's local IP
+/**
+ * Resolve the API base URL for the current runtime environment.
+ *
+ * Priority order:
+ *  1. EXPO_PUBLIC_API_URL env variable (set in .env for CI / production overrides)
+ *  2. Dev mode: derive from the Expo Metro bundler's host IP so the URL works
+ *     on physical devices, emulators, and simulators without manual changes.
+ *  3. Production fallback.
+ */
 const getApiBaseUrl = (): string => {
+  // 1. Explicit override via .env
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl) {
     return envUrl;
   }
 
   if (__DEV__) {
-    // Development mode
-    if (Platform.OS === "android") {
-      return "http://10.0.2.2:3001/api"; // Android emulator
+    // 2a. Extract the LAN IP from the Metro bundler host (works for physical
+    //     devices and emulators alike).
+    const hostUri = Constants.expoConfig?.hostUri;
+    if (hostUri) {
+      const host = hostUri.split(":")[0]; // strip the Metro port (8081)
+      return `http://${host}:3001/api`;
     }
-    return "http://localhost:3001/api"; // iOS simulator or web
+
+    // 2b. Fallback when hostUri is unavailable (e.g. bare workflow without
+    //     a running Metro server).
+    if (Platform.OS === "android") {
+      return "http://10.0.2.2:3001/api"; // Android emulator → host loopback
+    }
+    return "http://localhost:3001/api"; // iOS simulator / web
   }
-  // Production mode
-  return "https://api.epilink.gov.lk/api";
+
+  // 3. Production
+  return "https://api.epilink.cnkthedev.tech/api";
 };
 
 // API Configuration

@@ -1,57 +1,14 @@
-"""
-Phase 2: pgvector-backed RAG retrieval service.
-
-Handles:
-- Embedding generation via Google text-embedding-004
-- Document ingestion into a pgvector table
-- Semantic retrieval using cosine similarity
-- Graceful no-op when pgvector is not configured
-"""
+import hashlib
+import math
+import uuid as _uuid
+from datetime import date, datetime
 
 from explain_analytics.config import settings
 from explain_analytics.models import DocumentReference, RagIngestDocument
 
-# Cosine similarity threshold — documents below this are too irrelevant to include.
 _MIN_RELEVANCE_SCORE = 0.55
-
-_CREATE_EXTENSION = "CREATE EXTENSION IF NOT EXISTS vector;"
-
-_CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS rag_documents (
-    id          SERIAL PRIMARY KEY,
-    title       TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    published_date TEXT,
-    content     TEXT NOT NULL,
-    embedding   vector(768),
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-"""
-
-_CREATE_INDEX = """
-CREATE INDEX IF NOT EXISTS rag_docs_embedding_idx
-    ON rag_documents
-    USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 50);
-"""
-
-_RETRIEVE_SQL = """
-SELECT
-    title,
-    source,
-    published_date,
-    LEFT(content, 600)                    AS excerpt,
-    1 - (embedding <=> %s::vector)        AS score
-FROM rag_documents
-WHERE 1 - (embedding <=> %s::vector) >= %s
-ORDER BY embedding <=> %s::vector
-LIMIT %s;
-"""
-
-_INSERT_SQL = """
-INSERT INTO rag_documents (title, source, published_date, content, embedding)
-VALUES (%s, %s, %s, %s, %s::vector);
-"""
+_SPARSE_VECTOR_NAME = "bm25"
+_DENSE_VECTOR_NAME = "dense"
 
 
 def _risk_label(score: float) -> str:
@@ -64,15 +21,38 @@ def _risk_label(score: float) -> str:
     return "low"
 
 
+def _point_id(title: str, source: str, published_date: str | None) -> str:
+    """Deterministic UUID derived from document identity for idempotent upserts."""
+    key = f"{title}|{source}|{published_date or ''}"
+    return str(_uuid.UUID(hashlib.md5(key.encode()).hexdigest()))
+
+
 class RAGService:
-    """Semantic retrieval over the MoH dengue document corpus stored in pgvector."""
+    """
+    Hybrid retrieval over the MoH dengue document corpus stored in Qdrant.
+
+    Each document is indexed with two vectors:
+    - dense:  Google text-embedding-004 (768-dim) for semantic similarity
+    - bm25:   fastembed BM25 sparse vectors for exact keyword matching
+
+    Retrieval combines both via Qdrant's native RRF (Reciprocal Rank Fusion),
+    falling back to dense-only or sparse-only when configured.
+    """
 
     def __init__(self) -> None:
-        self._ready = bool(settings.pgvector_url and settings.rag_enabled)
-        if self._ready:
-            self._ensure_table()
+        self._ready = False
+        self._client = None
+        self._sparse_model = None
+        if settings.qdrant_url and settings.rag_enabled:
+            try:
+                from qdrant_client import QdrantClient
 
-    # ── Public API ──────────────────────────────────────────────────
+                self._client = QdrantClient(url=settings.qdrant_url)
+                self._load_sparse_model()
+                self._ensure_collection()
+                self._ready = True
+            except Exception as exc:
+                print(f"[RAGService] init failed: {exc}")
 
     @property
     def is_ready(self) -> bool:
@@ -96,74 +76,114 @@ class RAGService:
             district, model_risk_score, rainfall_mm_7d, temperature_c_7d, wow_case_change_pct
         )
         try:
-            embedding = self._embed(query)
-            return self._vector_search(embedding, k)
+            mode = settings.rag_retrieval_mode
+            if mode == "dense":
+                results = self._dense_search(self._embed_dense(query), k)
+            elif mode == "sparse":
+                results = self._sparse_search(self._embed_sparse(query), k)
+            else:
+                results = self._hybrid_search(query, k)
+            return self._apply_recency_decay(results)
         except Exception as exc:
             print(f"[RAGService] retrieve failed: {exc}")
             return []
 
     def ingest(self, documents: list[RagIngestDocument]) -> int:
-        """Embed and store documents in pgvector. Returns count of stored documents."""
-        if not settings.pgvector_url:
+        """Embed and upsert documents into Qdrant with both dense and sparse vectors."""
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointStruct
+
+        if not settings.qdrant_url:
             raise RuntimeError(
-                "EXPLAIN_PGVECTOR_URL is not set. "
+                "EXPLAIN_QDRANT_URL is not set. "
                 "Configure it in .env before ingesting documents."
             )
-        self._ensure_table()
+
+        client = self._client or QdrantClient(url=settings.qdrant_url)
+        sparse_model = self._sparse_model or self._load_sparse_model(return_model=True)
+        self._ensure_collection(client)
+
         stored = 0
         try:
-            import psycopg
-            from pgvector.psycopg import register_vector
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                register_vector(conn)
-                for doc in documents:
-                    embedding = self._embed(doc.content)
-                    conn.execute(
-                        _INSERT_SQL,
-                        (doc.title, doc.source, doc.published_date, doc.content, embedding),
-                    )
-                    stored += 1
-                conn.commit()
+            for doc in documents:
+                dense_vec = self._embed_dense(doc.content)
+                sparse_vec = self._embed_sparse(doc.content, model=sparse_model)
+                point = PointStruct(
+                    id=_point_id(doc.title, doc.source, doc.published_date),
+                    vector={
+                        _DENSE_VECTOR_NAME: dense_vec,
+                        _SPARSE_VECTOR_NAME: sparse_vec,
+                    },
+                    payload={
+                        "title": doc.title,
+                        "source": doc.source,
+                        "published_date": doc.published_date,
+                        "content": doc.content,
+                        "source_type": "guideline",
+                    },
+                )
+                client.upsert(
+                    collection_name=settings.qdrant_collection,
+                    points=[point],
+                )
+                stored += 1
         except Exception as exc:
             raise RuntimeError(f"Ingestion failed after {stored} document(s): {exc}") from exc
         return stored
 
     def document_count(self) -> int:
-        """Return the total number of documents in the corpus."""
-        if not settings.pgvector_url:
+        """Return the total number of points in the Qdrant collection."""
+        if not self._ready or self._client is None:
             return 0
         try:
-            import psycopg
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                row = conn.execute("SELECT COUNT(*) FROM rag_documents;").fetchone()
-                return int(row[0]) if row else 0
+            info = self._client.get_collection(settings.qdrant_collection)
+            return info.points_count or 0
         except Exception:
             return 0
 
-    # ── Internal helpers ────────────────────────────────────────────
+    # ── Collection setup ────────────────────────────────────────────
 
-    def _ensure_table(self) -> None:
-        """Create the pgvector extension and rag_documents table if absent."""
-        if not settings.pgvector_url:
+    def _ensure_collection(self, client=None) -> None:
+        from qdrant_client.models import (
+            Distance,
+            SparseIndexParams,
+            SparseVectorParams,
+            VectorParams,
+        )
+
+        c = client or self._client
+        if c is None:
             return
         try:
-            import psycopg
-            from pgvector.psycopg import register_vector
-
-            with psycopg.connect(settings.pgvector_url) as conn:
-                register_vector(conn)
-                conn.execute(_CREATE_EXTENSION)
-                conn.execute(_CREATE_TABLE)
-                conn.execute(_CREATE_INDEX)
-                conn.commit()
+            existing = {col.name for col in c.get_collections().collections}
+            if settings.qdrant_collection not in existing:
+                c.create_collection(
+                    collection_name=settings.qdrant_collection,
+                    vectors_config={
+                        _DENSE_VECTOR_NAME: VectorParams(size=768, distance=Distance.COSINE),
+                    },
+                    sparse_vectors_config={
+                        _SPARSE_VECTOR_NAME: SparseVectorParams(
+                            index=SparseIndexParams(on_disk=False)
+                        ),
+                    },
+                )
         except Exception as exc:
-            print(f"[RAGService] Could not ensure table: {exc}")
+            print(f"[RAGService] Could not ensure collection: {exc}")
             self._ready = False
 
-    def _embed(self, text: str) -> list[float]:
-        """Generate a 768-dimensional embedding using Google text-embedding-004."""
+    # ── Embedding ───────────────────────────────────────────────────
+
+    def _load_sparse_model(self, return_model: bool = False):
+        from fastembed import SparseTextEmbedding
+
+        model = SparseTextEmbedding(model_name="Qdrant/bm25")
+        self._sparse_model = model
+        if return_model:
+            return model
+
+    def _embed_dense(self, text: str) -> list[float]:
+        """768-dimensional dense embedding via Google text-embedding-004."""
         from google import genai
 
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -172,6 +192,141 @@ class RAGService:
             contents=text,
         )
         return list(result.embeddings[0].values)
+
+    def _embed_sparse(self, text: str, model=None):
+        """BM25 sparse embedding via fastembed, returned as a Qdrant SparseVector."""
+        from qdrant_client.models import SparseVector
+
+        m = model or self._sparse_model
+        result = list(m.embed([text]))[0]
+        return SparseVector(
+            indices=result.indices.tolist(),
+            values=result.values.tolist(),
+        )
+
+    # ── Search strategies ───────────────────────────────────────────
+
+    def _hybrid_search(self, query: str, top_k: int) -> list[DocumentReference]:
+        """RRF fusion of dense and sparse search via Qdrant's native query API."""
+        from qdrant_client.models import FusionQuery, Prefetch, SparseVector
+
+        dense_vec = self._embed_dense(query)
+        sparse_vec = self._embed_sparse(query)
+
+        results = self._client.query_points(
+            collection_name=settings.qdrant_collection,
+            prefetch=[
+                Prefetch(
+                    query=dense_vec,
+                    using=_DENSE_VECTOR_NAME,
+                    limit=top_k * 3,
+                ),
+                Prefetch(
+                    query=sparse_vec,
+                    using=_SPARSE_VECTOR_NAME,
+                    limit=top_k * 3,
+                ),
+            ],
+            query=FusionQuery(fusion="rrf"),
+            limit=top_k,
+            with_payload=True,
+        ).points
+
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+            if r.score >= _MIN_RELEVANCE_SCORE
+        ]
+
+    def _dense_search(self, embedding: list[float], top_k: int) -> list[DocumentReference]:
+        results = self._client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=(f"{_DENSE_VECTOR_NAME}", embedding),
+            limit=top_k,
+            score_threshold=_MIN_RELEVANCE_SCORE,
+            with_payload=True,
+        )
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+        ]
+
+    def _sparse_search(self, sparse_vec, top_k: int) -> list[DocumentReference]:
+        from qdrant_client.models import NamedSparseVector
+
+        results = self._client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=NamedSparseVector(name=_SPARSE_VECTOR_NAME, vector=sparse_vec),
+            limit=top_k,
+            score_threshold=_MIN_RELEVANCE_SCORE,
+            with_payload=True,
+        )
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:600],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+        ]
+
+    # ── Recency decay ───────────────────────────────────────────────
+
+    def _apply_recency_decay(
+        self, docs: list[DocumentReference]
+    ) -> list[DocumentReference]:
+        """Re-score documents with a time-decay factor: score × e^(-λ × days_since_published).
+
+        Documents without a published_date are returned unchanged.
+        Results are re-sorted by decayed score and re-filtered by _MIN_RELEVANCE_SCORE.
+        """
+        lam = settings.rag_recency_decay_lambda
+        if lam == 0:
+            return docs
+
+        today = date.today()
+        decayed: list[tuple[float, DocumentReference]] = []
+        for doc in docs:
+            raw = doc.relevance_score if doc.relevance_score is not None else 1.0
+            if doc.published_date:
+                try:
+                    pub = datetime.strptime(doc.published_date, "%Y-%m-%d").date()
+                    days = (today - pub).days
+                    adjusted = raw * math.exp(-lam * max(days, 0))
+                except ValueError:
+                    adjusted = raw
+            else:
+                adjusted = raw
+            decayed.append((adjusted, doc))
+
+        decayed.sort(key=lambda x: x[0], reverse=True)
+        return [
+            DocumentReference(
+                title=d.title,
+                source=d.source,
+                published_date=d.published_date,
+                excerpt=d.excerpt,
+                relevance_score=round(score, 3),
+            )
+            for score, d in decayed
+            if score >= _MIN_RELEVANCE_SCORE
+        ]
+
+    # ── Query construction ──────────────────────────────────────────
 
     def _build_query(
         self,
@@ -195,27 +350,3 @@ class RAGService:
             parts.append("fogging fumigation rapid response team hospital preparedness")
 
         return " ".join(parts)
-
-    def _vector_search(
-        self, embedding: list[float], top_k: int
-    ) -> list[DocumentReference]:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
-        with psycopg.connect(settings.pgvector_url) as conn:  # type: ignore[arg-type]
-            register_vector(conn)
-            rows = conn.execute(
-                _RETRIEVE_SQL,
-                (embedding, embedding, _MIN_RELEVANCE_SCORE, embedding, top_k),
-            ).fetchall()
-
-        return [
-            DocumentReference(
-                title=row[0],
-                source=row[1],
-                published_date=row[2],
-                excerpt=row[3],
-                relevance_score=round(float(row[4]), 3),
-            )
-            for row in rows
-        ]

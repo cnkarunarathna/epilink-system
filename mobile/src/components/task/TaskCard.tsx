@@ -221,26 +221,33 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           )}
 
           <View style={styles.footer}>
-            <View style={styles.footerItem}>
-              <MaterialCommunityIcons
-                name="calendar-clock"
-                size={14}
-                color={overdue ? colors.destructive : colors.textSecondary}
-              />
-              <Text style={[styles.dueDate, overdue && styles.overdue]}>
-                {task.dueDate ? formatDate(task.dueDate) : "No due date"}
-              </Text>
+            <View style={styles.footerLeft}>
+              <View style={styles.footerItem}>
+                <MaterialCommunityIcons
+                  name="calendar-clock"
+                  size={14}
+                  color={overdue ? colors.destructive : colors.textSecondary}
+                />
+                <Text style={[styles.dueDate, overdue && styles.overdue]}>
+                  {task.dueDate ? formatDate(task.dueDate) : "No due date"}
+                </Text>
+              </View>
+              <View style={styles.footerItem}>
+                <MaterialCommunityIcons
+                  name="clock-outline"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.relativeTime}>
+                  {formatRelativeTime(task.updatedAt)}
+                </Text>
+              </View>
             </View>
-            <View style={styles.footerItem}>
-              <MaterialCommunityIcons
-                name="clock-outline"
-                size={14}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.relativeTime}>
-                {formatRelativeTime(task.updatedAt)}
-              </Text>
-            </View>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={16}
+              color={colors.textSecondary}
+            />
           </View>
         </View>
       </TouchableOpacity>
@@ -263,7 +270,7 @@ const styles = StyleSheet.create({
     borderColor: colors.destructive + "35",
   },
   priorityStrip: {
-    width: 5,
+    width: 6,
   },
   cardContent: {
     flex: 1,
@@ -335,6 +342,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  footerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    flex: 1,
   },
   footerItem: {
     flexDirection: "row",
