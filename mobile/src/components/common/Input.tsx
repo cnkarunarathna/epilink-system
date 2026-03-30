@@ -1,8 +1,8 @@
 /**
- * Input Component
+ * Input Component — Enhanced with leftIcon, password toggle, animated focus border
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   TextInput,
   View,
@@ -10,13 +10,19 @@ import {
   StyleSheet,
   TextInputProps,
   ViewStyle,
+  TouchableOpacity,
+  Animated,
 } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, spacing, borderRadius, typography } from "../../theme";
 
 interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
   containerStyle?: ViewStyle;
+  leftIcon?: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
+  rightElement?: React.ReactNode;
+  secureTextEntry?: boolean;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -24,25 +30,92 @@ export const Input: React.FC<InputProps> = ({
   error,
   containerStyle,
   style,
+  leftIcon,
+  rightElement,
+  secureTextEntry,
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const borderAnim = useRef(new Animated.Value(0)).current;
+
+  const handleFocus = (e: any) => {
+    setIsFocused(true);
+    Animated.timing(borderAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+    props.onFocus?.(e);
+  };
+
+  const handleBlur = (e: any) => {
+    setIsFocused(false);
+    Animated.timing(borderAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+    props.onBlur?.(e);
+  };
+
+  const animatedBorderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [error ? colors.error : colors.input, colors.primary],
+  });
+
+  // Auto show/hide toggle when secureTextEntry is provided, unless caller provides rightElement
+  const effectiveRightElement =
+    rightElement ??
+    (secureTextEntry !== undefined ? (
+      <TouchableOpacity
+        onPress={() => setShowPassword((v) => !v)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={0.7}
+      >
+        <MaterialCommunityIcons
+          name={showPassword ? "eye-off-outline" : "eye-outline"}
+          size={20}
+          color={isFocused ? colors.primary : colors.mutedForeground}
+        />
+      </TouchableOpacity>
+    ) : undefined);
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <TextInput
+      <Animated.View
         style={[
-          styles.input,
-          isFocused && styles.inputFocused,
-          error && styles.inputError,
-          style,
+          styles.inputWrapper,
+          { borderColor: animatedBorderColor },
+          error && styles.inputWrapperError,
         ]}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        placeholderTextColor={colors.mutedForeground}
-        {...props}
-      />
+      >
+        {leftIcon && (
+          <MaterialCommunityIcons
+            name={leftIcon}
+            size={18}
+            color={isFocused ? colors.primary : colors.mutedForeground}
+            style={styles.leftIcon}
+          />
+        )}
+        <TextInput
+          style={[
+            styles.input,
+            leftIcon ? styles.inputWithLeftIcon : undefined,
+            effectiveRightElement ? styles.inputWithRightElement : undefined,
+            style,
+          ]}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholderTextColor={colors.mutedForeground}
+          secureTextEntry={secureTextEntry && !showPassword}
+          {...props}
+        />
+        {effectiveRightElement && (
+          <View style={styles.rightElement}>{effectiveRightElement}</View>
+        )}
+      </Animated.View>
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
@@ -58,21 +131,39 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
   },
-  input: {
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.input,
     borderRadius: borderRadius.md,
+    overflow: "hidden",
+  },
+  inputWrapperError: {
+    borderColor: colors.error,
+  },
+  leftIcon: {
+    marginLeft: spacing.md,
+  },
+  input: {
+    flex: 1,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     fontSize: typography.fontSize.base,
     color: colors.text,
   },
-  inputFocused: {
-    borderColor: colors.primary,
+  inputWithLeftIcon: {
+    paddingLeft: spacing.sm,
   },
-  inputError: {
-    borderColor: colors.error,
+  inputWithRightElement: {
+    paddingRight: spacing.xs,
+  },
+  rightElement: {
+    paddingRight: spacing.md,
+    paddingLeft: spacing.xs,
+    justifyContent: "center",
+    alignItems: "center",
   },
   error: {
     fontSize: typography.fontSize.sm,

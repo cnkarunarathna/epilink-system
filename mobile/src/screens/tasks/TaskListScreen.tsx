@@ -20,6 +20,7 @@ import {
   ErrorMessage,
   AnimatedCounter,
   ShimmerCardSkeleton,
+  Button,
 } from "../../components/common";
 import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
@@ -76,16 +77,11 @@ export const TaskListScreen: React.FC = () => {
         </LinearGradient>
 
         <View style={styles.searchContainer}>
-          <MaterialCommunityIcons
-            name="magnify"
-            size={20}
-            color={colors.textSecondary}
-            style={styles.searchIcon}
-          />
           <Input
             placeholder="Search by title, address, or district"
             value={search}
             onChangeText={setSearch}
+            leftIcon="magnify"
             containerStyle={styles.searchInput}
           />
         </View>
@@ -108,13 +104,18 @@ export const TaskListScreen: React.FC = () => {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <View style={styles.emptyIconCircle}>
+              <LinearGradient
+                colors={[colors.muted, colors.border]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.emptyIconCircle}
+              >
                 <MaterialCommunityIcons
                   name="clipboard-alert-outline"
                   size={48}
                   color={colors.textSecondary}
                 />
-              </View>
+              </LinearGradient>
               <Text style={styles.emptyText}>{emptyMessage}</Text>
               {error && <ErrorMessage message={error} />}
             </View>
@@ -127,9 +128,13 @@ export const TaskListScreen: React.FC = () => {
 
       {!isLoading && !isRefreshing && !tasks.length && error && (
         <View style={styles.retryContainer}>
-          <Text style={styles.retryText} onPress={refetch}>
-            Tap to retry
-          </Text>
+          <Button
+            title="Retry"
+            onPress={refetch}
+            variant="outline"
+            size="small"
+            icon="refresh"
+          />
         </View>
       )}
     </SafeAreaView>
@@ -194,21 +199,12 @@ const styles = StyleSheet.create({
     color: colors.primaryForeground,
   },
   searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
-  searchIcon: {
-    position: "absolute",
-    left: spacing.lg + spacing.sm,
-    zIndex: 1,
-  },
   searchInput: {
-    flex: 1,
     marginBottom: 0,
-    paddingLeft: spacing.xl,
   },
   listContent: {
     paddingHorizontal: spacing.lg,
@@ -238,9 +234,5 @@ const styles = StyleSheet.create({
   retryContainer: {
     alignItems: "center",
     paddingBottom: spacing.lg,
-  },
-  retryText: {
-    color: colors.primary,
-    fontWeight: typography.fontWeight.medium,
   },
 });
