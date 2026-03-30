@@ -73,7 +73,7 @@ export const MainNavigator: React.FC = () => {
                 size={focused ? 26 : 24}
                 color={color}
               />
-              {focused && <View style={styles.activeDot} />}
+              {focused && <View style={styles.activePill} />}
             </View>
           ),
         }}
@@ -90,7 +90,7 @@ export const MainNavigator: React.FC = () => {
                 size={focused ? 26 : 24}
                 color={color}
               />
-              {focused && <View style={styles.activeDot} />}
+              {focused && <View style={styles.activePill} />}
             </View>
           ),
         }}
@@ -107,7 +107,7 @@ export const MainNavigator: React.FC = () => {
                 size={focused ? 26 : 24}
                 color={color}
               />
-              {focused && <View style={styles.activeDot} />}
+              {focused && <View style={styles.activePill} />}
             </View>
           ),
         }}
@@ -124,7 +124,7 @@ export const MainNavigator: React.FC = () => {
                 size={focused ? 26 : 24}
                 color={color}
               />
-              {focused && <View style={styles.activeDot} />}
+              {focused && <View style={styles.activePill} />}
             </View>
           ),
         }}
@@ -141,7 +141,7 @@ export const MainNavigator: React.FC = () => {
                 size={focused ? 26 : 24}
                 color={color}
               />
-              {focused && <View style={styles.activeDot} />}
+              {focused && <View style={styles.activePill} />}
             </View>
           ),
         }}
@@ -154,11 +154,16 @@ const styles = StyleSheet.create({
   activeTab: {
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.primary + "15",
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 48,
   },
-  activeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+  activePill: {
+    width: 24,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: colors.primary,
     marginTop: 3,
   },

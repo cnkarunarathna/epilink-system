@@ -1,5 +1,5 @@
 /**
- * Login Screen — Enhanced with gradient hero, animated form entrance, floating decorations
+ * Login Screen — Clean form layout, password toggle, accent stripe, animated entrance
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -13,6 +13,7 @@ import {
   Switch,
   Animated,
   Easing,
+  TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useForm, Controller } from "react-hook-form";
@@ -46,7 +47,6 @@ export const LoginScreen: React.FC = () => {
   const {
     control,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -194,64 +194,63 @@ export const LoginScreen: React.FC = () => {
             },
           ]}
         >
+          {/* Top accent stripe */}
+          <View style={styles.formAccentStripe} />
+
           {error && <ErrorMessage message={error} />}
 
-          <View style={styles.fieldContainer}>
-            <View style={styles.fieldIconContainer}>
-              <MaterialCommunityIcons
-                name="email-outline"
-                size={20}
-                color={colors.primary}
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { onChange, value } }) => (
+              <Input
+                label="Email"
+                placeholder="phi@epilink.gov.lk"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                leftIcon="email-outline"
+                value={value}
+                onChangeText={onChange}
+                error={errors.email?.message}
               />
-            </View>
-            <View style={styles.fieldInput}>
-              <Controller
-                control={control}
-                name="email"
-                render={({ field: { onChange, value } }) => (
-                  <Input
-                    label="Email"
-                    placeholder="phi@epilink.gov.lk"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    value={value}
-                    onChangeText={onChange}
-                    error={errors.email?.message}
-                  />
-                )}
-              />
-            </View>
-          </View>
+            )}
+          />
 
-          <View style={styles.fieldContainer}>
-            <View style={styles.fieldIconContainer}>
-              <MaterialCommunityIcons
-                name="lock-outline"
-                size={20}
-                color={colors.primary}
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { onChange, value } }) => (
+              <Input
+                label="Password"
+                placeholder="Enter your password"
+                secureTextEntry
+                leftIcon="lock-outline"
+                value={value}
+                onChangeText={onChange}
+                error={errors.password?.message}
               />
-            </View>
-            <View style={styles.fieldInput}>
-              <Controller
-                control={control}
-                name="password"
-                render={({ field: { onChange, value } }) => (
-                  <Input
-                    label="Password"
-                    placeholder="Enter your password"
-                    secureTextEntry
-                    value={value}
-                    onChangeText={onChange}
-                    error={errors.password?.message}
-                  />
-                )}
-              />
-            </View>
-          </View>
+            )}
+          />
 
+          {/* Forgot password */}
+          <TouchableOpacity
+            style={styles.forgotPasswordRow}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          {/* Remember me */}
           <View style={styles.rememberRow}>
-            <Text style={styles.rememberText}>Remember me</Text>
+            <View style={styles.rememberLeft}>
+              <MaterialCommunityIcons
+                name="shield-check-outline"
+                size={16}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.rememberText}>Remember me</Text>
+            </View>
             <Switch
               value={rememberMe}
               onValueChange={setRememberMe}
@@ -370,32 +369,38 @@ const styles = StyleSheet.create({
   form: {
     backgroundColor: colors.card,
     padding: spacing.lg,
+    paddingTop: 0,
     borderRadius: borderRadius["2xl"],
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: "hidden",
   },
-  fieldContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  formAccentStripe: {
+    height: 3,
+    backgroundColor: colors.primary,
+    marginHorizontal: -spacing.lg,
+    marginBottom: spacing.lg,
   },
-  fieldIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary + "10",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.sm,
-    marginTop: 30,
+  forgotPasswordRow: {
+    alignSelf: "flex-end",
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
   },
-  fieldInput: {
-    flex: 1,
+  forgotPasswordText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.medium,
   },
   rememberRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: spacing.lg,
+  },
+  rememberLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   rememberText: {
     fontSize: typography.fontSize.sm,

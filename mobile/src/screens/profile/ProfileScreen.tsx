@@ -230,7 +230,10 @@ export const ProfileScreen: React.FC = () => {
         >
           {/* Info Cards */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Information</Text>
+            <View style={styles.sectionTitleRow}>
+              <View style={styles.sectionAccentBar} />
+              <Text style={styles.sectionTitle}>Account Information</Text>
+            </View>
 
             <View style={[styles.infoCard, shadows.md]}>
               <View style={styles.infoRow}>
@@ -297,7 +300,10 @@ export const ProfileScreen: React.FC = () => {
           {/* Task Stats */}
           {stats && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>My Performance</Text>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.sectionAccentBar} />
+                <Text style={styles.sectionTitle}>My Performance</Text>
+              </View>
               <View style={[styles.statsCard, shadows.md]}>
                 <View style={styles.statsRow}>
                   <View style={styles.statItem}>
@@ -371,10 +377,12 @@ export const ProfileScreen: React.FC = () => {
                         />
                       </Animated.View>
                     </View>
-                    <Text style={styles.progressText}>
-                      {Math.round((stats.completed / stats.total) * 100)}%
-                      completion rate
-                    </Text>
+                    <View style={styles.progressLabelRow}>
+                      <Text style={styles.progressPercent}>
+                        {Math.round((stats.completed / stats.total) * 100)}%
+                      </Text>
+                      <Text style={styles.progressText}>completion rate</Text>
+                    </View>
                   </View>
                 )}
               </View>
@@ -384,7 +392,10 @@ export const ProfileScreen: React.FC = () => {
           {/* App Info  */}
           {__DEV__ && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>App Info</Text>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.sectionAccentBar} />
+                <Text style={styles.sectionTitle}>App Info</Text>
+              </View>
               <View style={[styles.infoCard, shadows.md]}>
                 <View style={styles.infoRow}>
                   <LinearGradient
@@ -565,12 +576,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  sectionAccentBar: {
+    width: 3,
+    height: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
   sectionTitle: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
-    marginBottom: spacing.sm,
-    marginTop: spacing.sm,
   },
   infoCard: {
     backgroundColor: colors.card,
@@ -650,21 +672,31 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   progressBar: {
-    height: 8,
+    height: 10,
     backgroundColor: colors.muted,
-    borderRadius: 4,
+    borderRadius: 5,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 5,
     overflow: "hidden",
+  },
+  progressLabelRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  progressPercent: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
   },
   progressText: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
-    textAlign: "center",
   },
   logoutButton: {
     flexDirection: "row",

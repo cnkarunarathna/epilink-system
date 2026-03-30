@@ -283,6 +283,13 @@ export const HomeScreen: React.FC = () => {
                 </View>
               </View>
               <View style={styles.headerRight}>
+                <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
+                  <MaterialCommunityIcons
+                    name="bell-outline"
+                    size={22}
+                    color="rgba(255,255,255,0.85)"
+                  />
+                </TouchableOpacity>
                 <LinearGradient
                   colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
                   style={styles.avatarCircle}
@@ -353,7 +360,10 @@ export const HomeScreen: React.FC = () => {
             transform: [{ translateY: slideStats }],
           }}
         >
-          <Text style={styles.sectionTitle}>My Task Overview</Text>
+          <View style={styles.sectionTitleRow}>
+            <View style={styles.sectionAccentBar} />
+            <Text style={styles.sectionTitle}>My Task Overview</Text>
+          </View>
           <View style={styles.statsGrid}>
             {statCards.map((card, i) => (
               <View key={card.label} style={[styles.statCard, shadows.md]}>
@@ -409,7 +419,10 @@ export const HomeScreen: React.FC = () => {
               transform: [{ translateY: slideRisk }],
             }}
           >
-            <Text style={styles.sectionTitle}>District Risk Level</Text>
+            <View style={styles.sectionTitleRow}>
+              <View style={styles.sectionAccentBar} />
+              <Text style={styles.sectionTitle}>District Risk Level</Text>
+            </View>
             <View style={[styles.riskCard, shadows.md]}>
               <View style={styles.riskHeader}>
                 <View style={styles.riskLeft}>
@@ -510,7 +523,22 @@ export const HomeScreen: React.FC = () => {
 
         {/* Quick Actions */}
         <Animated.View style={{ opacity: fadeActions }}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.sectionTitleRow}>
+            <View style={styles.sectionAccentBar} />
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => navigation.navigate("Tasks")}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>View All</Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={14}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
           <View style={styles.actionsRow}>
             <ActionCard
               icon="clipboard-list"
@@ -586,6 +614,17 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     marginLeft: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  bellButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   greeting: {
     fontSize: typography.fontSize.base,
@@ -679,13 +718,35 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   // Section
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  sectionAccentBar: {
+    width: 3,
+    height: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
   sectionTitle: {
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
+    flex: 1,
+  },
+  viewAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  viewAllText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.medium,
   },
   // Stats
   statsGrid: {
