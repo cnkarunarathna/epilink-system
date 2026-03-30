@@ -1,19 +1,3 @@
-/**
- * Risk Prediction Map Screen — Production-grade redesign
- *
- * Architecture decisions:
- * - Header lives inside ScrollView (avoids translateY clip outside SafeAreaView)
- * - Legend + tap-hint are HTML elements inside the WebView (native views over
- *   a hardware-layer WebView are invisible on Android)
- * - spotlightData is DistrictPrediction | null (avoids duplicating the type)
- * - statsCardAnims declared individually at top level (no hooks in loops)
- * - stagger capped at first STAGGER_LIMIT rows to avoid ~2s animation lag
- * - isMapReady state drives a native overlay dismissed by a mapReady postMessage
- * - Spotlight card close injects JS to dismiss the MapLibre popup (keeps sync)
- * - popupClose postMessage clears spotlight when user closes the native popup
- * - All animation values reset to 0 before refresh re-runs entrance animations
- */
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
