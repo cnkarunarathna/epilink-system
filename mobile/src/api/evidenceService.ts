@@ -15,7 +15,7 @@ export const getTaskEvidence = async (taskId: string): Promise<Evidence[]> => {
 };
 
 /**
- * Upload evidence for a task
+ * Upload evidence for a task (URL-based, kept for compatibility)
  */
 export const uploadEvidence = async (
   taskId: string,
@@ -26,4 +26,60 @@ export const uploadEvidence = async (
     data,
   );
   return response.data;
+};
+
+/**
+ * Upload an image file to S3 and record evidence for a task.
+ * @param taskId  - The task to attach evidence to
+ * @param fileUri - Local file URI from expo-image-picker (e.g. file:///...)
+ * @param mimeType - MIME type of the image (e.g. "image/jpeg")
+ * @param notes   - Optional notes
+ * @param latitude  - Optional GPS latitude
+ * @param longitude - Optional GPS longitude
+ * @param onProgress - Optional upload progress callback (0–100)
+ */
+export const uploadEvidenceFile = async (
+  taskId: string,
+  fileUri: string,
+  mimeType: string = "image/jpeg",
+  notes?: string,
+  latitude?: number,
+  longitude?: number,
+  onProgress?: (percent: number) => void,
+): Promise<Evidence> => {
+  // Step 1: upload the file to S3 via the backend upload endpoint
+  const filename = fileUri.split("/").pop() ?? "evidence.jpg";
+
+  const fileFormData = new FormData();
+  fileFormData.append("file", {
+    uri: fileUri,
+    name: filename,
+    type: mimeType,
+  } as any);
+
+  const uploadResponse = await apiClient.post<{ url: string }>(
+    "/upload/evidence",
+    fileFormData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress
+        ? (e) => {
+            const percent = e.total
+              ? Math.round((e.loaded * 100) / e.total)
+              : 0;
+            onProgress(percent);
+          }
+        : undefined,
+    },
+  );
+
+  const imageUrl = uploadResponse.data.url;
+
+  // Step 2: record the evidence with the returned S3 URL
+  const evidenceResponse = await apiClient.post<Evidence>(
+    `/tasks/${taskId}/evidence`,
+    { imageUrl, notes, latitude, longitude },
+  );
+
+  return evidenceResponse.data;
 };

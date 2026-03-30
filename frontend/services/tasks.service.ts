@@ -256,6 +256,34 @@ export async function addEvidence(
   return res.data;
 }
 
+export async function uploadEvidenceFile(
+  file: File,
+  onUploadProgress?: (percent: number) => void,
+): Promise<string> {
+  const token = localStorage.getItem("accessToken");
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await axios.post<{ url: string }>(
+    `${API_BASE}/upload/evidence`,
+    formData,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
+      onUploadProgress: onUploadProgress
+        ? (e) => {
+            const percent = e.total
+              ? Math.round((e.loaded * 100) / e.total)
+              : 0;
+            onUploadProgress(percent);
+          }
+        : undefined,
+    },
+  );
+  return res.data.url;
+}
+
 export async function verifyEvidence(
   evidenceId: string,
   approved: boolean,
