@@ -34,7 +34,7 @@ Usage:
 	./docker.sh <command> [options]
 
 Main stack commands (docker-compose.yml):
-	up                 Build and start full stack in detached mode
+	up                 Build and start full stack in attached mode
 	start              Start full stack containers (no rebuild)
 	stop               Stop full stack containers
 	down               Stop and remove full stack containers
@@ -82,7 +82,7 @@ main() {
 
 	case "${cmd}" in
 		up)
-			dc_main up -d --build "$@"
+			dc_main up --build "$@"
 			;;
 		start)
 			dc_main start "$@"
