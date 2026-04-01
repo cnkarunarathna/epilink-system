@@ -59,12 +59,18 @@ Maintenance commands:
 	dev-config         Validate and print resolved infra compose config
 	help               Show this help
 
+Development tips:
+	- Enable BuildKit for faster builds: export DOCKER_BUILDKIT=1
+	- Use docker-compose.override.yml for volume mounts (auto-loaded by docker compose)
+	  Services will reload on code changes without rebuilding
+	- Run with: ./docker.sh up (loads override automatically)
+
 Examples:
-	./docker.sh up
-	./docker.sh logs backend
-	./docker.sh dev
-	./docker.sh dev-logs redis
-	./docker.sh clean-volumes
+	./docker.sh up                    # starts full stack with hot-reload via override.yml
+	./docker.sh logs backend          # tail backend logs
+	./docker.sh dev                   # start only redis + qdrant
+	./docker.sh dev-logs redis        # tail redis logs
+	./docker.sh clean-volumes         # remove all volumes
 EOF
 }
 
