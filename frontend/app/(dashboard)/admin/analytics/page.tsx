@@ -29,6 +29,7 @@ import {
   Brain,
   Globe,
   X,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -54,17 +55,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import dynamic from "next/dynamic";
-
-// Dynamically import historical analytics to reduce initial bundle size
-const HistoricalAnalytics = dynamic(() => import("./historical/page"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-96">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
-  ),
-});
+import HistoricalAnalytics from "./historical/page";
 
 interface DistrictPrediction {
   district: string;
@@ -161,6 +152,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<AnalyticsPanel>("map");
+  const [chatOpen, setChatOpen] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [districtTimeseries, setDistrictTimeseries] = useState<
@@ -522,8 +514,24 @@ export default function AnalyticsPage() {
             </button>
           ))}
 
+          {/* AI Chat toggle */}
+          <div className="mt-2 pt-2 border-t border-border">
+            <button
+              onClick={() => setChatOpen((v) => !v)}
+              title="AI Chat Analyst"
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left w-full transition-all ${
+                chatOpen
+                  ? "bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              AI Chat
+            </button>
+          </div>
+
           {/* Refresh at bottom of rail */}
-          <div className="mt-4 pt-4 border-t border-border space-y-2">
+          <div className="mt-2 pt-2 border-t border-border space-y-2">
             <Button
               onClick={loadDashboardData}
               disabled={loading}
@@ -1022,8 +1030,11 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Floating AI Chat Bubble */}
+      {/* AI Chat Drawer */}
       <FloatingChatBubble
+        mode="drawer"
+        open={chatOpen}
+        onOpenChange={setChatOpen}
         district={selectedDistrict}
         dashboardContext={{
           totalCases: summary?.total_cases,
