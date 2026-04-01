@@ -43,7 +43,8 @@ export class AppService {
     version?: string;
     modelLoaded?: boolean;
   }> {
-    const predictionServiceUrl = 'http://localhost:8000';
+    const predictionServiceUrl =
+      process.env.ML_SERVICE_URL || 'http://localhost:8000';
     const startTime = Date.now();
 
     try {

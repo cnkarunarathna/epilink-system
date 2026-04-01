@@ -4,6 +4,8 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+const useSsl = (process.env.PGSSL || 'false').toLowerCase() === 'true';
+
 export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
   host: process.env.PGHOST,
@@ -15,9 +17,11 @@ export const dataSourceOptions: DataSourceOptions = {
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
   synchronize: false, // Always false - use migrations instead
   logging: process.env.NODE_ENV === 'development',
-  ssl: {
-    rejectUnauthorized: false, // Required for Neon.tech
-  },
+  ssl: useSsl
+    ? {
+        rejectUnauthorized: false, // Required for providers like Neon.tech
+      }
+    : false,
 };
 
 // DataSource instance for TypeORM CLI
