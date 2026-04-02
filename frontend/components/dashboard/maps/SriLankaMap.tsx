@@ -186,11 +186,15 @@ function GeoJSONLayer({
         });
 
         // One centroid point per district — prevents duplicate labels on MultiPolygon features
-        const centroidFeatures = geoJsonData.features.map((f: any) => ({
-          type: "Feature",
-          geometry: { type: "Point", coordinates: featureCentroid(f.geometry) },
-          properties: { ADM2_EN: f.properties?.ADM2_EN },
-        }));
+        // Only include features that are in our known district mapping (excludes "[unknown]" etc.)
+        const knownGeoNames = new Set(Object.keys(districtNameMapping));
+        const centroidFeatures = geoJsonData.features
+          .filter((f: any) => knownGeoNames.has(f.properties?.ADM2_EN))
+          .map((f: any) => ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: featureCentroid(f.geometry) },
+            properties: { ADM2_EN: f.properties.ADM2_EN },
+          }));
         map.addSource(labelsSourceId, {
           type: "geojson",
           data: { type: "FeatureCollection", features: centroidFeatures },
