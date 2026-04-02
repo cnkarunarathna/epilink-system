@@ -204,6 +204,13 @@ class RagIngestResponse(BaseModel):
     message: str
 
 
+class RagSeedResponse(BaseModel):
+    ingested: int
+    skipped: int
+    total_documents: int
+    message: str
+
+
 # ── Chat models (Phase 3 + Enhancement 7) ─────────────────────────
 
 class ChatMessage(BaseModel):
@@ -241,6 +248,14 @@ class ChatResponse(BaseModel):
     context_compressed: bool = Field(
         default=False,
         description="True when older messages were summarised in this response cycle.",
+    )
+    document_references: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "RAG documents pre-retrieved from the knowledge base and used as context "
+            "for this response. Each entry has title, source, published_date, excerpt, "
+            "and relevance_score."
+        ),
     )
 
 

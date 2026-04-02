@@ -88,6 +88,43 @@ class RAGService:
             print(f"[RAGService] retrieve failed: {exc}")
             return []
 
+    def retrieve_for_query(
+        self,
+        query: str,
+        top_k: int | None = None,
+        source_type: str | None = None,
+    ) -> list[DocumentReference]:
+        """Retrieve documents using a direct natural-language query.
+
+        Unlike retrieve(), this method does not construct the query from
+        structured signals — it takes the raw query string directly. This
+        is used by the chat agent to answer general dengue knowledge questions.
+
+        Args:
+            query: Natural-language question or keyword phrase.
+            top_k: Maximum results to return; defaults to settings.rag_top_k.
+            source_type: Optional payload filter ('guideline', 'surveillance',
+                         'report', 'knowledge'). When None, all types are searched.
+        """
+        if not self._ready:
+            return []
+
+        k = top_k or settings.rag_top_k
+        try:
+            mode = settings.rag_retrieval_mode
+            if source_type:
+                results = self._filtered_hybrid_search(query, k, source_type)
+            elif mode == "dense":
+                results = self._dense_search(self._embed_dense(query), k)
+            elif mode == "sparse":
+                results = self._sparse_search(self._embed_sparse(query), k)
+            else:
+                results = self._hybrid_search(query, k)
+            return self._apply_recency_decay(results)
+        except Exception as exc:
+            print(f"[RAGService] retrieve_for_query failed: {exc}")
+            return []
+
     def ingest(self, documents: list[RagIngestDocument]) -> int:
         """Embed and upsert documents into Qdrant with both dense and sparse vectors."""
         from qdrant_client import QdrantClient
@@ -126,6 +163,44 @@ class RAGService:
                     collection_name=settings.qdrant_collection,
                     points=[point],
                 )
+                stored += 1
+        except Exception as exc:
+            raise RuntimeError(f"Ingestion failed after {stored} document(s): {exc}") from exc
+        return stored
+
+    def ingest_with_source_type(self, documents: list[RagIngestDocument], source_type: str) -> int:
+        """Embed and upsert documents tagged with a specific source_type payload."""
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointStruct
+
+        if not settings.qdrant_url:
+            raise RuntimeError("EXPLAIN_QDRANT_URL is not set.")
+
+        client = self._client or QdrantClient(url=settings.qdrant_url)
+        sparse_model = self._sparse_model or self._load_sparse_model(return_model=True)
+        self._ensure_collection(client)
+
+        stored = 0
+        try:
+            for doc in documents:
+                dense_vec = self._embed_dense(doc.content)
+                sparse_vec = self._embed_sparse(doc.content, model=sparse_model)
+                point = PointStruct(
+                    id=_point_id(doc.title, doc.source, doc.published_date),
+                    vector={
+                        _DENSE_VECTOR_NAME: dense_vec,
+                        _SPARSE_VECTOR_NAME: sparse_vec,
+                    },
+                    payload={
+                        "title": doc.title,
+                        "source": doc.source,
+                        "published_date": doc.published_date,
+                        "content": doc.content,
+                        "content_preview": doc.content[:300],
+                        "source_type": source_type,
+                    },
+                )
+                client.upsert(collection_name=settings.qdrant_collection, points=[point])
                 stored += 1
         except Exception as exc:
             raise RuntimeError(f"Ingestion failed after {stored} document(s): {exc}") from exc
@@ -205,6 +280,41 @@ class RAGService:
         )
 
     # ── Search strategies ───────────────────────────────────────────
+
+    def _filtered_hybrid_search(
+        self, query: str, top_k: int, source_type: str
+    ) -> list[DocumentReference]:
+        """RRF hybrid search filtered by source_type payload field."""
+        from qdrant_client.models import FieldCondition, Filter, FusionQuery, MatchValue, Prefetch
+
+        dense_vec = self._embed_dense(query)
+        sparse_vec = self._embed_sparse(query)
+        payload_filter = Filter(
+            must=[FieldCondition(key="source_type", match=MatchValue(value=source_type))]
+        )
+
+        results = self._client.query_points(
+            collection_name=settings.qdrant_collection,
+            prefetch=[
+                Prefetch(query=dense_vec, using=_DENSE_VECTOR_NAME, limit=top_k * 3, filter=payload_filter),
+                Prefetch(query=sparse_vec, using=_SPARSE_VECTOR_NAME, limit=top_k * 3, filter=payload_filter),
+            ],
+            query=FusionQuery(fusion="rrf"),
+            limit=top_k,
+            with_payload=True,
+        ).points
+
+        return [
+            DocumentReference(
+                title=r.payload["title"],
+                source=r.payload["source"],
+                published_date=r.payload.get("published_date"),
+                excerpt=r.payload["content"][:800],
+                relevance_score=round(float(r.score), 3),
+            )
+            for r in results
+            if r.score >= _MIN_RELEVANCE_SCORE
+        ]
 
     def _hybrid_search(self, query: str, top_k: int) -> list[DocumentReference]:
         """RRF fusion of dense and sparse search via Qdrant's native query API."""

@@ -882,6 +882,41 @@ def _build_gemini_tools():
                     required=["district"],
                 ),
             ),
+            _t.FunctionDeclaration(
+                name="search_knowledge_base",
+                description=(
+                    "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
+                    "guidelines, clinical protocols, vector control procedures, epidemiological "
+                    "references, and general dengue information. Use this tool to answer questions "
+                    "about dengue symptoms, treatment, prevention, vector biology, vaccines, "
+                    "clinical management, outbreak response protocols, or any topic requiring "
+                    "factual dengue knowledge beyond live surveillance data. "
+                    "Examples: 'What are dengue warning signs?', 'How is fogging done?', "
+                    "'What is the dengue vaccine?', 'How does dengue spread?'"
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "query": _t.Schema(
+                            type=_t.Type.STRING,
+                            description=(
+                                "Natural-language question or keyword phrase to search. "
+                                "Be specific, e.g. 'dengue warning signs hospitalisation criteria' "
+                                "or 'Aedes aegypti larval control temephos'."
+                            ),
+                        ),
+                        "source_type": _t.Schema(
+                            type=_t.Type.STRING,
+                            description=(
+                                "Optional filter: 'knowledge' for guidelines/clinical docs, "
+                                "'surveillance' for live case data, 'guideline' for MoH docs. "
+                                "Omit to search all document types."
+                            ),
+                        ),
+                    },
+                    required=["query"],
+                ),
+            ),
         ]
     )
 
@@ -923,15 +958,20 @@ class AgenticInsightService:
     session persistence.  When Redis is available, clients only need to
     send the new user message + session_id; full history is managed here.
     Falls back to stateless behaviour when Redis is not configured.
+
+    Enhancement RAG: accepts an optional RAGService for corpus-backed knowledge
+    retrieval. When provided, a 12th tool (search_knowledge_base) is registered
+    and pre-retrieved documents are injected as context before each Gemini call.
     """
 
     _MAX_TOOL_ROUNDS = 5  # prevent runaway loops
 
-    def __init__(self, session_service=None) -> None:
+    def __init__(self, session_service=None, rag_service=None) -> None:
         self._tool_map: dict = {}
         self._gemini_tool = None
         self._ready = False
         self._session_svc = session_service  # may be None
+        self._rag_service = rag_service  # may be None
         self._init()
 
     def _init(self) -> None:
@@ -942,6 +982,8 @@ class AgenticInsightService:
             self._tool_map = _build_tool_map()
             self._gemini_tool = _build_gemini_tools()
             self._ready = True
+            rag_status = "enabled" if (self._rag_service and self._rag_service.is_ready) else "disabled"
+            print(f"[AgenticInsightService] Ready. RAG corpus search: {rag_status}.")
         except Exception as e:
             print(f"[AgenticInsightService] Init failed: {e}")
 
@@ -979,6 +1021,10 @@ class AgenticInsightService:
 
     def _invoke_tool(self, name: str, args: dict) -> str:
         """Execute a tool by name and return its JSON string result."""
+        # RAG knowledge-base search is handled directly (not in tool_map)
+        if name == "search_knowledge_base":
+            return self._invoke_knowledge_search(args)
+
         fn = self._tool_map.get(name)
         if fn is None:
             return json.dumps({"error": f"Unknown tool: {name}"})
@@ -989,6 +1035,41 @@ class AgenticInsightService:
             return fn(**args)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
+
+    def _invoke_knowledge_search(self, args: dict) -> str:
+        """Execute a RAG corpus search and return results as a JSON string."""
+        if not self._rag_service or not self._rag_service.is_ready:
+            return json.dumps({
+                "error": "Knowledge base is not available. RAG service not configured.",
+                "documents": [],
+            })
+        query = args.get("query", "")
+        source_type = args.get("source_type") or None
+        if not query:
+            return json.dumps({"error": "query parameter is required.", "documents": []})
+
+        try:
+            docs = self._rag_service.retrieve_for_query(
+                query=query,
+                top_k=settings.rag_top_k,
+                source_type=source_type,
+            )
+            return json.dumps({
+                "query": query,
+                "document_count": len(docs),
+                "documents": [
+                    {
+                        "title": d.title,
+                        "source": d.source,
+                        "published_date": d.published_date,
+                        "relevance_score": d.relevance_score,
+                        "excerpt": d.excerpt,
+                    }
+                    for d in docs
+                ],
+            }, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"error": str(exc), "documents": []})
 
     def chat(
         self,
@@ -1045,6 +1126,34 @@ class AgenticInsightService:
                 print(f"[AgenticInsightService] Summarisation error: {exc}")
 
         # ── Build Gemini contents list from stored history ───────────
+        # ── Pre-retrieve RAG documents for the user's question ──────────
+        rag_docs = []
+        if self._rag_service and self._rag_service.is_ready:
+            try:
+                rag_docs = self._rag_service.retrieve_for_query(
+                    query=new_message,
+                    top_k=settings.rag_top_k,
+                )
+                print(f"[AgenticInsightService] Pre-retrieved {len(rag_docs)} RAG docs for query.")
+            except Exception as exc:
+                print(f"[AgenticInsightService] Pre-retrieval error: {exc}")
+
+        # Build RAG context block to inject into system instruction
+        rag_context_block = ""
+        if rag_docs:
+            rag_context_block = "\n\n## Retrieved Knowledge Base Context\n"
+            rag_context_block += (
+                "The following documents were retrieved from the dengue knowledge base "
+                "as potentially relevant to the user's question. Use them to ground your "
+                "answer in authoritative sources. Cite document titles when using their content.\n\n"
+            )
+            for i, doc in enumerate(rag_docs):
+                rag_context_block += (
+                    f"[{i + 1}] **{doc.title}** ({doc.source}"
+                    + (f", {doc.published_date}" if doc.published_date else "")
+                    + f")\n{doc.excerpt}\n\n"
+                )
+
         context_header = (
             f"Current district context: {district}"
             + (
@@ -1065,13 +1174,19 @@ class AgenticInsightService:
                 "session_id": session_id,
                 "turn_count": turn_count,
                 "context_compressed": False,
+                "document_references": [],
             }
 
         try:
             client = _genai.Client(api_key=settings.gemini_api_key)
+            system_instruction = (
+                AGENT_SYSTEM_PROMPT
+                + f"\n\n## Session Context\n{context_header}"
+                + rag_context_block
+            )
             config = _t.GenerateContentConfig(
                 tools=[self._gemini_tool],
-                system_instruction=AGENT_SYSTEM_PROMPT + f"\n\n## Session Context\n{context_header}",
+                system_instruction=system_instruction,
                 temperature=settings.default_temperature,
             )
 
@@ -1151,6 +1266,16 @@ class AgenticInsightService:
                 "session_id": session_id,
                 "turn_count": turn_count,
                 "context_compressed": context_compressed,
+                "document_references": [
+                    {
+                        "title": d.title,
+                        "source": d.source,
+                        "published_date": d.published_date,
+                        "excerpt": d.excerpt[:300],
+                        "relevance_score": d.relevance_score,
+                    }
+                    for d in rag_docs
+                ],
             }
 
         except Exception as exc:
@@ -1161,4 +1286,5 @@ class AgenticInsightService:
                 "session_id": session_id,
                 "turn_count": len(stored_history) // 2,
                 "context_compressed": context_compressed,
+                "document_references": [],
             }
