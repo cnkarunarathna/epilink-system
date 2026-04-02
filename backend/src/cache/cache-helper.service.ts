@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 
@@ -14,8 +14,17 @@ import { Cache } from 'cache-manager';
  * This service bypasses the abstraction layer and calls SETEX directly so that
  * each cached method gets the exact TTL it requests.
  */
+
+interface SWREntry<T> {
+  __swr__: true;
+  data: T;
+  /** Unix ms timestamp after which the entry is considered stale (still served, but triggers background refresh). */
+  freshUntil: number;
+}
+
 @Injectable()
 export class CacheHelperService {
+  private readonly logger = new Logger(CacheHelperService.name);
   private redisClient: any;
 
   constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {
@@ -63,5 +72,121 @@ export class CacheHelperService {
     } catch {
       // Non-fatal: cache invalidation failure should never break a write path
     }
+  }
+
+  /**
+   * Stale-While-Revalidate (SWR) cache accessor.
+   *
+   * Behaviour:
+   *  - Fresh entry (within ttlMs):  returned instantly, no DB hit.
+   *  - Stale entry (past ttlMs but within graceMs): returned instantly from
+   *    cache AND a background refresh is triggered so the next caller gets
+   *    fresh data. The current request never waits.
+   *  - Hard miss (key absent, past ttlMs + graceMs): fetcher is awaited once,
+   *    then the result is stored. This only happens on cold start or after a
+   *    very long idle period.
+   *
+   * Thundering-herd protection: a Redis SET NX lock prevents multiple
+   * concurrent background refreshes for the same key.
+   *
+   * @param key      Cache key (must be unique per logical dataset + params)
+   * @param ttlMs    How long data is "fresh" in milliseconds
+   * @param fetcher  Async function that fetches fresh data from the source
+   * @param graceMs  How long stale data is still served while refreshing
+   *                 (default: equals ttlMs, so data is kept for 2× ttlMs total)
+   */
+  async getOrRefresh<T>(
+    key: string,
+    ttlMs: number,
+    fetcher: () => Promise<T>,
+    graceMs: number = ttlMs,
+  ): Promise<T> {
+    if (this.redisClient) {
+      const raw: string | null = await this.redisClient.get(key);
+      if (raw !== null && raw !== undefined) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && (parsed as SWREntry<T>).__swr__ === true) {
+            const entry = parsed as SWREntry<T>;
+            if (entry.freshUntil > Date.now()) {
+              // Entry is fresh — serve immediately
+              return entry.data;
+            }
+            // Entry is stale but within grace window — serve stale data and
+            // kick off a background refresh without making the caller wait.
+            this.triggerBackgroundRefresh(key, ttlMs, graceMs, fetcher);
+            return entry.data;
+          }
+        } catch {
+          // Corrupted or legacy-format entry — fall through to hard fetch
+        }
+      }
+
+      // Hard miss: block until we have fresh data (cold start only)
+      const data = await fetcher();
+      await this.writeSWREntry(key, data, ttlMs, graceMs);
+      return data;
+    }
+
+    // ── Fallback path: Redis unavailable, use in-process cache-manager ──
+    const cached = await this.cacheManager.get<T>(key);
+    if (cached !== undefined && cached !== null) return cached;
+    const data = await fetcher();
+    await this.cacheManager.set(key, data, ttlMs);
+    return data;
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────
+
+  private triggerBackgroundRefresh<T>(
+    key: string,
+    ttlMs: number,
+    graceMs: number,
+    fetcher: () => Promise<T>,
+  ): void {
+    const lockKey = `${key}:refresh_lock`;
+    // Fire-and-forget — intentionally not awaited so the caller is never blocked
+    void (async () => {
+      try {
+        // Acquire a distributed lock so only one instance refreshes at a time.
+        // Lock TTL is capped to the fetcher's expected duration + buffer.
+        const lockTtlSec = Math.max(10, Math.ceil(ttlMs / 1000));
+        const acquired: string | null = await this.redisClient.set(
+          lockKey,
+          '1',
+          'EX',
+          lockTtlSec,
+          'NX',
+        );
+        if (!acquired) return; // Another instance already holds the lock
+
+        try {
+          const data = await fetcher();
+          await this.writeSWREntry(key, data, ttlMs, graceMs);
+        } finally {
+          await this.redisClient.del(lockKey);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Background SWR refresh failed for key "${key}": ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    })();
+  }
+
+  private async writeSWREntry<T>(
+    key: string,
+    data: T,
+    ttlMs: number,
+    graceMs: number,
+  ): Promise<void> {
+    const entry: SWREntry<T> = {
+      __swr__: true,
+      data,
+      freshUntil: Date.now() + ttlMs,
+    };
+    // Keep the key alive for the full fresh + grace window
+    const totalTtlSeconds = Math.max(1, Math.ceil((ttlMs + graceMs) / 1000));
+    await this.redisClient.setex(key, totalTtlSeconds, JSON.stringify(entry));
   }
 }
