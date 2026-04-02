@@ -214,10 +214,6 @@ export default function AnalyticsPage() {
       setSummary(summaryData);
       setTrends(trendsData);
       setLastUpdated(new Date());
-
-      toast.success("Dashboard Loaded", {
-        description: `Week ${summaryData.current_week.week}/${summaryData.current_week.year} data`,
-      });
     } catch (error: any) {
       toast.error("Failed to load dashboard", {
         description: error.response?.data?.message || error.message,
