@@ -16,10 +16,7 @@ import {
   MessageSquare,
   Trash2,
 } from "lucide-react";
-import {
-  chatWithAgent,
-  deleteChatSession,
-} from "@/services/analytics.service";
+import { chatWithAgent, deleteChatSession } from "@/services/analytics.service";
 
 const TOOL_LABELS: Record<string, string> = {
   compare_districts: "District Comparison",
@@ -36,6 +33,69 @@ const PRESET_QUESTIONS = [
   "How does this compare to last year?",
   "Which districts have the fastest case growth?",
 ];
+
+function renderInline(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const re = /\*\*(.*?)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <strong key={k++} className="font-semibold text-purple-700 dark:text-purple-300">
+        {m[1]}
+      </strong>
+    );
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0] as React.ReactNode;
+  return <>{parts}</>;
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  const result: React.ReactNode[] = [];
+  const pending: string[] = [];
+  let key = 0;
+
+  const flushList = () => {
+    if (!pending.length) return;
+    result.push(
+      <ul key={key++} className="list-disc ml-4 space-y-1 my-1">
+        {pending.map((item, i) => (
+          <li key={i} className="text-sm leading-relaxed">
+            {renderInline(item)}
+          </li>
+        ))}
+      </ul>
+    );
+    pending.length = 0;
+  };
+
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      flushList();
+      continue;
+    }
+    const listMatch = line.match(/^[*\-]\s+([\s\S]*)/);
+    if (listMatch) {
+      pending.push(listMatch[1]);
+    } else {
+      flushList();
+      result.push(
+        <p key={key++} className="text-sm leading-relaxed">
+          {renderInline(line)}
+        </p>
+      );
+    }
+  }
+
+  flushList();
+  return <div className="space-y-1">{result}</div>;
+}
 
 interface ChatEntry {
   role: "user" | "assistant";
@@ -61,7 +121,11 @@ export default function InsightChatPanel({ district }: Props) {
   // Clear server session and local state when district changes
   const clearSession = useCallback(async (sid?: string) => {
     if (sid) {
-      try { await deleteChatSession(sid); } catch { /* best-effort */ }
+      try {
+        await deleteChatSession(sid);
+      } catch {
+        /* best-effort */
+      }
     }
     setMessages([]);
     setSessionId(undefined);
@@ -72,9 +136,12 @@ export default function InsightChatPanel({ district }: Props) {
   useEffect(() => {
     // Keep a ref to the current session so the cleanup captures it
     let currentSession: string | undefined;
-    setSessionId((prev) => { currentSession = prev; return undefined; });
+    setSessionId((prev) => {
+      currentSession = prev;
+      return undefined;
+    });
     clearSession(currentSession);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district]);
 
   // Auto-scroll to bottom
@@ -149,7 +216,10 @@ export default function InsightChatPanel({ district }: Props) {
         <div className="flex items-center gap-1">
           {sessionId && (
             <button
-              onClick={(e) => { e.stopPropagation(); clearSession(sessionId); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                clearSession(sessionId);
+              }}
               title="Clear session"
               className="p-1 rounded text-purple-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
             >
@@ -233,13 +303,15 @@ export default function InsightChatPanel({ district }: Props) {
                       ))}
                     </div>
                   )}
-                  <p className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? ""
-                      : "text-slate-700 dark:text-slate-300"
-                  }`}>
-                    {msg.content}
-                  </p>
+                  {msg.role === "user" ? (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+                  ) : (
+                    <div className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      <MarkdownMessage content={msg.content} />
+                    </div>
+                  )}
                 </div>
                 {msg.role === "user" && (
                   <div className="p-1.5 bg-primary rounded-lg h-fit shadow">

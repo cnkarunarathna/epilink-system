@@ -51,6 +51,32 @@ const districtNameMapping: Record<string, string> = {
   Kandy: "Kandy",
 };
 
+// Compute the centroid of a polygon ring (first ring of first polygon)
+function ringCentroid(ring: number[][]): [number, number] {
+  let x = 0, y = 0;
+  for (const [cx, cy] of ring) { x += cx; y += cy; }
+  return [x / ring.length, y / ring.length];
+}
+
+function featureCentroid(geometry: any): [number, number] {
+  if (geometry.type === "Polygon") {
+    return ringCentroid(geometry.coordinates[0]);
+  }
+  // MultiPolygon — pick the largest ring by bounding-box area
+  let best: number[][] = geometry.coordinates[0][0];
+  let bestArea = 0;
+  for (const polygon of geometry.coordinates) {
+    const ring = polygon[0];
+    const lons = ring.map((c: number[]) => c[0]);
+    const lats = ring.map((c: number[]) => c[1]);
+    const area =
+      (Math.max(...lons) - Math.min(...lons)) *
+      (Math.max(...lats) - Math.min(...lats));
+    if (area > bestArea) { bestArea = area; best = ring; }
+  }
+  return ringCentroid(best);
+}
+
 // Risk level color scale (aligned with legend thresholds)
 const getRiskColor = (cases: number): string => {
   if (cases >= 100) return "#7f1d1d"; // red-900  — Very High
@@ -100,8 +126,10 @@ function GeoJSONLayer({
   const isDark = resolvedTheme === "dark";
   const hoveredIdRef = useRef<string | number | null>(null);
   const sourceId = "districts-source";
+  const labelsSourceId = "districts-labels-source";
   const layerId = "districts-fill";
   const outlineLayerId = "districts-outline";
+  const labelsLayerId = "districts-labels";
 
   // Build the fill-color expression for MapLibre
   const buildColorExpression =
@@ -137,10 +165,12 @@ function GeoJSONLayer({
           });
         }
 
-        // Clean up existing layers / source
-        if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId);
-        if (map.getLayer(layerId))        map.removeLayer(layerId);
-        if (map.getSource(sourceId))      map.removeSource(sourceId);
+        // Clean up existing layers / sources
+        if (map.getLayer(labelsLayerId))   map.removeLayer(labelsLayerId);
+        if (map.getLayer(outlineLayerId))  map.removeLayer(outlineLayerId);
+        if (map.getLayer(layerId))         map.removeLayer(layerId);
+        if (map.getSource(labelsSourceId)) map.removeSource(labelsSourceId);
+        if (map.getSource(sourceId))       map.removeSource(sourceId);
 
         const response = await fetch("/District_geo.json");
         const geoJsonData = await response.json();
@@ -153,6 +183,21 @@ function GeoJSONLayer({
           type: "geojson",
           data: geoJsonData,
           generateId: true,
+        });
+
+        // One centroid point per district — prevents duplicate labels on MultiPolygon features
+        // Only include features that are in our known district mapping (excludes "[unknown]" etc.)
+        const knownGeoNames = new Set(Object.keys(districtNameMapping));
+        const centroidFeatures = geoJsonData.features
+          .filter((f: any) => knownGeoNames.has(f.properties?.ADM2_EN))
+          .map((f: any) => ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: featureCentroid(f.geometry) },
+            properties: { ADM2_EN: f.properties.ADM2_EN },
+          }));
+        map.addSource(labelsSourceId, {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: centroidFeatures },
         });
 
         // Fill layer
@@ -188,6 +233,31 @@ function GeoJSONLayer({
               ["boolean", ["feature-state", "hover"], false],
               2.5,
               1.5,
+            ],
+          },
+        });
+
+        // District name labels — one per district centroid, always on top
+        map.addLayer({
+          id: labelsLayerId,
+          type: "symbol",
+          source: labelsSourceId,
+          layout: {
+            "text-field": ["get", "ADM2_EN"],
+            "text-font": ["Noto Sans Regular", "Open Sans Regular", "Arial Unicode MS Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 6, 9, 10, 13],
+            "text-max-width": 8,
+            "text-allow-overlap": false,
+            "text-ignore-placement": false,
+          },
+          paint: {
+            "text-color": isDark ? "#f9fafb" : "#111827",
+            "text-halo-color": isDark ? "#111827" : "#ffffff",
+            "text-halo-width": 1.5,
+            "text-opacity": [
+              "interpolate", ["linear"], ["zoom"],
+              6, 0,
+              7, 1,
             ],
           },
         });
@@ -271,9 +341,11 @@ function GeoJSONLayer({
 
     return () => {
       try {
-        if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId);
-        if (map.getLayer(layerId))        map.removeLayer(layerId);
-        if (map.getSource(sourceId))      map.removeSource(sourceId);
+        if (map.getLayer(labelsLayerId))   map.removeLayer(labelsLayerId);
+        if (map.getLayer(outlineLayerId))  map.removeLayer(outlineLayerId);
+        if (map.getLayer(layerId))         map.removeLayer(layerId);
+        if (map.getSource(labelsSourceId)) map.removeSource(labelsSourceId);
+        if (map.getSource(sourceId))       map.removeSource(sourceId);
       } catch { /* ignore cleanup errors */ }
     };
   }, [isLoaded, map, onDistrictClick, onDistrictHover, isDark, buildColorExpression]);
@@ -320,6 +392,10 @@ export default function SriLankaMap({
         minZoom={6}
         maxZoom={13}
         maxBounds={[[77.0, 4.0], [84.5, 12.0]]}
+        styles={{
+          light: "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json",
+          dark:  "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json",
+        }}
       >
         <GeoJSONLayer
           data={data}

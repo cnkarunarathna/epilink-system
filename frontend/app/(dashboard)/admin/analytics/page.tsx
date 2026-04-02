@@ -12,14 +12,12 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart3,
   RefreshCw,
   Loader2,
   MapPin,
   TrendingUp,
-  TrendingDown,
   Activity,
   Thermometer,
   History,
@@ -30,6 +28,8 @@ import {
   WifiOff,
   Brain,
   Globe,
+  X,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -55,17 +55,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import dynamic from "next/dynamic";
-
-// Dynamically import historical analytics to reduce initial bundle size
-const HistoricalAnalytics = dynamic(() => import("./historical/page"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-96">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
-  ),
-});
+import HistoricalAnalytics from "./historical/page";
 
 interface DistrictPrediction {
   district: string;
@@ -98,11 +88,71 @@ interface TimeSeriesData {
   precipitation: number | null;
 }
 
+type AnalyticsPanel =
+  | "map"
+  | "trends"
+  | "alerts"
+  | "hotspots"
+  | "ai"
+  | "historical"
+  | "national";
+
+const NAV_ITEMS: {
+  key: AnalyticsPanel;
+  label: string;
+  icon: React.ElementType;
+  description: string;
+}[] = [
+  {
+    key: "map",
+    label: "Risk Map",
+    icon: MapPin,
+    description: "Interactive district risk map",
+  },
+  {
+    key: "trends",
+    label: "Trends",
+    icon: TrendingUp,
+    description: "12-week case trends & top districts",
+  },
+  {
+    key: "alerts",
+    label: "Alerts",
+    icon: AlertTriangle,
+    description: "Active outbreak alerts",
+  },
+  {
+    key: "hotspots",
+    label: "Hotspots",
+    icon: Zap,
+    description: "Hotspots, growth rates & weather",
+  },
+  {
+    key: "ai",
+    label: "AI Insights",
+    icon: Brain,
+    description: "Explainable AI risk analysis",
+  },
+  {
+    key: "historical",
+    label: "Historical",
+    icon: History,
+    description: "Historical analytics & patterns",
+  },
+  {
+    key: "national",
+    label: "National",
+    icon: Globe,
+    description: "National situation report",
+  },
+];
+
 export default function AnalyticsPage() {
   const [predictions, setPredictions] = useState<DistrictPrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
-  const [innerTab, setInnerTab] = useState("overview");
+  const [activePanel, setActivePanel] = useState<AnalyticsPanel>("map");
+  const [chatOpen, setChatOpen] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [districtTimeseries, setDistrictTimeseries] = useState<
@@ -110,43 +160,33 @@ export default function AnalyticsPage() {
   >([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // WebSocket connection status
-  const { isConnected, connectionStatus } = useSocket();
-
-  // Ref to prevent double-fetch in StrictMode
+  const { isConnected } = useSocket();
   const hasFetchedRef = useRef(false);
 
-  // WebSocket handler for real-time analytics updates
   const handleAnalyticsUpdated = useCallback(
     (data: { type: string; payload?: any }) => {
       console.log("Analytics update received:", data.type);
-
-      // Reload data based on update type
       switch (data.type) {
         case "predictions":
         case "summary":
         case "trends":
         case "full":
-          // Reload all dashboard data on any analytics update
           loadDashboardData();
           toast.info("Real-time Update", {
             description: "New analytics data received",
           });
           break;
         default:
-          // For other update types, just reload
           loadDashboardData();
       }
     },
     [],
   );
 
-  // Subscribe to analytics updates via WebSocket
   useSocketEvent("analytics:updated", handleAnalyticsUpdated, [
     handleAnalyticsUpdated,
   ]);
 
-  // Fetch all data on mount
   useEffect(() => {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
@@ -156,15 +196,12 @@ export default function AnalyticsPage() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-
-      // Fetch latest predictions and summary in parallel
       const [latestData, summaryData, trendsData] = await Promise.all([
         fetchLatestPerDistrict(),
         fetchDashboardSummary(),
         fetchTrends(12),
       ]);
 
-      // Map latest data to predictions - filter out any null/undefined districts
       const preds = latestData
         .filter((d) => d.district && d.district.trim().length > 0)
         .map((d) => ({
@@ -177,10 +214,6 @@ export default function AnalyticsPage() {
       setSummary(summaryData);
       setTrends(trendsData);
       setLastUpdated(new Date());
-
-      toast.success("Dashboard Loaded", {
-        description: `Week ${summaryData.current_week.week}/${summaryData.current_week.year} data`,
-      });
     } catch (error: any) {
       toast.error("Failed to load dashboard", {
         description: error.response?.data?.message || error.message,
@@ -198,8 +231,6 @@ export default function AnalyticsPage() {
         description: `Current forecast: ${districtData.predicted_cases} cases`,
       });
     }
-
-    // Load timeseries for selected district
     try {
       const ts = await fetchTimeseries(district);
       setDistrictTimeseries(ts || []);
@@ -208,16 +239,8 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Get top 10 highest risk districts
   const topRiskDistricts = predictions.slice(0, 10);
 
-  // Calculate total predicted cases
-  const totalPredictedCases = predictions.reduce(
-    (sum, p) => sum + p.predicted_cases,
-    0,
-  );
-
-  // Get risk level (data-driven thresholds based on actual case distribution)
   const getRiskLevel = (cases: number): { level: string; color: string } => {
     if (cases >= 100) return { level: "Very High", color: "destructive" };
     if (cases >= 50) return { level: "High", color: "destructive" };
@@ -226,7 +249,6 @@ export default function AnalyticsPage() {
     return { level: "Very Low", color: "outline" };
   };
 
-  // Semantic risk badge classes that convey severity gradient clearly
   const getRiskBadgeClass = (level: string): string => {
     switch (level) {
       case "Very High":
@@ -244,24 +266,32 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Color dot for compact risk indicators in grid views
   const getRiskDotClass = (level: string): string => {
     switch (level) {
-      case "Very High": return "bg-red-600";
-      case "High":      return "bg-orange-500";
-      case "Medium":    return "bg-amber-400";
-      case "Low":       return "bg-sky-400";
-      case "Very Low":  return "bg-emerald-400";
-      default:          return "bg-muted-foreground";
+      case "Very High":
+        return "bg-red-600";
+      case "High":
+        return "bg-orange-500";
+      case "Medium":
+        return "bg-amber-400";
+      case "Low":
+        return "bg-sky-400";
+      case "Very Low":
+        return "bg-emerald-400";
+      default:
+        return "bg-muted-foreground";
     }
   };
 
+  const selectedPrediction = selectedDistrict
+    ? (predictions.find((p) => p.district === selectedDistrict) ?? null)
+    : null;
+
   return (
-    <div className="space-y-6">
-      {/* Header with Gradient Background */}
+    <div className="space-y-4">
+      {/* ── Header Banner ─────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-xl bg-linear-to-br from-green-700 via-emerald-700 to-green-900 p-8 text-white shadow-xl">
-        <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,white)]" />
-        {/* Decorative radial glow */}
+        <div className="absolute inset-0 bg-grid-white/10 mask-[linear-gradient(0deg,transparent,white)]" />
         <div className="absolute -top-16 -right-16 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-green-300/10 blur-2xl pointer-events-none" />
         <div className="relative">
@@ -278,7 +308,6 @@ export default function AnalyticsPage() {
                 case monitoring
               </p>
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Real-time connection indicator */}
                 <Badge
                   variant="outline"
                   className={`flex items-center gap-1.5 px-2.5 py-1 border font-medium text-xs ${
@@ -296,7 +325,11 @@ export default function AnalyticsPage() {
                 </Badge>
                 {lastUpdated && (
                   <span className="text-xs text-green-200/70">
-                    Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    Updated{" "}
+                    {lastUpdated.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 )}
               </div>
@@ -304,7 +337,9 @@ export default function AnalyticsPage() {
             {summary && (
               <div className="flex gap-3 shrink-0">
                 <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-20 border border-white/20">
-                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">Week</div>
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">
+                    Week
+                  </div>
                   <div className="text-3xl font-bold leading-none">
                     {summary.current_week.week}
                   </div>
@@ -313,19 +348,27 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-[100px] border border-white/20">
-                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">Total Cases</div>
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">
+                    Total Cases
+                  </div>
                   <div className="text-3xl font-bold leading-none">
                     {summary.total_cases.toLocaleString()}
                   </div>
-                  <div className={`text-xs mt-1 font-semibold ${
-                    summary.change_percent >= 0 ? "text-red-300" : "text-emerald-300"
-                  }`}>
+                  <div
+                    className={`text-xs mt-1 font-semibold ${
+                      summary.change_percent >= 0
+                        ? "text-red-300"
+                        : "text-emerald-300"
+                    }`}
+                  >
                     {summary.change_percent >= 0 ? "▲" : "▼"}{" "}
                     {Math.abs(summary.change_percent).toFixed(1)}%
                   </div>
                 </div>
                 <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-20 border border-white/20">
-                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">High Risk</div>
+                  <div className="text-xs text-green-200 font-medium uppercase tracking-wide mb-1">
+                    High Risk
+                  </div>
                   <div className="text-3xl font-bold leading-none text-red-300">
                     {summary.high_risk_districts}
                   </div>
@@ -337,212 +380,243 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="predictions" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
-          <TabsTrigger
-            value="predictions"
-            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
-          >
-            <Sparkles className="h-5 w-5 mr-2" />
-            Current Predictions
-          </TabsTrigger>
-          <TabsTrigger
-            value="historical"
-            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
-          >
-            <History className="h-5 w-5 mr-2" />
-            Historical Analytics
-          </TabsTrigger>
-          <TabsTrigger
-            value="national"
-            className="text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
-          >
-            <Globe className="h-5 w-5 mr-2" />
-            National Report
-          </TabsTrigger>
-        </TabsList>
+      {/* ── Sticky metrics bar + district context strip ────────── */}
+      <div className="sticky top-16 z-30 -mx-4 sm:-mx-6 bg-background/95 backdrop-blur-sm border-b border-border">
+        {summary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
+            {/* Total Cases */}
+            <div className="bg-background px-4 py-3 flex items-center gap-3">
+              <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/40 rounded-md shrink-0">
+                <Activity className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Total Cases</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold tabular-nums">
+                    {summary.total_cases.toLocaleString()}
+                  </span>
+                  <span
+                    className={`text-xs font-semibold ${
+                      summary.change_percent >= 0
+                        ? "text-red-500"
+                        : "text-emerald-500"
+                    }`}
+                  >
+                    {summary.change_percent >= 0 ? "▲" : "▼"}
+                    {Math.abs(summary.change_percent).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
 
-        {/* Predictions Tab */}
-        <TabsContent
-          value="predictions"
-          className="space-y-6 animate-in fade-in-50 duration-500"
-        >
-          {/* Refresh Button */}
-          <div className="flex items-center justify-end gap-3">
+            {/* High Risk Districts */}
+            <div className="bg-background px-4 py-3 flex items-center gap-3">
+              <div className="p-1.5 bg-red-100 dark:bg-red-900/40 rounded-md shrink-0">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">High Risk</p>
+                <span className="text-sm font-bold tabular-nums">
+                  {summary.high_risk_districts} districts
+                </span>
+              </div>
+            </div>
+
+            {/* Districts Covered */}
+            <div className="bg-background px-4 py-3 flex items-center gap-3">
+              <div className="p-1.5 bg-green-100 dark:bg-green-900/40 rounded-md shrink-0">
+                <MapPin className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Coverage</p>
+                <span className="text-sm font-bold tabular-nums">
+                  {summary.district_count} districts
+                </span>
+              </div>
+            </div>
+
+            {/* Avg Temperature */}
+            <div className="bg-background px-4 py-3 flex items-center gap-3">
+              <div className="p-1.5 bg-orange-100 dark:bg-orange-900/40 rounded-md shrink-0">
+                <Thermometer className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Avg Temp</p>
+                <span className="text-sm font-bold tabular-nums">
+                  {summary.avg_temperature
+                    ? `${summary.avg_temperature.toFixed(1)}°C`
+                    : "N/A"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* District context strip */}
+        {selectedDistrict && selectedPrediction && (() => {
+          const risk = getRiskLevel(selectedPrediction.predicted_cases);
+          return (
+            <div className="flex items-center gap-3 px-4 sm:px-6 py-2 bg-primary/5 border-t border-primary/20">
+              <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="text-sm font-semibold text-primary">
+                {selectedDistrict}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {selectedPrediction.predicted_cases.toLocaleString()} cases
+              </span>
+              <Badge
+                variant="outline"
+                className={`text-xs ${getRiskBadgeClass(risk.level)}`}
+              >
+                {risk.level}
+              </Badge>
+              <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setSelectedDistrict(null);
+                  setDistrictTimeseries([]);
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* ── Main layout: nav rail + panel area ────────────────── */}
+      <div className="flex gap-5 items-start">
+        {/* Desktop Nav Rail */}
+        <nav className="hidden md:flex flex-col gap-1 w-44 shrink-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-1">
+            Views
+          </p>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setActivePanel(item.key)}
+              title={item.description}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left w-full transition-all ${
+                activePanel === item.key
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </button>
+          ))}
+
+          {/* AI Chat toggle */}
+          <div className="mt-2 pt-2 border-t border-border">
+            <button
+              onClick={() => setChatOpen((v) => !v)}
+              title="AI Chat Analyst"
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left w-full transition-all ${
+                chatOpen
+                  ? "bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              AI Chat
+            </button>
+          </div>
+
+          {/* Refresh at bottom of rail */}
+          <div className="mt-2 pt-2 border-t border-border space-y-2">
+            <Button
+              onClick={loadDashboardData}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              <span className="ml-1.5">{loading ? "Loading…" : "Refresh"}</span>
+            </Button>
+            {lastUpdated && !loading && (
+              <p className="text-xs text-muted-foreground text-center">
+                {lastUpdated.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            )}
+          </div>
+        </nav>
+
+        {/* Panel Content */}
+        <div className="flex-1 min-w-0 space-y-6">
+          {/* Mobile nav strip */}
+          <div className="flex md:hidden gap-1.5 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setActivePanel(item.key)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 ${
+                  activePanel === item.key
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <item.icon className="h-3.5 w-3.5" />
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Mobile refresh */}
+          <div className="flex md:hidden items-center justify-end gap-3">
             {lastUpdated && !loading && (
               <span className="text-xs text-muted-foreground">
-                Last updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {lastUpdated.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
               </span>
             )}
             <Button
               onClick={loadDashboardData}
               disabled={loading}
-              size="lg"
-              className="shadow-md"
+              size="sm"
+              variant="outline"
             >
               {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw className="h-3.5 w-3.5" />
               )}
-              {loading ? "Loading…" : "Refresh Data"}
+              <span className="ml-1.5">{loading ? "Loading…" : "Refresh"}</span>
             </Button>
           </div>
-          {/* Nested Tabs for Predictions Sections */}
-          <Tabs value={innerTab} onValueChange={setInnerTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4 h-12 p-1 bg-muted/50">
-              <TabsTrigger value="overview" className="text-sm">
-                <Activity className="h-4 w-4 mr-2" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="text-sm">
-                <Zap className="h-4 w-4 mr-2" />
-                Advanced Analytics
-              </TabsTrigger>
-              <TabsTrigger value="ai-insights" className="text-sm">
-                <Brain className="h-4 w-4 mr-2" />
-                AI Insights
-              </TabsTrigger>
-              <TabsTrigger value="districts" className="text-sm">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                District Analysis
-              </TabsTrigger>
-            </TabsList>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              {/* Key Metrics */}
-              {summary && (
-                <div>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="h-1 w-12 bg-linear-to-r from-emerald-500 to-green-700 rounded"></div>
-                    <h3 className="text-xl font-semibold">Key Metrics</h3>
-                  </div>
-                  <div className="grid gap-6 md:grid-cols-4">
-                    <Card className="bg-linear-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/50 dark:to-emerald-900/30 border-2 border-emerald-200 dark:border-emerald-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-                          <div className="p-1.5 bg-emerald-200 dark:bg-emerald-800/50 rounded-lg">
-                            <Activity className="h-4 w-4" />
-                          </div>
-                          Total Cases
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold text-emerald-900 dark:text-emerald-100">
-                          {summary.total_cases.toLocaleString()}
-                        </div>
-                        <div className="flex items-center gap-1 text-xs mt-2">
-                          {summary.change_percent >= 0 ? (
-                            <div className="p-1 bg-red-100 dark:bg-red-900/50 rounded-full">
-                              <TrendingUp className="h-3 w-3 text-red-600 dark:text-red-400" />
-                            </div>
-                          ) : (
-                            <div className="p-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full">
-                              <TrendingDown className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                            </div>
-                          )}
-                          <span
-                            className={`font-bold ${
-                              summary.change_percent >= 0
-                                ? "text-red-600 dark:text-red-400"
-                                : "text-emerald-600 dark:text-emerald-400"
-                            }`}
-                          >
-                            {Math.abs(summary.change_percent).toFixed(1)}%
-                          </span>
-                          <span className="text-muted-foreground">
-                            from last week
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-linear-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
-                          <div className="p-1.5 bg-red-200 dark:bg-red-800/50 rounded-lg">
-                            <AlertTriangle className="h-4 w-4" />
-                          </div>
-                          High Risk Districts
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold text-red-900 dark:text-red-100">
-                          {summary.high_risk_districts}
-                        </div>
-                        <p className="text-xs text-red-700 dark:text-red-400 mt-2 font-medium">
-                          Districts with ≥50 cases
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-linear-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-2">
-                          <div className="p-1.5 bg-green-200 dark:bg-green-800/50 rounded-lg">
-                            <MapPin className="h-4 w-4" />
-                          </div>
-                          Districts Covered
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold text-green-900 dark:text-green-100">
-                          {summary.district_count}
-                        </div>
-                        <p className="text-xs text-green-700 dark:text-green-400 mt-2 font-medium">
-                          Complete coverage
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-linear-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-center gap-2">
-                          <div className="p-1.5 bg-orange-200 dark:bg-orange-800/50 rounded-lg">
-                            <Thermometer className="h-4 w-4" />
-                          </div>
-                          Avg Temperature
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
-                          {summary.avg_temperature
-                            ? `${summary.avg_temperature.toFixed(1)}°C`
-                            : "N/A"}
-                        </div>
-                        <p className="text-xs text-orange-700 dark:text-orange-400 mt-2 font-medium">
-                          This week
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              )}
-
-              {/* Interactive District Risk Map - Main Highlight */}
+          {/* ── Risk Map Panel ──────────────────────────────────── */}
+          {activePanel === "map" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-300">
               <Card className="border-2 border-primary/20 shadow-xl bg-linear-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-lg">
-                        <MapPin className="h-6 w-6 text-white" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-2xl">
-                          Interactive Risk Map
-                        </CardTitle>
-                        <CardDescription className="text-base mt-1">
-                          Click on any district to view detailed analysis and
-                          historical trends
-                        </CardDescription>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-lg">
+                      <MapPin className="h-6 w-6 text-white" />
                     </div>
-                    {selectedDistrict && (
-                      <Badge variant="default" className="text-sm px-3 py-1">
-                        Selected: {selectedDistrict}
-                      </Badge>
-                    )}
+                    <div>
+                      <CardTitle className="text-2xl">
+                        Interactive Risk Map
+                      </CardTitle>
+                      <CardDescription className="text-base mt-1">
+                        Click on any district to view detailed analysis and
+                        historical trends
+                      </CardDescription>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -556,12 +630,70 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
                   ) : predictions.length > 0 ? (
-                    <div className="grid gap-6">
-                      <div className="h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
-                        <SriLankaMap
-                          data={predictions}
-                          onDistrictClick={handleDistrictClick}
-                        />
+                    <div className="space-y-6">
+                      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+                        {/* Map */}
+                        <div className="h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
+                          <SriLankaMap
+                            data={predictions}
+                            onDistrictClick={handleDistrictClick}
+                          />
+                        </div>
+
+                        {/* District list sidebar */}
+                        <div className="flex flex-col gap-3">
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            All Districts
+                          </h4>
+                          <div className="space-y-1 overflow-y-auto lg:max-h-[640px] pr-0.5">
+                            {predictions.map((district) => {
+                              const risk = getRiskLevel(
+                                district.predicted_cases,
+                              );
+                              const isSelected =
+                                selectedDistrict === district.district;
+                              return (
+                                <div
+                                  key={district.district}
+                                  className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all text-sm ${
+                                    isSelected
+                                      ? "bg-primary/10 border-primary/40 shadow-sm"
+                                      : "hover:bg-accent border-transparent hover:border-border"
+                                  }`}
+                                  onClick={() =>
+                                    handleDistrictClick(district.district)
+                                  }
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`h-2 w-2 rounded-full shrink-0 ${getRiskDotClass(risk.level)}`}
+                                    />
+                                    <span className="font-medium">
+                                      {district.district}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="tabular-nums font-semibold text-xs">
+                                      {district.predicted_cases.toLocaleString()}
+                                    </span>
+                                    <button
+                                      className="text-muted-foreground hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                                      title="AI Insights for this district"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedDistrict(district.district);
+                                        handleDistrictClick(district.district);
+                                        setActivePanel("ai");
+                                      }}
+                                    >
+                                      <Sparkles className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Selected District Details */}
@@ -599,7 +731,9 @@ export default function AnalyticsPage() {
                                       </span>
                                       <Badge
                                         variant="outline"
-                                        className={getRiskBadgeClass(risk?.level ?? "")}
+                                        className={getRiskBadgeClass(
+                                          risk?.level ?? "",
+                                        )}
                                       >
                                         {risk?.level}
                                       </Badge>
@@ -656,7 +790,7 @@ export default function AnalyticsPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-[480px] sm:h-[560px] lg:h-[640px] text-muted-foreground bg-muted/30 rounded-xl">
+                    <div className="flex flex-col items-center justify-center h-[480px] sm:h-[560px] text-muted-foreground bg-muted/30 rounded-xl">
                       <MapPin className="h-16 w-16 mb-4 text-muted-foreground/50" />
                       <p className="text-lg font-medium">
                         No map data available
@@ -665,9 +799,14 @@ export default function AnalyticsPage() {
                   )}
                 </CardContent>
               </Card>
+            </div>
+          )}
 
+          {/* ── Trends Panel ───────────────────────────────────── */}
+          {activePanel === "trends" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-300">
               {/* 12-Week Trend Chart */}
-              {trends.length > 0 && (
+              {trends.length > 0 ? (
                 <Card className="border-2 border-primary/10">
                   <CardHeader>
                     <div className="flex items-center gap-3">
@@ -726,9 +865,16 @@ export default function AnalyticsPage() {
                     </div>
                   </CardContent>
                 </Card>
+              ) : (
+                <div className="flex items-center justify-center h-64 bg-muted/30 rounded-xl border-2 border-dashed border-border">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p className="text-sm">Loading trend data…</p>
+                  </div>
+                </div>
               )}
 
-              {/* Top Risk Districts */}
+              {/* Top 10 Risk Districts */}
               {predictions.length > 0 && (
                 <Card>
                   <CardHeader>
@@ -738,7 +884,7 @@ export default function AnalyticsPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {topRiskDistricts.map((district, index) => {
                         const risk = getRiskLevel(district.predicted_cases);
                         return (
@@ -774,11 +920,12 @@ export default function AnalyticsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-purple-500 hover:text-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/50"
-                                title="Explain This"
+                                title="AI Insights for this district"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedDistrict(district.district);
-                                  setInnerTab("ai-insights");
+                                  handleDistrictClick(district.district);
+                                  setActivePanel("ai");
                                 }}
                               >
                                 <Sparkles className="h-4 w-4" />
@@ -791,198 +938,99 @@ export default function AnalyticsPage() {
                   </CardContent>
                 </Card>
               )}
-            </TabsContent>
+            </div>
+          )}
 
-            {/* Advanced Analytics Tab */}
-            <TabsContent value="advanced" className="space-y-6">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-linear-to-br from-amber-400 to-orange-500 rounded-lg shadow-lg">
-                    <Zap className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-bold">Advanced Analytics</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Real-time insights and outbreak detection
-                    </p>
-                  </div>
+          {/* ── Alerts Panel ───────────────────────────────────── */}
+          {activePanel === "alerts" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-linear-to-br from-red-500 to-rose-600 rounded-lg shadow-lg">
+                  <AlertTriangle className="h-6 w-6 text-white" />
                 </div>
-
-                {/* Outbreak Alerts */}
-                <OutbreakAlerts />
-
-                {/* Hotspots and Growth Rate */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <HotspotsPanel />
-                  <GrowthRatePanel />
+                <div>
+                  <h3 className="text-2xl font-bold">Outbreak Alerts</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Real-time outbreak detection and monitoring
+                  </p>
                 </div>
-
-                {/* Weather Correlation */}
-                <WeatherCorrelation />
               </div>
-            </TabsContent>
+              <OutbreakAlerts />
+            </div>
+          )}
 
-            {/* AI Insights Tab */}
-            <TabsContent value="ai-insights" className="space-y-6">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
-                    <Brain className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-bold">AI-Powered Insights</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Explainable risk analysis with key drivers and actionable recommendations
-                    </p>
-                  </div>
+          {/* ── Hotspots Panel ─────────────────────────────────── */}
+          {activePanel === "hotspots" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-linear-to-br from-amber-400 to-orange-500 rounded-lg shadow-lg">
+                  <Zap className="h-6 w-6 text-white" />
                 </div>
-
-                <ExplainableInsightsPanel
-                  district={selectedDistrict}
-                  districts={predictions.map((p) => p.district)}
-                  onDistrictChange={(d) => {
-                    setSelectedDistrict(d);
-                    handleDistrictClick(d);
-                  }}
-                />
-
-                <AdvancedAnalyticsPanel
-                  districts={predictions.map((p) => p.district)}
-                />
+                <div>
+                  <h3 className="text-2xl font-bold">Hotspots & Weather</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Active hotspots, growth rates, and weather correlation
+                  </p>
+                </div>
               </div>
-            </TabsContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <HotspotsPanel />
+                <GrowthRatePanel />
+              </div>
+              <WeatherCorrelation />
+            </div>
+          )}
 
-            {/* District Analysis Tab */}
-            <TabsContent value="districts" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>All Districts - Complete Breakdown</CardTitle>
-                  <CardDescription>
-                    Comprehensive view of predicted cases across all 25
-                    districts
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {predictions.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {predictions.map((district) => {
-                        const risk = getRiskLevel(district.predicted_cases);
-                        return (
-                          <div
-                            key={district.district}
-                            className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-all hover:shadow-md"
-                            onClick={() =>
-                              handleDistrictClick(district.district)
-                            }
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${getRiskDotClass(risk.level)}`} />
-                              <span className="font-medium text-sm">
-                                {district.district}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold tabular-nums">
-                                {district.predicted_cases.toLocaleString()}
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className={`text-xs ${getRiskBadgeClass(risk.level)}`}
-                              >
-                                {risk.level}
-                              </Badge>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center text-muted-foreground py-8">
-                      No prediction data available
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+          {/* ── AI Insights Panel ──────────────────────────────── */}
+          {activePanel === "ai" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
+                  <Brain className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">AI-Powered Insights</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Explainable risk analysis with key drivers and actionable
+                    recommendations
+                  </p>
+                </div>
+              </div>
+              <ExplainableInsightsPanel
+                district={selectedDistrict}
+                districts={predictions.map((p) => p.district)}
+                onDistrictChange={(d) => {
+                  setSelectedDistrict(d);
+                  handleDistrictClick(d);
+                }}
+              />
+              <AdvancedAnalyticsPanel
+                districts={predictions.map((p) => p.district)}
+              />
+            </div>
+          )}
 
-              {/* District Comparison Chart */}
-              {predictions.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>District Comparison Chart</CardTitle>
-                    <CardDescription>
-                      Visual comparison of case distribution
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {predictions
-                        .slice()
-                        .sort((a, b) => b.predicted_cases - a.predicted_cases)
-                        .map((district) => {
-                          const maxCases = Math.max(
-                            ...predictions.map((d) => d.predicted_cases),
-                          );
-                          const percentage =
-                            (district.predicted_cases / maxCases) * 100;
-                          const risk = getRiskLevel(district.predicted_cases);
+          {/* ── Historical Panel ───────────────────────────────── */}
+          {activePanel === "historical" && (
+            <div className="animate-in fade-in-50 duration-300">
+              <HistoricalAnalytics />
+            </div>
+          )}
 
-                          return (
-                            <div
-                              key={district.district}
-                              className="space-y-1 cursor-pointer hover:bg-accent p-2 rounded transition-colors"
-                              onClick={() =>
-                                handleDistrictClick(district.district)
-                              }
-                            >
-                              <div className="flex justify-between text-sm">
-                                <span className="font-medium">
-                                  {district.district}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {district.predicted_cases.toLocaleString()}{" "}
-                                  cases
-                                </span>
-                              </div>
-                              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    risk.level === "Very High"
-                                      ? "bg-red-600"
-                                      : risk.level === "High"
-                                        ? "bg-orange-500"
-                                        : risk.level === "Medium"
-                                          ? "bg-amber-400"
-                                          : risk.level === "Low"
-                                            ? "bg-sky-400"
-                                            : "bg-emerald-400"
-                                  }`}
-                                  style={{ width: `${percentage}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-          </Tabs>{" "}
-        </TabsContent>
+          {/* ── National Panel ─────────────────────────────────── */}
+          {activePanel === "national" && (
+            <div className="animate-in fade-in-50 duration-300">
+              <NationalSummaryPanel />
+            </div>
+          )}
+        </div>
+      </div>
 
-        {/* Historical Analytics Tab */}
-        <TabsContent value="historical">
-          <HistoricalAnalytics />
-        </TabsContent>
-
-        {/* National Report Tab */}
-        <TabsContent value="national" className="animate-in fade-in-50 duration-500">
-          <NationalSummaryPanel />
-        </TabsContent>
-      </Tabs>
-
-      {/* Floating AI Chat Bubble */}
+      {/* AI Chat Drawer */}
       <FloatingChatBubble
+        mode="drawer"
+        open={chatOpen}
+        onOpenChange={setChatOpen}
         district={selectedDistrict}
         dashboardContext={{
           totalCases: summary?.total_cases,

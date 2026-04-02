@@ -114,6 +114,7 @@ export function LocationPicker({
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoLocated = useRef(false);
 
@@ -275,6 +276,7 @@ export function LocationPicker({
     if (!("geolocation" in navigator)) return;
 
     setIsLocating(true);
+    setLocationError(null);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { longitude: lng, latitude: lat } = pos.coords;
@@ -311,8 +313,15 @@ export function LocationPicker({
         }
         setIsLocating(false);
       },
-      (error) => {
-        console.error("Geolocation error:", error);
+      (error: GeolocationPositionError) => {
+        const messages: Record<number, string> = {
+          [error.PERMISSION_DENIED]: "Location access denied. Please allow location permission in your browser settings.",
+          [error.POSITION_UNAVAILABLE]: "Location unavailable. Please try again or select manually.",
+          [error.TIMEOUT]: "Location request timed out. Please try again.",
+        };
+        const message = messages[error.code] ?? "Unable to retrieve your location.";
+        console.warn("Geolocation error:", error.code, error.message);
+        setLocationError(message);
         setIsLocating(false);
       },
     );
@@ -420,6 +429,11 @@ export function LocationPicker({
           )}
         </Button>
       </div>
+
+      {/* Location error */}
+      {locationError && (
+        <p className="text-xs text-destructive px-1">{locationError}</p>
+      )}
 
       {/* Map */}
       <div

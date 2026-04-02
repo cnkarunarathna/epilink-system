@@ -12,6 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -57,6 +59,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { StatCard } from "@/components/dashboard/shared/StatCard";
+import {
   UserPlus,
   Search,
   MoreHorizontal,
@@ -64,6 +73,11 @@ import {
   Trash2,
   RefreshCw,
   Loader2,
+  Users,
+  UserCheck,
+  Shield,
+  MapPin,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import usersService, {
@@ -74,35 +88,83 @@ import usersService, {
 } from "@/services/users.service";
 import { fetchLatestPerDistrict } from "@/services/analytics.service";
 
+// ─── Role config ──────────────────────────────────────────────────────────────
+
+type Role = "admin" | "supervisor" | "phi" | "viewer";
+
+const ROLE_CONFIG: Record<
+  Role,
+  { label: string; color: string; avatarBg: string; avatarText: string }
+> = {
+  admin:      { label: "Admin",      color: "bg-destructive/10 text-destructive border-destructive/20",        avatarBg: "bg-destructive/15",  avatarText: "text-destructive"  },
+  supervisor: { label: "Supervisor", color: "bg-sky-500/10 text-sky-600 border-sky-500/20 dark:text-sky-400",  avatarBg: "bg-sky-500/15",      avatarText: "text-sky-600"      },
+  phi:        { label: "PHI",        color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400", avatarBg: "bg-emerald-500/15", avatarText: "text-emerald-600" },
+  viewer:     { label: "Viewer",     color: "bg-muted text-muted-foreground border-border",                    avatarBg: "bg-muted",           avatarText: "text-muted-foreground" },
+};
+
+const ROLE_FILTERS = ["all", "admin", "supervisor", "phi", "viewer"] as const;
+type RoleFilter = (typeof ROLE_FILTERS)[number];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+// ─── Skeleton rows ────────────────────────────────────────────────────────────
+
+function TableSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <TableRow key={i}>
+          <TableCell>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3 w-36" />
+              </div>
+            </div>
+          </TableCell>
+          <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+          <TableCell><Skeleton className="h-3.5 w-24" /></TableCell>
+          <TableCell><Skeleton className="h-5 w-10 rounded-full" /></TableCell>
+          <TableCell className="text-right"><Skeleton className="h-7 w-7 ml-auto rounded-md" /></TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function UsersPage() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery]         = useState("");
+  const [roleFilter, setRoleFilter]           = useState<RoleFilter>("all");
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
-  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog]   = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [districts, setDistricts] = useState<string[]>([]);
+  const [selectedUser, setSelectedUser]       = useState<User | null>(null);
+  const [users, setUsers]                     = useState<User[]>([]);
+  const [stats, setStats]                     = useState<UserStats | null>(null);
+  const [loading, setLoading]                 = useState(true);
+  const [submitting, setSubmitting]           = useState(false);
+  const [districts, setDistricts]             = useState<string[]>([]);
+  const [togglingId, setTogglingId]           = useState<string | null>(null);
 
-  // Form state
   const [formData, setFormData] = useState<CreateUserData>({
-    name: "",
-    email: "",
-    password: "",
-    role: "viewer",
-    district: "",
+    name: "", email: "", password: "", role: "viewer", district: "",
   });
-
   const [editFormData, setEditFormData] = useState<UpdateUserData>({
-    name: "",
-    email: "",
-    role: "viewer",
-    district: "",
+    name: "", email: "", role: "viewer", district: "",
   });
 
-  // Load data on mount
   useEffect(() => {
     loadData();
     loadDistricts();
@@ -112,12 +174,11 @@ export default function UsersPage() {
     try {
       const data = await fetchLatestPerDistrict();
       setDistricts(data.map((d) => d.district));
-    } catch (error) {
-      console.error("Failed to load districts", error);
-    }
+    } catch {}
   };
 
-  // WebSocket event handlers for real-time updates
+  // ── WebSocket handlers ────────────────────────────────────────────────────
+
   const handleUserCreated = useCallback((newUser: User) => {
     setUsers((prev) => [newUser, ...prev]);
     setStats((prev) =>
@@ -125,65 +186,45 @@ export default function UsersPage() {
         ? {
             ...prev,
             totalUsers: prev.totalUsers + 1,
-            activeUsers: newUser.isActive
-              ? prev.activeUsers + 1
-              : prev.activeUsers,
+            activeUsers: newUser.isActive ? prev.activeUsers + 1 : prev.activeUsers,
             usersByRole: {
               ...prev.usersByRole,
-              [newUser.role]:
-                (prev.usersByRole[
-                  newUser.role as keyof typeof prev.usersByRole
-                ] || 0) + 1,
+              [newUser.role]: (prev.usersByRole[newUser.role as keyof typeof prev.usersByRole] || 0) + 1,
             },
           }
         : null,
     );
-    toast.success("New user added", {
-      description: `${newUser.name} has been created`,
-    });
+    toast.success("New user added", { description: `${newUser.name} has been created` });
   }, []);
 
   const handleUserUpdated = useCallback((updatedUser: User) => {
-    setUsers((prev) =>
-      prev.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
-    );
+    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
   }, []);
 
   const handleUserDeleted = useCallback(({ id }: { id: string }) => {
-    setUsers((prev) => prev.filter((user) => user.id !== id));
-    // Reload stats to get accurate counts
+    setUsers((prev) => prev.filter((u) => u.id !== id));
     usersService.getStats().then(setStats).catch(console.error);
   }, []);
 
-  const handleUserStatusChanged = useCallback(
-    ({ id, isActive }: { id: string; isActive: boolean }) => {
-      setUsers((prev) =>
-        prev.map((user) => (user.id === id ? { ...user, isActive } : user)),
-      );
-      setStats((prev) =>
-        prev
-          ? {
-              ...prev,
-              activeUsers: isActive
-                ? prev.activeUsers + 1
-                : prev.activeUsers - 1,
-              inactiveUsers: isActive
-                ? prev.inactiveUsers - 1
-                : prev.inactiveUsers + 1,
-            }
-          : null,
-      );
-    },
-    [],
-  );
+  const handleUserStatusChanged = useCallback(({ id, isActive }: { id: string; isActive: boolean }) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isActive } : u)));
+    setStats((prev) =>
+      prev
+        ? {
+            ...prev,
+            activeUsers:   isActive ? prev.activeUsers + 1   : prev.activeUsers - 1,
+            inactiveUsers: isActive ? prev.inactiveUsers - 1 : prev.inactiveUsers + 1,
+          }
+        : null,
+    );
+  }, []);
 
-  // Subscribe to WebSocket events
-  useSocketEvent("user:created", handleUserCreated, [handleUserCreated]);
-  useSocketEvent("user:updated", handleUserUpdated, [handleUserUpdated]);
-  useSocketEvent("user:deleted", handleUserDeleted, [handleUserDeleted]);
-  useSocketEvent("user:status-changed", handleUserStatusChanged, [
-    handleUserStatusChanged,
-  ]);
+  useSocketEvent("user:created",       handleUserCreated,       [handleUserCreated]);
+  useSocketEvent("user:updated",       handleUserUpdated,       [handleUserUpdated]);
+  useSocketEvent("user:deleted",       handleUserDeleted,       [handleUserDeleted]);
+  useSocketEvent("user:status-changed",handleUserStatusChanged, [handleUserStatusChanged]);
+
+  // ── CRUD ──────────────────────────────────────────────────────────────────
 
   const loadData = async () => {
     try {
@@ -208,35 +249,19 @@ export default function UsersPage() {
       toast.error("Please fill in all required fields");
       return;
     }
-
-    // Validate district requirement for supervisor/PHI
-    if (
-      (formData.role === "supervisor" || formData.role === "phi") &&
-      !formData.district
-    ) {
-      toast.error(
-        `District is required for ${formData.role.toUpperCase()} accounts`,
-      );
+    if ((formData.role === "supervisor" || formData.role === "phi") && !formData.district) {
+      toast.error(`District is required for ${formData.role.toUpperCase()} accounts`);
       return;
     }
-
     try {
       setSubmitting(true);
       await usersService.create(formData);
       toast.success("User created successfully");
       setOpenCreateDialog(false);
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        role: "viewer",
-        district: "",
-      });
+      setFormData({ name: "", email: "", password: "", role: "viewer", district: "" });
       loadData();
     } catch (error: any) {
-      toast.error("Failed to create user", {
-        description: error.response?.data?.message || error.message,
-      });
+      toast.error("Failed to create user", { description: error.response?.data?.message || error.message });
     } finally {
       setSubmitting(false);
     }
@@ -244,7 +269,6 @@ export default function UsersPage() {
 
   const handleEditUser = async () => {
     if (!selectedUser) return;
-
     try {
       setSubmitting(true);
       await usersService.update(selectedUser.id, editFormData);
@@ -253,9 +277,7 @@ export default function UsersPage() {
       setSelectedUser(null);
       loadData();
     } catch (error: any) {
-      toast.error("Failed to update user", {
-        description: error.response?.data?.message || error.message,
-      });
+      toast.error("Failed to update user", { description: error.response?.data?.message || error.message });
     } finally {
       setSubmitting(false);
     }
@@ -263,7 +285,6 @@ export default function UsersPage() {
 
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
-
     try {
       setSubmitting(true);
       await usersService.delete(selectedUser.id);
@@ -272,515 +293,527 @@ export default function UsersPage() {
       setSelectedUser(null);
       loadData();
     } catch (error: any) {
-      toast.error("Failed to delete user", {
-        description: error.response?.data?.message || error.message,
-      });
+      toast.error("Failed to delete user", { description: error.response?.data?.message || error.message });
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleToggleStatus = async (user: User) => {
+    setTogglingId(user.id);
     try {
       await usersService.toggleStatus(user.id);
-      toast.success(
-        `User ${user.isActive ? "deactivated" : "activated"} successfully`,
-      );
+      toast.success(`User ${user.isActive ? "deactivated" : "activated"} successfully`);
       loadData();
     } catch (error: any) {
-      toast.error("Failed to update user status", {
-        description: error.response?.data?.message || error.message,
-      });
+      toast.error("Failed to update user status", { description: error.response?.data?.message || error.message });
+    } finally {
+      setTogglingId(null);
     }
   };
 
   const openEditUserDialog = (user: User) => {
     setSelectedUser(user);
-    setEditFormData({
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      district: user.district || "",
-    });
+    setEditFormData({ name: user.name, email: user.email, role: user.role, district: user.district || "" });
     setOpenEditDialog(true);
   };
 
-  const openDeleteUserDialog = (user: User) => {
-    setSelectedUser(user);
-    setOpenDeleteDialog(true);
-  };
+  // ── Filtered list ─────────────────────────────────────────────────────────
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
+  const filteredUsers = users.filter((user) => {
+    const matchesRole   = roleFilter === "all" || user.role === roleFilter;
+    const q             = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      user.name.toLowerCase().includes(q) ||
+      user.email.toLowerCase().includes(q) ||
+      user.role.toLowerCase().includes(q);
+    return matchesRole && matchesSearch;
+  });
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const activeRate =
+    stats && stats.totalUsers > 0
+      ? ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1)
+      : "0";
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">User Management</h2>
-          <p className="text-muted-foreground">
-            Create and manage system users with role-based access
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={loadData}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-          <Dialog open={openCreateDialog} onOpenChange={setOpenCreateDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Create User
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Create New User</DialogTitle>
-                <DialogDescription>
-                  Add a new user to the system with role-based permissions
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Full Name *</Label>
-                  <Input
-                    id="name"
-                    placeholder="John Doe"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="john@health.lk"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Password *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Min. 6 characters"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="role">Role *</Label>
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value: any) =>
-                      setFormData({ ...formData, role: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="supervisor">Supervisor</SelectItem>
-                      <SelectItem value="phi">PHI</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="district">
-                    District{" "}
-                    {formData.role === "supervisor" || formData.role === "phi"
-                      ? "*"
-                      : "(Optional)"}
-                  </Label>
-                  <Select
-                    value={formData.district || "none"}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        district: value === "none" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select district" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {districts.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setOpenCreateDialog(false)}
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateUser} disabled={submitting}>
-                  {submitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
+    <TooltipProvider>
+      <div className="space-y-6">
+        {/* ── Header ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
+            <p className="text-sm text-muted-foreground">
+              Create and manage system users with role-based access
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadData}
+              disabled={loading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+
+            {/* Create user dialog */}
+            <Dialog open={openCreateDialog} onOpenChange={setOpenCreateDialog}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-2">
+                  <UserPlus className="h-4 w-4" />
                   Create User
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle>Create New User</DialogTitle>
+                  <DialogDescription>
+                    Add a new user with role-based permissions
+                  </DialogDescription>
+                </DialogHeader>
+                <UserForm
+                  data={formData}
+                  onChange={(patch) => setFormData((p) => ({ ...p, ...patch }))}
+                  districts={districts}
+                  showPassword
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setOpenCreateDialog(false)} disabled={submitting}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateUser} disabled={submitting}>
+                    {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create User
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
-      </div>
 
-      {/* Stats */}
-      {stats && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Users
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.activeUsers} active
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active Users
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.activeUsers}</div>
-              <p className="text-xs text-green-500">
-                {stats.totalUsers > 0
-                  ? ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1)
-                  : 0}
-                % active rate
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Supervisors
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats.usersByRole.supervisor || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">Regional managers</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                PHI Officers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats.usersByRole.phi || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">Field officers</p>
-            </CardContent>
-          </Card>
+        {/* ── Stats ── */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Total Users"
+            value={stats?.totalUsers ?? 0}
+            description={`${stats?.activeUsers ?? 0} active`}
+            icon={Users}
+            iconColor="text-primary bg-primary/10"
+            accent="primary"
+            loading={loading}
+          />
+          <StatCard
+            title="Active Rate"
+            value={loading ? "—" : `${activeRate}%`}
+            description="Users currently active"
+            icon={UserCheck}
+            iconColor="text-green-600 bg-green-500/10"
+            accent="success"
+            loading={loading}
+          />
+          <StatCard
+            title="Supervisors"
+            value={stats?.usersByRole?.supervisor ?? 0}
+            description="Regional managers"
+            icon={Shield}
+            iconColor="text-sky-600 bg-sky-500/10"
+            accent="info"
+            loading={loading}
+          />
+          <StatCard
+            title="PHI Officers"
+            value={stats?.usersByRole?.phi ?? 0}
+            description="Field officers"
+            icon={MapPin}
+            iconColor="text-emerald-600 bg-emerald-500/10"
+            accent="success"
+            loading={loading}
+          />
         </div>
-      )}
 
-      {/* User List */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>All Users</CardTitle>
-              <CardDescription>
-                Manage user accounts and permissions
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+        {/* ── User table ── */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">All Users</CardTitle>
+                <CardDescription>
+                  {loading
+                    ? "Loading…"
+                    : `${filteredUsers.length} of ${users.length} user${users.length !== 1 ? "s" : ""}`}
+                </CardDescription>
+              </div>
+              <div className="relative w-full sm:w-60">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
-                  placeholder="Search users..."
+                  placeholder="Search by name, email, role…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 w-[250px]"
+                  className="pl-8 pr-8 h-9 text-sm"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+
+            {/* Role filter chips */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {ROLE_FILTERS.map((r) => {
+                const isActive = roleFilter === r;
+                const count =
+                  r === "all"
+                    ? users.length
+                    : users.filter((u) => u.role === r).length;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setRoleFilter(r)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                      isActive
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    {r === "all" ? "All roles" : ROLE_CONFIG[r as Role].label}
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        isActive ? "bg-primary-foreground/20" : "bg-muted"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No users found</p>
-            </div>
-          ) : (
+          </CardHeader>
+
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-6">User</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>District</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Active</TableHead>
+                  <TableHead className="text-right pr-4">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>
-                            {getInitials(user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{user.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {user.email}
-                          </p>
-                        </div>
+                {loading ? (
+                  <TableSkeletonRows />
+                ) : filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <div className="flex flex-col items-center justify-center py-14 text-center gap-2">
+                        <span className="flex items-center justify-center h-12 w-12 rounded-full bg-muted mb-1">
+                          <Users className="h-5 w-5 text-muted-foreground" />
+                        </span>
+                        <p className="text-sm font-medium text-muted-foreground">
+                          {searchQuery || roleFilter !== "all"
+                            ? "No users match your filters"
+                            : "No users yet"}
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                          {searchQuery || roleFilter !== "all"
+                            ? "Try clearing the search or changing the role filter"
+                            : "Create the first user to get started"}
+                        </p>
+                        {(searchQuery || roleFilter !== "all") && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 text-xs"
+                            onClick={() => { setSearchQuery(""); setRoleFilter("all"); }}
+                          >
+                            Clear filters
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {user.district || (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={user.isActive ? "default" : "secondary"}
-                        className="cursor-pointer"
-                        onClick={() => handleToggleStatus(user)}
-                      >
-                        {user.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => openEditUserDialog(user)}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit User
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleToggleStatus(user)}
-                          >
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            {user.isActive ? "Deactivate" : "Activate"}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => openDeleteUserDialog(user)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredUsers.map((user) => {
+                    const roleCfg = ROLE_CONFIG[user.role as Role] ?? ROLE_CONFIG.viewer;
+                    const isToggling = togglingId === user.id;
+                    return (
+                      <TableRow key={user.id} className="group">
+                        {/* User */}
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9 shrink-0">
+                              <AvatarFallback className={`text-xs font-semibold ${roleCfg.avatarBg} ${roleCfg.avatarText}`}>
+                                {getInitials(user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium leading-none truncate">
+                                {user.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {user.email}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        {/* Role */}
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs font-medium ${roleCfg.color}`}
+                          >
+                            {roleCfg.label}
+                          </Badge>
+                        </TableCell>
+
+                        {/* District */}
+                        <TableCell>
+                          {user.district ? (
+                            <span className="flex items-center gap-1 text-sm">
+                              <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                              {user.district}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+
+                        {/* Active toggle */}
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center">
+                                <Switch
+                                  checked={user.isActive}
+                                  onCheckedChange={() => handleToggleStatus(user)}
+                                  disabled={isToggling}
+                                  aria-label={user.isActive ? "Deactivate user" : "Activate user"}
+                                  className="scale-90"
+                                />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {user.isActive ? "Click to deactivate" : "Click to activate"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell className="text-right pr-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                aria-label="User actions"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                                {user.name}
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                                {user.isActive ? "Deactivate" : "Activate"}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => { setSelectedUser(user); setOpenDeleteDialog(true); }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Edit User Dialog */}
-      <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user information and permissions
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-name">Full Name</Label>
-              <Input
-                id="edit-name"
-                value={editFormData.name}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={editFormData.email}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, email: e.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-password">New Password (Optional)</Label>
-              <Input
-                id="edit-password"
-                type="password"
-                placeholder="Leave blank to keep current"
-                value={editFormData.password || ""}
-                onChange={(e) =>
-                  setEditFormData({
-                    ...editFormData,
-                    password: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-role">Role</Label>
-              <Select
-                value={editFormData.role}
-                onValueChange={(value: any) =>
-                  setEditFormData({ ...editFormData, role: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="supervisor">Supervisor</SelectItem>
-                  <SelectItem value="phi">PHI</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-district">
-                District{" "}
-                {editFormData.role === "supervisor" ||
-                editFormData.role === "phi"
-                  ? "*"
-                  : "(Optional)"}
-              </Label>
-              <Select
-                value={editFormData.district || "none"}
-                onValueChange={(value) =>
-                  setEditFormData({
-                    ...editFormData,
-                    district: value === "none" ? "" : value,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select district" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {districts.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpenEditDialog(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleEditUser} disabled={submitting}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* ── Edit dialog ── */}
+        <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>Update information and permissions</DialogDescription>
+            </DialogHeader>
+            <UserForm
+              data={editFormData}
+              onChange={(patch) => setEditFormData((p) => ({ ...p, ...patch }))}
+              districts={districts}
+              showPassword
+              passwordOptional
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenEditDialog(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditUser} disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              user account for <strong>{selectedUser?.name}</strong> and remove
-              their data from the system.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteUser}
-              disabled={submitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete User
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* ── Delete dialog ── */}
+        <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete user?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove{" "}
+                <span className="font-semibold text-foreground">
+                  {selectedUser?.name}
+                </span>{" "}
+                and cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                disabled={submitting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+// ─── Shared form ──────────────────────────────────────────────────────────────
+
+interface UserFormProps {
+  data: Partial<CreateUserData & UpdateUserData>;
+  onChange: (patch: Partial<CreateUserData & UpdateUserData>) => void;
+  districts: string[];
+  showPassword?: boolean;
+  passwordOptional?: boolean;
+}
+
+function UserForm({ data, onChange, districts, showPassword, passwordOptional }: UserFormProps) {
+  const needsDistrict = data.role === "supervisor" || data.role === "phi";
+
+  return (
+    <div className="grid gap-4 py-2">
+      <div className="grid gap-1.5">
+        <Label htmlFor="uf-name">Full Name <span className="text-destructive">*</span></Label>
+        <Input
+          id="uf-name"
+          placeholder="John Doe"
+          value={data.name ?? ""}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="uf-email">Email <span className="text-destructive">*</span></Label>
+        <Input
+          id="uf-email"
+          type="email"
+          placeholder="john@health.lk"
+          value={data.email ?? ""}
+          onChange={(e) => onChange({ email: e.target.value })}
+        />
+      </div>
+
+      {showPassword && (
+        <div className="grid gap-1.5">
+          <Label htmlFor="uf-password">
+            Password{" "}
+            {passwordOptional ? (
+              <span className="text-muted-foreground font-normal">(leave blank to keep current)</span>
+            ) : (
+              <span className="text-destructive">*</span>
+            )}
+          </Label>
+          <Input
+            id="uf-password"
+            type="password"
+            placeholder={passwordOptional ? "Leave blank to keep current" : "Min. 6 characters"}
+            value={(data as any).password ?? ""}
+            onChange={(e) => onChange({ password: e.target.value } as any)}
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="uf-role">Role <span className="text-destructive">*</span></Label>
+          <Select
+            value={data.role ?? "viewer"}
+            onValueChange={(v) => onChange({ role: v as any })}
+          >
+            <SelectTrigger id="uf-role">
+              <SelectValue placeholder="Select role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="supervisor">Supervisor</SelectItem>
+              <SelectItem value="phi">PHI</SelectItem>
+              <SelectItem value="viewer">Viewer</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid gap-1.5">
+          <Label htmlFor="uf-district">
+            District{" "}
+            {needsDistrict ? (
+              <span className="text-destructive">*</span>
+            ) : (
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            )}
+          </Label>
+          <Select
+            value={data.district || "none"}
+            onValueChange={(v) => onChange({ district: v === "none" ? "" : v })}
+          >
+            <SelectTrigger id="uf-district">
+              <SelectValue placeholder="Select district" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {districts.map((d) => (
+                <SelectItem key={d} value={d}>{d}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
     </div>
   );
 }

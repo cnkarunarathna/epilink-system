@@ -16,11 +16,13 @@ from explain_analytics.models import (
     NationalSummaryResponse,
     RagIngestRequest,
     RagIngestResponse,
+    RagSeedResponse,
 )
 from explain_analytics.services.insight_service import (
     AgenticInsightService,
     ExplainabilityService,
 )
+from explain_analytics.services.knowledge_seeder import KnowledgeSeeder
 from explain_analytics.services.etl_service import ETLService
 from explain_analytics.services.national_service import NationalSummaryService
 from explain_analytics.services.rag_service import RAGService
@@ -39,10 +41,11 @@ session_service = SessionService(
     ttl_seconds=settings.session_ttl_seconds,
     summarize_after_turns=settings.session_summarize_after_turns,
 )
-agent_service = AgenticInsightService(session_service=session_service)
 rag_service = RAGService()
+agent_service = AgenticInsightService(session_service=session_service, rag_service=rag_service)
 national_service = NationalSummaryService()
 etl_service = ETLService(rag_service=rag_service)
+knowledge_seeder = KnowledgeSeeder(rag_service=rag_service)
 
 
 @asynccontextmanager
@@ -85,6 +88,7 @@ def health() -> dict[str, object]:
         "environment": settings.environment,
         "agent_mode": settings.enable_agent_mode,
         "rag_enabled": rag_service.is_ready,
+        "rag_document_count": rag_service.document_count(),
         "session_persistence": session_service.is_ready,  # Enhancement 7
     }
 
@@ -290,6 +294,43 @@ def rag_ingest(payload: RagIngestRequest) -> RagIngestResponse:
         ingested=count,
         message=f"Successfully embedded and stored {count} document(s) in the Qdrant corpus.",
     )
+
+
+@app.post("/v1/rag/seed", response_model=RagSeedResponse)
+def rag_seed(
+    force: bool = Query(
+        default=False,
+        description=(
+            "When true, re-ingest all knowledge documents even if the corpus already "
+            "contains documents. Safe to call multiple times — idempotent point IDs "
+            "prevent true duplicates in Qdrant."
+        ),
+    ),
+    x_internal_api_key: str | None = Header(default=None),
+) -> RagSeedResponse:
+    """Seed the Qdrant corpus with the built-in dengue knowledge base (25 documents).
+
+    Covers WHO/MoH clinical guidelines, vector control protocols, Sri Lanka
+    epidemiology, outbreak response, dengue biology, and treatment protocols.
+
+    Protected by x-internal-api-key when EXPLAIN_BACKEND_SERVICE_KEY is set.
+    Skips seeding silently when the corpus already contains documents (use
+    force=true to re-seed).
+    """
+    if settings.backend_service_key and x_internal_api_key != settings.backend_service_key:
+        raise HTTPException(status_code=403, detail="Invalid or missing x-internal-api-key.")
+    if not settings.qdrant_url:
+        raise HTTPException(
+            status_code=503,
+            detail="EXPLAIN_QDRANT_URL is not configured.",
+        )
+    if not settings.gemini_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="EXPLAIN_GEMINI_API_KEY is required for embedding documents.",
+        )
+    result = knowledge_seeder.seed(force=force)
+    return RagSeedResponse(**result)
 
 
 @app.get("/v1/rag/etl/status")
