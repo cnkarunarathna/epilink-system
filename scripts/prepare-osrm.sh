@@ -29,21 +29,21 @@ fi
 
 # Step 2: Extract (builds .osrm graph)
 echo "==> Running osrm-extract..."
-docker run --rm -t \
+docker run --rm -t --platform linux/amd64 \
   -v "$OSRM_DATA_DIR:/data" \
   "$OSRM_IMAGE" \
   osrm-extract -p /opt/car.lua /data/sri-lanka-latest.osm.pbf
 
 # Step 3: Partition (MLD algorithm — faster than CH for real-time updates)
 echo "==> Running osrm-partition..."
-docker run --rm -t \
+docker run --rm -t --platform linux/amd64 \
   -v "$OSRM_DATA_DIR:/data" \
   "$OSRM_IMAGE" \
   osrm-partition /data/sri-lanka-latest.osrm
 
 # Step 4: Customize
 echo "==> Running osrm-customize..."
-docker run --rm -t \
+docker run --rm -t --platform linux/amd64 \
   -v "$OSRM_DATA_DIR:/data" \
   "$OSRM_IMAGE" \
   osrm-customize /data/sri-lanka-latest.osrm
