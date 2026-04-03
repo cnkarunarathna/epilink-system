@@ -3,6 +3,7 @@
     "start": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\"",
     "chatbot": "cd chatbot-service && uv run uvicorn main:app --reload --port 8000",
     "analytics": "cd explain-analytics && uv run analytics",
+    "route": "cd route-optimizer && uv run route",
     "install:frontend": "npm install --prefix frontend",
     "install:backend": "npm install --prefix backend",
     "install:all": "npm run install:frontend && npm run install:backend",
