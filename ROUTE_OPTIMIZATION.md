@@ -20,7 +20,8 @@ PHIs are assigned multiple tasks (CLEANUP, FOGGING, INSPECTION, INVESTIGATION) w
 ## Scope
 
 ### In Scope
-- Backend route optimization endpoint using an open-source routing engine
+- Python route optimization microservice using Google OR-Tools
+- Backend route endpoint that calls the microservice and returns ordered task IDs with ETAs
 - PHI mobile app: "Optimized Route" view showing tasks in suggested order with one-tap navigation
 - PHI web dashboard: route visualization on the existing map view
 - Supervisor web dashboard: route preview when assigning multiple tasks to a PHI in one batch
@@ -28,87 +29,242 @@ PHIs are assigned multiple tasks (CLEANUP, FOGGING, INSPECTION, INVESTIGATION) w
 
 ### Out of Scope (v1)
 - Turn-by-turn navigation (handled by device-native apps via deep links)
-- Multi-PHI vehicle routing optimization (VRP)
 - Traffic-aware routing
-- Automated task batching / AI-driven assignment suggestions
+- Road geometry polylines on map (v1 uses straight lines; v2 can add OSRM for road snapping)
+
+### Upgrade path (v2)
+- Multi-PHI vehicle routing optimization (VRP) — OR-Tools supports this natively
+- Time-window constraints (task must be visited between 9am–12pm)
+- Priority-weighted routing (URGENT tasks first)
+
+These are v2 additions that OR-Tools handles naturally, which is the main reason to choose it over OSRM's simpler built-in TSP.
 
 ---
 
-## Current System Touchpoints
+## Tool Choice: OR-Tools vs OSRM
 
-| Layer | File | Relevance |
+These two tools solve different sub-problems and are not direct replacements:
+
+| | OR-Tools | OSRM |
 |---|---|---|
-| Task entity | `backend/src/tasks/entities/task.entity.ts` | Has `latitude`, `longitude` (decimal 10,7) per task |
-| Task service | `backend/src/tasks/tasks.service.ts` | `getPhisByDistrict()`, `assignTask()`, `findAll()` |
-| Task controller | `backend/src/tasks/tasks.controller.ts` | Where the new route endpoint will be added |
-| Geocoding service | `backend/src/tasks/geocoding.service.ts` | Nominatim integration; rate-limited |
-| Tasks map | `frontend/components/tasks/TasksMap.tsx` | MapLibre GL map; already renders task markers with popups |
-| PHI map page | `frontend/app/(dashboard)/phi/map/page.tsx` | Existing PHI map view — primary home for route display |
-| PHI tasks list | `frontend/app/(dashboard)/phi/tasks/page.tsx` | Source of the task list fed into route planning |
-| WebSocket events | `backend/src/events/events.gateway.ts` | Real-time task updates; route should refresh on events |
-| Mobile app | `mobile/` | React Native app; will add route view here |
+| **What it does** | Solves combinatorial optimization (TSP, VRP) | Calculates road distances & solves TSP via `/trip` |
+| **Input** | A distance/time matrix you provide | GPS coordinates (builds matrix internally from OSM) |
+| **Distance accuracy** | Depends on input matrix | Real road distances from OSM |
+| **Language** | Python (primary), C++, Java | C++ service, HTTP API |
+| **Node.js support** | No maintained binding — needs a microservice | Direct HTTP call from NestJS |
+| **Multi-vehicle VRP** | Yes (built-in) | No |
+| **Time windows** | Yes (built-in) | No |
+| **Infrastructure** | Python process only | Requires pre-processed OSM map data (~70 MB for Sri Lanka) |
+
+**Decision**: Use OR-Tools with an OSRM-sourced distance matrix (real road times).
+
+OR-Tools does not calculate distances — it only solves the ordering problem. The accuracy of the route depends entirely on what matrix you feed into it:
+
+| Matrix source | Distance accuracy | ETA accuracy | Infrastructure |
+|---|---|---|---|
+| Haversine (straight-line) | ~15–30% shorter than real roads | Poor | None |
+| **OSRM `/table`** (chosen) | **Actual road distances** | **Realistic** | OSRM container + Sri Lanka OSM |
+| Google Maps Distance Matrix | Actual road distances | Good | API key + per-request cost |
+
+OSRM is added to docker-compose to provide two things:
+1. **`/table`** — N×N real road time/distance matrix fed into OR-Tools for accurate optimization
+2. **`/route`** — road-snapped polyline geometry for drawing the route on the map
+
+OR-Tools remains the solver regardless. This separation means the optimization logic can later be upgraded to multi-PHI VRP without changing how distances are calculated.
 
 ---
 
 ## Architecture
 
-### Routing Engine: OSRM (Open Source Routing Machine)
+### Components
 
-OSRM is the chosen routing engine because:
-- Free, no API key, no rate limits
-- Uses OpenStreetMap data (same source as Nominatim already in use)
-- Provides a `trip` service that solves the Traveling Salesman Problem (TSP) using the Christofides heuristic
-- Docker image available (`osrm/osrm-backend`) — fits existing docker-compose setup
-- Returns actual road distances and durations, not crow-fly
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        NestJS Backend                            │
+│                                                                  │
+│  POST /api/tasks/route                                           │
+│       │                                                          │
+│  RouteService                                                    │
+│    1. Fetch task coords from DB                                  │
+│    2. Call OSRM /table  →  N×N real road time matrix  ─────────► OSRM
+│    3. POST matrix to route-optimizer:8000/optimize  ───────────► Python
+│    4. OR-Tools returns optimal ordered indices              ◄─── OR-Tools
+│    5. Call OSRM /route (ordered coords)  →  road polyline  ────► OSRM
+│    6. Map indices → task IDs, attach leg durations/distances     │
+│    7. Return RouteResult to frontend                             │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-**OSRM Services used:**
-- `GET /trip/v1/driving/{coordinates}` — optimized waypoint ordering (TSP)
-- `GET /route/v1/driving/{coordinates}` — road geometry for a fixed ordered sequence
+### New Service: `route-optimizer` (Python + FastAPI + OR-Tools)
 
-**Sri Lanka OSM data** (~70 MB extract) will be pre-processed and embedded in the OSRM container.
+A lightweight Python microservice added to docker-compose alongside the existing backend, frontend, postgres, and redis containers.
 
-### High-Level Flow
+**Tech stack:**
+- Python 3.12
+- FastAPI (HTTP server)
+- `ortools` (`google-or-tools` PyPI package)
+- No database — stateless, purely computational
+
+**Single endpoint:**
+```
+POST /optimize
+```
+
+Accepts a distance matrix and returns the optimal visit order.
+
+---
+
+## High-Level Request Flow
 
 ```
 PHI opens "My Route" view
         │
         ▼
-Frontend fetches assigned tasks (existing /api/tasks endpoint)
+Frontend fetches assigned tasks  →  GET /api/tasks (existing)
         │
         ▼
-Frontend calls POST /api/tasks/route  ──► Backend RouteService
-        │                                       │
-        │                               Extract lat/lng from tasks
-        │                                       │
-        │                               Call OSRM /trip endpoint
-        │                                       │
-        │                               OSRM returns ordered waypoints
-        │                                       │
-        │                               Call OSRM /route for geometry
-        │                               (polyline for map display)
-        │                                       │
-        ◄───────────────────────────────────────┘
+Frontend calls POST /api/tasks/route
+        │
+        ▼
+NestJS RouteService:
+  ① Load task lat/lng from DB (already stored on each task)
+  ② GET osrm:5000/table/v1/driving/{all coords}
+     → N×N matrix of real road durations (seconds) and distances (meters)
+  ③ POST duration matrix to route-optimizer:8000/optimize
+  ④ OR-Tools solves TSP, returns ordered indices
+  ⑤ GET osrm:5000/route/v1/driving/{coords in optimized order}
+     → road-snapped polyline + per-leg duration/distance
+  ⑥ Map indices → task IDs
+  ⑦ Return RouteResult (ordered IDs + leg durations/distances + polyline)
         │
         ▼
 Frontend renders:
   - Numbered markers on map in optimized order
-  - Ordered task list (reordered)
-  - ETA and total distance summary
-  - "Navigate" deep-link button per task
+  - Road-snapped polyline drawn on map (MapLibre LineLayer)
+  - Ordered task list with realistic per-leg ETA
+  - "Navigate" deep-link per task → Google Maps
 ```
 
 ---
 
 ## Implementation Plan
 
-### Phase 1 — Backend: Route Service & Endpoint
+### Phase 1 — Python Route Optimizer Microservice
 
-#### 1.1 Add OSRM to docker-compose
+#### 1.1 Service directory structure
 
-File: `docker-compose.yml`
+```
+route-optimizer/
+├── main.py              # FastAPI app
+├── optimizer.py         # OR-Tools TSP solver
+├── requirements.txt     # ortools, fastapi, uvicorn
+└── Dockerfile
+```
 
-Add a new service:
+#### 1.2 `optimizer.py` — OR-Tools TSP solver
+
+```python
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
+
+def solve_tsp(distance_matrix: list[list[int]]) -> list[int]:
+    """
+    Given an N×N distance matrix (integers, meters or scaled),
+    return the optimal visit order as a list of indices.
+    Index 0 is treated as the depot (PHI start location or first task).
+    """
+    manager = pywrapcp.RoutingIndexManager(len(distance_matrix), 1, 0)
+    routing = pywrapcp.RoutingModel(manager)
+
+    def distance_callback(from_idx, to_idx):
+        return distance_matrix[manager.IndexToNode(from_idx)][manager.IndexToNode(to_idx)]
+
+    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+    search_params = pywrapcp.DefaultRoutingSearchParameters()
+    search_params.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )
+    search_params.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+    )
+    search_params.time_limit.seconds = 2  # hard cap — responds in <2s always
+
+    solution = routing.SolveWithParameters(search_params)
+    if not solution:
+        return list(range(len(distance_matrix)))  # fallback: original order
+
+    order = []
+    index = routing.Start(0)
+    while not routing.IsEnd(index):
+        order.append(manager.IndexToNode(index))
+        index = solution.Value(routing.NextVar(index))
+    return order
+```
+
+**Why `PATH_CHEAPEST_ARC` + `GUIDED_LOCAL_SEARCH`**: fast initial solution, then local improvement. For N ≤ 15 (max realistic PHI daily tasks) this converges well within the 2s cap.
+
+#### 1.3 `main.py` — FastAPI endpoint
+
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+from optimizer import solve_tsp
+
+app = FastAPI()
+
+class OptimizeRequest(BaseModel):
+    distance_matrix: list[list[int]]  # meters, integers
+
+class OptimizeResponse(BaseModel):
+    ordered_indices: list[int]
+
+@app.post("/optimize", response_model=OptimizeResponse)
+def optimize(req: OptimizeRequest):
+    ordered = solve_tsp(req.distance_matrix)
+    return OptimizeResponse(ordered_indices=ordered)
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+```
+
+#### 1.4 `Dockerfile`
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+#### 1.5 `requirements.txt`
+
+```
+ortools==9.10.4067
+fastapi==0.115.0
+uvicorn==0.30.6
+pydantic==2.9.2
+```
+
+#### 1.6 Add to `docker-compose.yml`
+
 ```yaml
+route-optimizer:
+  build: ./route-optimizer
+  container_name: epilink-route-optimizer
+  ports:
+    - "8000:8000"
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
 osrm:
   image: osrm/osrm-backend
   container_name: epilink-osrm
@@ -120,39 +276,66 @@ osrm:
   restart: unless-stopped
 ```
 
-Add a setup script `scripts/prepare-osrm.sh` that:
-1. Downloads `sri-lanka-latest.osm.pbf` from Geofabrik
-2. Runs `osrm-extract`, `osrm-partition`, `osrm-customize`
-3. Outputs processed files to `./osrm-data/`
+Add a one-time setup script `scripts/prepare-osrm.sh`:
+```bash
+# Downloads Sri Lanka OSM extract (~70 MB) and pre-processes it for OSRM
+wget -O osrm-data/sri-lanka-latest.osm.pbf \
+  https://download.geofabrik.de/asia/sri-lanka-latest.osm.pbf
 
-#### 1.2 Create `RouteService`
+docker run -t -v $(pwd)/osrm-data:/data osrm/osrm-backend \
+  osrm-extract -p /opt/car.lua /data/sri-lanka-latest.osm.pbf
+docker run -t -v $(pwd)/osrm-data:/data osrm/osrm-backend \
+  osrm-partition /data/sri-lanka-latest.osrm
+docker run -t -v $(pwd)/osrm-data:/data osrm/osrm-backend \
+  osrm-customize /data/sri-lanka-latest.osrm
+```
+This runs once. The processed files in `./osrm-data/` are reused on every container start.
+
+---
+
+### Phase 2 — NestJS Backend: RouteService & Endpoint
+
+#### 2.1 `RouteService`
 
 File: `backend/src/tasks/route.service.ts`
 
 ```typescript
 // Responsibilities:
-// - Accept an ordered array of task IDs
-// - Fetch their lat/lng from DB
-// - Call OSRM /trip service to get the optimal visit order
-// - Call OSRM /route service to get the road polyline geometry
-// - Return ordered task IDs, leg durations (seconds), leg distances (meters),
-//   total duration, total distance, and encoded polyline
+// 1. Accept task IDs + optional PHI origin
+// 2. Load lat/lng for each task from DB
+// 3. Call OSRM /table → real road duration matrix (N×N, seconds)
+// 4. POST duration matrix to route-optimizer:8000/optimize
+// 5. OR-Tools returns optimal ordered indices
+// 6. Call OSRM /route (ordered coords) → road polyline + per-leg durations/distances
+// 7. Map indices → task IDs
+// 8. Return RouteResult — gracefully degrade if either service is unreachable
 
 interface RouteResult {
   orderedTaskIds: string[];
-  legs: Array<{ durationSecs: number; distanceMeters: number }>;
-  totalDurationSecs: number;
+  legs: Array<{ distanceMeters: number; durationSecs: number }>;
   totalDistanceMeters: number;
-  polyline: [number, number][]; // decoded coordinates for MapLibre
+  totalDurationSecs: number;
+  polyline: [number, number][];   // road-snapped coordinates for MapLibre LineLayer
+  routingUnavailable: boolean;    // true if OSRM or optimizer unreachable
+  tasksWithoutLocation: string[]; // task IDs excluded due to missing coords
 }
 ```
 
-**Error handling:**
-- Tasks missing coordinates → exclude from OSRM call, flag in response
-- OSRM unavailable → return tasks in original order with a `routingUnavailable: true` flag (graceful degradation)
-- Single task → return immediately without calling OSRM
+**Graceful degradation**:
+- If OSRM `/table` fails → fall back to Haversine matrix, set `routingUnavailable: true`
+- If `route-optimizer` fails → return tasks in original order, set `routingUnavailable: true`
+- Either failure degrades silently; the PHI still sees their task list unblocked
 
-#### 1.3 Add DTO
+**OSRM calls made by `RouteService`**:
+```
+// Step 1: get real road time matrix
+GET osrm:5000/table/v1/driving/{lng,lat;lng,lat;...}?annotations=duration,distance
+
+// Step 2: get road polyline for the optimized order
+GET osrm:5000/route/v1/driving/{lng,lat;lng,lat;...}?overview=full&geometries=geojson
+```
+
+#### 2.2 DTO
 
 File: `backend/src/tasks/dto/route-tasks.dto.ts`
 
@@ -164,7 +347,7 @@ class RouteTasksDto {
 
   @IsOptional()
   @IsNumber()
-  originLat?: number;   // PHI's current location (optional)
+  originLat?: number;   // PHI current position — prepended as waypoint index 0
 
   @IsOptional()
   @IsNumber()
@@ -172,88 +355,87 @@ class RouteTasksDto {
 }
 ```
 
-#### 1.4 Add Controller Endpoint
+When `originLat`/`originLng` are provided, the origin is inserted as index 0 in the distance matrix. OR-Tools routes from there and the origin point is stripped from the returned `orderedTaskIds` (it's not a task).
+
+#### 2.4 Controller endpoint
 
 File: `backend/src/tasks/tasks.controller.ts`
 
 ```
 POST /api/tasks/route
+Auth: JwtAuthGuard (PHI, SUPERVISOR, ADMIN)
 Body: RouteTasksDto
-Auth: JWT required (PHI or SUPERVISOR)
 Returns: RouteResult
 ```
 
-Guards: `JwtAuthGuard` only — both PHI and SUPERVISOR roles can call this.
+#### 2.5 Environment variables
 
-#### 1.5 Wire into TasksModule
+Add to `backend/.env`:
+```
+ROUTE_OPTIMIZER_URL=http://route-optimizer:8000
+OSRM_BASE_URL=http://osrm:5000
+```
 
-File: `backend/src/tasks/tasks.module.ts`
-- Register `RouteService` as a provider
-- Add `HttpModule` (or use Axios directly, consistent with `GeocodingService`)
+`ROUTE_AVG_SPEED_KMH` is no longer needed — real durations come directly from OSRM.
 
 ---
 
-### Phase 2 — Frontend: PHI Web Route View
+### Phase 3 — Frontend: PHI Web Route View
 
-#### 2.1 Extend Tasks Service
+#### 3.1 Extend tasks service
 
 File: `frontend/services/tasks.service.ts`
 
-Add:
 ```typescript
 export async function getOptimizedRoute(
   taskIds: string[],
-  origin?: { lat: number; lng: number }
+  origin?: { lat: number; lng: number },
 ): Promise<RouteResult>
 ```
 
-#### 2.2 Create `RouteMap` Component
+#### 3.2 `RouteMap` component
 
 File: `frontend/components/tasks/RouteMap.tsx`
 
 Built on top of the existing `map.tsx` MapLibre wrapper.
 
 Features:
-- Render numbered markers (1, 2, 3…) in optimized visit order using the existing `MapMarker` system
-- Draw the road polyline as a MapLibre `LineLayer` (blue, 3px)
-- Show task popups on marker click (reuse existing popup structure from `TasksMap.tsx`)
-- Start-point marker (PHI current location, if provided)
-- Summary panel overlay: total distance (km), estimated time (hh:mm)
+- Numbered markers (1, 2, 3…) using the existing `MapMarker` system, in optimized visit order
+- Road-snapped polyline from OSRM as a MapLibre `LineLayer` (blue, 3px)
+- Reuse existing task popup structure from `TasksMap.tsx`
+- Optional origin pin (current PHI location)
+- Summary overlay: total distance (km), estimated time (hh:mm)
 
-#### 2.3 Update PHI Map Page
+#### 3.3 Update PHI map page
 
 File: `frontend/app/(dashboard)/phi/map/page.tsx`
 
-Add a "Optimize Route" button above the map. On click:
+Add an "Optimize Route" button. On click:
 1. Collect IDs of all `ASSIGNED` and `IN_PROGRESS` tasks
-2. Optionally request geolocation for the origin point
+2. Optionally request browser geolocation for origin
 3. Call `getOptimizedRoute()`
-4. Switch map to `RouteMap` view
-5. Render an ordered task list sidebar alongside the map with ETAs per stop
+4. Switch map to `RouteMap`
+5. Show ordered task list sidebar with per-stop ETAs
 
-State:
 ```typescript
 const [routeMode, setRouteMode] = useState(false);
 const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
 ```
 
-#### 2.4 "Navigate" Deep Link
+#### 3.4 Navigate deep link
 
-In the ordered task list sidebar, each task row has a "Navigate" button:
+Each task in the route sidebar:
 ```
 https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=driving
 ```
-Opens Google Maps (or device default) with the task location pre-filled.
 
-#### 2.5 Auto-Recalculate on WebSocket Events
+#### 3.5 Auto-recalculate on WebSocket events
 
-The existing `useSocketEvent` hook in `SocketContext` already listens for `task:assigned` and `task:status_changed`. When the user is in route mode, subscribe to these events and silently recalculate the route (debounced 2s to avoid flicker).
+Use the existing `useSocketEvent` hook to listen for `task:assigned` and `task:status_changed`. When in route mode, re-call `getOptimizedRoute()` debounced by 2 seconds.
 
 ---
 
-### Phase 3 — Supervisor Route Preview
-
-#### 3.1 Bulk Assign + Route Preview
+### Phase 4 — Supervisor Route Preview
 
 File: `frontend/app/(dashboard)/supervisor/tasks/page.tsx`
 
@@ -261,41 +443,41 @@ Add a "Bulk Assign" mode:
 1. Supervisor selects multiple tasks via checkboxes
 2. Chooses a PHI from a dropdown
 3. Clicks "Preview Route" → calls `getOptimizedRoute()` for those task IDs
-4. A modal opens showing `RouteMap` with the proposed task order and total time/distance
-5. Supervisor confirms → calls `assignTask()` for each task ID in the optimized order (preserving order in task notes or a new `routeOrder` field)
+4. A modal shows `RouteMap` with the proposed visit order, total time and distance
+5. Supervisor confirms → calls `assignTask()` for each task ID
 
 ---
 
-### Phase 4 — Mobile App Route View
+### Phase 5 — Mobile App Route View
 
 File additions under `mobile/`:
 
-#### 4.1 Route API call
+#### 5.1 Route API call
 Add `getOptimizedRoute()` to mobile task service (mirrors frontend service).
 
-#### 4.2 Route Screen
-New screen: `mobile/screens/RouteScreen.tsx` (or equivalent mobile routing)
+#### 5.2 Route screen
+New screen: `mobile/screens/RouteScreen` (or equivalent)
 
 Features:
-- MapLibre (or Mapbox React Native) map with numbered markers and polyline
-- Scrollable ordered list below map
-- "Start Navigation" button per task → deep links to Google Maps / Apple Maps
-- "Mark Complete" shortcut directly from route view → calls `updateTaskStatus(id, IN_PROGRESS)` inline
+- Map with numbered markers and connecting lines
+- Scrollable ordered task list below map
+- "Start Navigation" → deep links to Google Maps / Apple Maps
+- "Mark as Done" shortcut → calls `updateTaskStatus()` inline
 
-#### 4.3 Navigation Entry Point
-Add "My Route" tab or button on PHI home screen / task list.
+#### 5.3 Entry point
+Add "My Route" tab or floating action button on PHI task list screen.
 
 ---
 
-### Phase 5 — Route Order Persistence (Optional Enhancement)
+### Phase 6 — Route Order Persistence (Optional Enhancement)
 
-If supervisors want to lock in a specific visit order (not always the OSRM-optimal one), add a `routeOrder` integer column to the `tasks` table:
+If supervisors want to lock in a custom visit order that overrides the optimizer, add a `route_order` integer column to the `tasks` table:
 
 ```sql
 ALTER TABLE tasks ADD COLUMN route_order INTEGER;
 ```
 
-This allows a supervisor to save a planned order and have the PHI's route view respect it instead of recalculating from scratch every time.
+This allows a supervisor to save a planned order. The PHI's route view reads `route_order` instead of re-running optimization on every load.
 
 ---
 
@@ -303,10 +485,10 @@ This allows a supervisor to save a planned order and have the PHI's route view r
 
 | Change | Type | Migration needed |
 |---|---|---|
-| `route_order INTEGER` column on `tasks` | Optional (Phase 5) | Yes — addColumn migration |
-| No other schema changes | — | — |
+| No schema changes for Phases 1–5 | — | No |
+| `route_order INTEGER` column (Phase 6, optional) | Enhancement | Yes — addColumn migration |
 
-For Phases 1–4, all routing data is computed on-the-fly and returned in API responses. Nothing is persisted.
+All routing data is computed on-the-fly. Nothing is persisted.
 
 ---
 
@@ -316,7 +498,7 @@ For Phases 1–4, all routing data is computed on-the-fly and returned in API re
 
 **Auth:** JWT (PHI, SUPERVISOR, ADMIN)
 
-**Request body:**
+**Request:**
 ```json
 {
   "taskIds": ["uuid-1", "uuid-2", "uuid-3"],
@@ -325,40 +507,51 @@ For Phases 1–4, all routing data is computed on-the-fly and returned in API re
 }
 ```
 
-**Response 200:**
+**Response 200 (success):**
 ```json
 {
   "orderedTaskIds": ["uuid-2", "uuid-1", "uuid-3"],
   "legs": [
-    { "durationSecs": 420, "distanceMeters": 3200 },
-    { "durationSecs": 600, "distanceMeters": 5100 }
+    { "distanceMeters": 3200, "durationSecs": 384 },
+    { "distanceMeters": 5100, "durationSecs": 612 }
   ],
-  "totalDurationSecs": 1020,
   "totalDistanceMeters": 8300,
-  "polyline": [[79.86, 6.93], [79.87, 6.92], ...],
+  "totalDurationSecs": 996,
+  "polyline": [[79.861, 6.927], [79.864, 6.924], ...],
   "routingUnavailable": false,
   "tasksWithoutLocation": []
 }
 ```
 
-**Response 200 (OSRM unavailable — graceful degradation):**
+`legs` durations and distances come directly from OSRM `/route` — actual road values, not estimates.
+
+**Response 200 (optimizer down — graceful degradation):**
 ```json
 {
   "orderedTaskIds": ["uuid-1", "uuid-2", "uuid-3"],
   "legs": [],
-  "totalDurationSecs": null,
   "totalDistanceMeters": null,
-  "polyline": [],
+  "totalDurationSecs": null,
   "routingUnavailable": true,
   "tasksWithoutLocation": []
 }
+```
+
+### Internal: `POST route-optimizer:8000/optimize`
+
+```json
+// Request
+{ "distance_matrix": [[0, 3200, 8300], [3200, 0, 5100], [8300, 5100, 0]] }
+
+// Response
+{ "ordered_indices": [1, 0, 2] }
 ```
 
 ---
 
 ## UI/UX Design Notes
 
-### PHI Route View (Web)
+### PHI Route View
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -366,13 +559,12 @@ For Phases 1–4, all routing data is computed on-the-fly and returned in API re
 ├──────────────────┬───────────────────────────────────────┤
 │  Route Summary   │                                       │
 │  ──────────────  │           MAP (RouteMap)              │
-│  ① Task A  15min │    ①──────②                           │
+│  ① Task A  15min │    ①~~~~~~②                           │
 │  ② Task B  22min │   /        \                          │
-│  ③ Task C  10min │  ③──────────                          │
+│  ③ Task C  10min │  ③~~~~~~~~~~                          │
 │                  │                                       │
-│  Total: 8.3km    │                                       │
+│  Total: 8.3km    │  (road-snapped polyline from OSRM)   │
 │  ~47 min         │                                       │
-│                  │                                       │
 │  [Navigate ①]    │                                       │
 │  [Navigate ②]    │                                       │
 │  [Navigate ③]    │                                       │
@@ -382,17 +574,7 @@ For Phases 1–4, all routing data is computed on-the-fly and returned in API re
 ### Marker Style
 - Numbered circles (1, 2, 3…) in task-status color, replacing the generic dot
 - Active/current task: pulsing ring (reuse existing URGENT animation)
-- Completed task: green checkmark overlay
-
----
-
-## Environment Variables
-
-Add to `backend/.env` and `docker-compose.yml`:
-
-```
-OSRM_BASE_URL=http://osrm:5000
-```
+- Completed task: green checkmark overlay on the number
 
 ---
 
@@ -400,28 +582,33 @@ OSRM_BASE_URL=http://osrm:5000
 
 | Area | What to test |
 |---|---|
-| `RouteService` unit tests | Correct OSRM URL construction; graceful degradation when OSRM returns 503; tasks with missing coords excluded correctly |
-| `POST /api/tasks/route` e2e | Auth guard (401 without token); valid request returns ordered IDs; empty taskIds returns 400 |
-| `RouteMap` component | Renders correct number of markers; polyline source added to map; summary panel shows formatted distance/time |
-| PHI map page | "Optimize Route" button triggers API call; WebSocket event triggers recalculation; route mode toggle |
-| OSRM container | Sri Lanka OSM data loads; `/trip` endpoint returns valid response for Colombo coordinates |
+| `optimizer.py` unit | Correct order for known triangle; N=1 returns `[0]`; 2s time cap respected |
+| `solve_tsp` fallback | Returns original order when solution not found |
+| `RouteService` unit | OSRM `/table` call correctly formatted; graceful degrade when OSRM down; graceful degrade when optimizer down; origin prepend/strip logic |
+| `POST /api/tasks/route` e2e | 401 without JWT; 400 on empty taskIds; correct order returned; polyline present; `tasksWithoutLocation` populated |
+| `RouteMap` component | Correct number of markers rendered; polyline LineLayer source added from response; summary panel shows OSRM values |
+| PHI map page | Button triggers API call; WebSocket event triggers recalculation |
+| Docker health | `route-optimizer` health endpoint returns 200; OSRM `/health` returns 200; both recover after restart |
+| OSRM data | `/table` returns valid matrix for known Colombo coords; `/route` returns GeoJSON geometry |
 
 ---
 
 ## Rollout Order
 
-1. **Sprint 1** — Backend: OSRM docker service + OSM data prep + `RouteService` + `POST /api/tasks/route`
-2. **Sprint 2** — Frontend PHI web: `RouteMap` component + PHI map page integration + Navigate deep links
-3. **Sprint 3** — Frontend Supervisor: Bulk assign with route preview modal
-4. **Sprint 4** — Mobile: Route screen + navigation deep links
-5. **Sprint 5 (optional)** — `route_order` persistence + supervisor route editing
+1. **Sprint 1** — OSRM docker service + Sri Lanka OSM data prep (`scripts/prepare-osrm.sh`) + `route-optimizer` Python service (OR-Tools)
+2. **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
+3. **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
+4. **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
+5. **Sprint 5** — Mobile: route screen + navigation deep links
+6. **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
 
 ---
 
 ## Open Questions
 
-1. **OSRM data freshness**: Sri Lanka OSM extract should be refreshed monthly. Is there an automated pipeline for this, or will it be a manual step?
-2. **PHI start location**: Should the route always start from the PHI's current GPS position, or from a fixed "home base" (e.g., the district health office)? The API supports both — UI decision needed.
-3. **Round trip vs one-way**: Should the route end back at the start point? OSRM `trip` service supports `roundtrip=false`. Default to one-way for v1.
-4. **Task count limit**: OSRM `trip` handles up to ~10 waypoints well. Above that, consider splitting into morning/afternoon batches. PHIs in this system typically have 3–8 tasks/day based on current task data.
-5. **Offline mobile support**: Can the mobile app cache the last route for offline access? OSRM responses are small (~5KB) so this is feasible with AsyncStorage.
+1. **PHI start location**: Should the route start from the PHI's current GPS position or a fixed home base (district health office)? Both are supported by the API. UI decision needed.
+2. **Round trip vs one-way**: Should the route end back at the start? OR-Tools supports both. Default one-way for v1.
+3. **Optimizer timeout budget**: 2s is the hard cap in OR-Tools. For N ≤ 15 this is more than enough. Should the NestJS HTTP timeout to the optimizer be 3s (adds 1s network headroom)?
+4. **OSRM data freshness**: Sri Lanka OSM extract should be refreshed periodically. Is there an automated pipeline for this, or a manual step?
+5. **Offline mobile caching**: Route responses are small (~2KB). Cache last result in AsyncStorage for offline access?
+6. **VRP upgrade timeline**: OR-Tools VRP (multiple PHIs) is the main v2 upgrade. When does this become a priority?
