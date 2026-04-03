@@ -380,7 +380,7 @@ OSRM_BASE_URL=http://osrm:5000
 
 ---
 
-### Phase 3 — Frontend: PHI Web Route View ⏳ Pending
+### Phase 3 — Frontend: PHI Web Route View ✅ Complete
 
 #### 3.1 Extend tasks service
 
@@ -597,7 +597,7 @@ All routing data is computed on-the-fly. Nothing is persisted.
 
 1. ✅ **Sprint 1** — OSRM docker service + Sri Lanka OSM data prep (`scripts/prepare-osrm.sh`) + `route-optimizer` Python service (OR-Tools)
 2. ✅ **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
-3. ⏳ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
+3. ✅ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
 4. ⏳ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
 5. ⏳ **Sprint 5** — Mobile: route screen + navigation deep links
 6. ⏳ **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
