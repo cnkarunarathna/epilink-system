@@ -71,6 +71,20 @@ services:
     volumes:
       - chatbot_chroma:/app/chroma_db
 
+  route-optimizer:
+    build:
+      context: ./route-optimizer
+      dockerfile: Dockerfile
+    container_name: epilink-route-optimizer
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   backend:
     build:
       context: ./backend
@@ -90,12 +104,14 @@ services:
       JWT_SECRET: epilink-dev-jwt-secret
       ML_SERVICE_URL: http://ml-model:8000
       EXPLAIN_ANALYTICS_URL: http://explain-analytics:8010
+      ROUTE_OPTIMIZER_URL: http://route-optimizer:8001
       NEXT_FRONTEND_URL: http://localhost:3000
       FRONTEND_URL: http://localhost:3000
     depends_on:
       - redis
       - ml-model
       - explain-analytics
+      - route-optimizer
     ports:
       - "3001:3001"
 

@@ -1,5 +1,6 @@
 /**
- * Login Screen — Clean form layout, password toggle, accent stripe, animated entrance
+ * Login Screen — Responsive, high-contrast layout with
+ * staggered entrance, dynamic hero scaling, and polished form card.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -14,6 +15,8 @@ import {
   Animated,
   Easing,
   TouchableOpacity,
+  useWindowDimensions,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useForm, Controller } from "react-hook-form";
@@ -33,16 +36,23 @@ import { getData, STORAGE_KEYS } from "../../utils/storage";
 
 export const LoginScreen: React.FC = () => {
   const { login } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const isSmallScreen = height < 700;
+  const isLargeScreen = height > 900;
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Animations
+  // ── Animation refs ────────────────────────────────────────────────
   const fadeHeader = useRef(new Animated.Value(0)).current;
+  const scaleHeader = useRef(new Animated.Value(0.92)).current;
   const fadeForm = useRef(new Animated.Value(0)).current;
-  const slideForm = useRef(new Animated.Value(40)).current;
+  const slideForm = useRef(new Animated.Value(50)).current;
   const fadeVersion = useRef(new Animated.Value(0)).current;
   const orbFloat = useRef(new Animated.Value(0)).current;
+  const orbFloat2 = useRef(new Animated.Value(0)).current;
+  const pulseScale = useRef(new Animated.Value(1)).current;
 
   const {
     control,
@@ -50,10 +60,7 @@ export const LoginScreen: React.FC = () => {
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   useEffect(() => {
@@ -66,12 +73,21 @@ export const LoginScreen: React.FC = () => {
 
   useEffect(() => {
     // Staggered entrance
-    Animated.stagger(250, [
-      Animated.timing(fadeHeader, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
+    Animated.stagger(200, [
+      Animated.parallel([
+        Animated.timing(fadeHeader, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.out(Easing.exp),
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleHeader, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]),
       Animated.parallel([
         Animated.timing(fadeForm, {
           toValue: 1,
@@ -80,36 +96,72 @@ export const LoginScreen: React.FC = () => {
         }),
         Animated.spring(slideForm, {
           toValue: 0,
-          tension: 40,
+          tension: 45,
           friction: 8,
           useNativeDriver: true,
         }),
       ]),
       Animated.timing(fadeVersion, {
         toValue: 1,
-        duration: 300,
+        duration: 400,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Floating orb
+    // Floating orb 1 (vertical)
     Animated.loop(
       Animated.sequence([
         Animated.timing(orbFloat, {
           toValue: 1,
-          duration: 3500,
+          duration: 3800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(orbFloat, {
           toValue: 0,
-          duration: 3500,
+          duration: 3800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ]),
     ).start();
-  }, [fadeHeader, fadeForm, slideForm, fadeVersion, orbFloat]);
+
+    // Floating orb 2 (offset phase)
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbFloat2, {
+          toValue: 1,
+          duration: 4800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(orbFloat2, {
+          toValue: 0,
+          duration: 4800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+
+    // Icon badge gentle pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseScale, {
+          toValue: 1.08,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseScale, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [fadeHeader, scaleHeader, fadeForm, slideForm, fadeVersion, orbFloat, orbFloat2, pulseScale]);
 
   const onSubmit = async (data: LoginFormData) => {
     setError(null);
@@ -125,17 +177,22 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
+  // Dynamic hero height based on screen size
+  const heroHeight = isSmallScreen ? 200 : isLargeScreen ? 300 : 255;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* Gradient hero top */}
+      <StatusBar barStyle="light-content" backgroundColor={colors.gradient.splash[0]} />
+
+      {/* ── Hero Gradient ── */}
       <LinearGradient
         colors={colors.gradient.splash}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.heroGradient}
+        style={[styles.heroGradient, { height: heroHeight }]}
       >
         {/* Decorative orbs */}
         <Animated.View
@@ -146,44 +203,92 @@ export const LoginScreen: React.FC = () => {
                 {
                   translateY: orbFloat.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -15],
+                    outputRange: [0, -18],
                   }),
                 },
               ],
             },
           ]}
         />
-        <Animated.View style={styles.decorOrb2} />
+        <Animated.View
+          style={[
+            styles.decorOrb2,
+            {
+              transform: [
+                {
+                  translateY: orbFloat2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 14],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <View style={styles.decorOrb3} />
       </LinearGradient>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: width > 400 ? spacing.xl : spacing.md,
+            paddingTop: isSmallScreen ? spacing.xxl : spacing.xxxl,
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header Section */}
-        <Animated.View style={[styles.header, { opacity: fadeHeader }]}>
+        {/* ── Header Section ── */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeHeader,
+              transform: [{ scale: scaleHeader }],
+              marginBottom: isSmallScreen ? spacing.md : spacing.xl,
+            },
+          ]}
+        >
+          {/* Logo row */}
           <View style={styles.logoContainer}>
-            <View style={[styles.iconBadge, shadows.xl]}>
+            <Animated.View
+              style={[
+                styles.iconBadge,
+                shadows.xl,
+                { transform: [{ scale: pulseScale }] },
+              ]}
+            >
               <MaterialCommunityIcons
                 name="pulse"
-                size={32}
+                size={isSmallScreen ? 26 : 32}
                 color={colors.primaryForeground}
               />
-            </View>
+            </Animated.View>
             <View style={styles.brandText}>
-              <Text style={styles.title}>
+              <Text style={[styles.title, { fontSize: isSmallScreen ? 28 : 36 }]}>
                 Epi<Text style={styles.titleHighlight}>Link</Text>
               </Text>
             </View>
           </View>
-          <Text style={styles.subtitle}>PHI Mobile Login</Text>
+
+          {/* Divider pill */}
+          <View style={styles.subtitlePill}>
+            <MaterialCommunityIcons
+              name="shield-check"
+              size={13}
+              color={colors.primaryForeground}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={styles.subtitlePillText}>PHI Mobile Login</Text>
+          </View>
+
           <Text style={styles.tagline}>
             Dengue Risk Monitoring & Cleanup Management
           </Text>
         </Animated.View>
 
-        {/* Form Card */}
+        {/* ── Form Card ── */}
         <Animated.View
           style={[
             styles.form,
@@ -194,230 +299,318 @@ export const LoginScreen: React.FC = () => {
             },
           ]}
         >
-          {/* Top accent stripe */}
-          <View style={styles.formAccentStripe} />
-
-          {error && <ErrorMessage message={error} />}
-
-          <Controller
-            control={control}
-            name="email"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                label="Email"
-                placeholder="phi@epilink.gov.lk"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                leftIcon="email-outline"
-                value={value}
-                onChangeText={onChange}
-                error={errors.email?.message}
-              />
-            )}
+          {/* Top accent stripe with gradient */}
+          <LinearGradient
+            colors={["#1cb657", "#00823c"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.formAccentStripe}
           />
 
-          <Controller
-            control={control}
-            name="password"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                label="Password"
-                placeholder="Enter your password"
-                secureTextEntry
-                leftIcon="lock-outline"
-                value={value}
-                onChangeText={onChange}
-                error={errors.password?.message}
-              />
-            )}
-          />
+          {/* Card inner */}
+          <View style={styles.formInner}>
+            {/* Section label */}
+            <Text style={styles.formSectionLabel}>Sign in to your account</Text>
 
-          {/* Forgot password */}
-          <TouchableOpacity
-            style={styles.forgotPasswordRow}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-          </TouchableOpacity>
+            {error && <ErrorMessage message={error} />}
 
-          {/* Remember me */}
-          <View style={styles.rememberRow}>
-            <View style={styles.rememberLeft}>
-              <MaterialCommunityIcons
-                name="shield-check-outline"
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.rememberText}>Remember me</Text>
-            </View>
-            <Switch
-              value={rememberMe}
-              onValueChange={setRememberMe}
-              trackColor={{
-                false: colors.border,
-                true: colors.primaryLight,
-              }}
-              thumbColor={rememberMe ? colors.primary : colors.card}
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, value } }) => (
+                <Input
+                  label="Email Address"
+                  placeholder="phi@epilink.gov.lk"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  leftIcon="email-outline"
+                  value={value}
+                  onChangeText={onChange}
+                  error={errors.email?.message}
+                />
+              )}
             />
+
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, value } }) => (
+                <Input
+                  label="Password"
+                  placeholder="Enter your password"
+                  secureTextEntry
+                  leftIcon="lock-outline"
+                  value={value}
+                  onChangeText={onChange}
+                  error={errors.password?.message}
+                />
+              )}
+            />
+
+            {/* Options row */}
+            <View style={styles.optionsRow}>
+              {/* Remember me */}
+              <View style={styles.rememberLeft}>
+                <Switch
+                  value={rememberMe}
+                  onValueChange={setRememberMe}
+                  trackColor={{
+                    false: colors.border,
+                    true: colors.primaryLight,
+                  }}
+                  thumbColor={rememberMe ? colors.primary : "#f0f0f0"}
+                  style={styles.switchCompact}
+                />
+                <Text style={styles.rememberText}>Remember me</Text>
+              </View>
+
+              {/* Forgot password */}
+              <TouchableOpacity activeOpacity={0.7}>
+                <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Button
+              title={isLoading ? "Signing in…" : "Sign In"}
+              onPress={handleSubmit(onSubmit)}
+              loading={isLoading}
+              disabled={isLoading}
+              variant="gradient"
+              icon="login"
+              size="large"
+            />
+
+            {/* Info notice */}
+            <View style={styles.helpRow}>
+              <MaterialCommunityIcons
+                name="information-outline"
+                size={13}
+                color={colors.textSecondary}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={styles.helpText}>
+                Access is restricted to registered PHI officers only.
+              </Text>
+            </View>
           </View>
-
-          <Button
-            title={isLoading ? "Signing in..." : "Sign In"}
-            onPress={handleSubmit(onSubmit)}
-            loading={isLoading}
-            disabled={isLoading}
-            variant="gradient"
-            icon="login"
-            size="large"
-          />
-
-          <Text style={styles.helpText}>
-            Only PHI users can access the mobile app.
-          </Text>
         </Animated.View>
 
-        <Animated.Text style={[styles.versionText, { opacity: fadeVersion }]}>
-          EpiLink v1.0.0
-        </Animated.Text>
+        {/* ── Footer ── */}
+        <Animated.View style={[styles.footer, { opacity: fadeVersion }]}>
+          <View style={styles.footerBadge}>
+            <MaterialCommunityIcons
+              name="shield-lock-outline"
+              size={12}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.versionText}>EpiLink v1.0.0 · Secure</Text>
+          </View>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
+  // ── Root ──────────────────────────────────────────────────────────
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
+
+  // ── Hero ──────────────────────────────────────────────────────────
   heroGradient: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 260,
-    borderBottomLeftRadius: 36,
-    borderBottomRightRadius: 36,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
     overflow: "hidden",
   },
   decorOrb1: {
     position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    top: 30,
-    right: -30,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    top: 20,
+    right: -40,
   },
   decorOrb2: {
     position: "absolute",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(74,222,128,0.08)",
-    bottom: 20,
-    left: 20,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(74,222,128,0.10)",
+    bottom: 30,
+    left: 24,
   },
+  decorOrb3: {
+    position: "absolute",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    top: 80,
+    left: 60,
+  },
+
+  // ── Scroll content ────────────────────────────────────────────────
   content: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: spacing.xl,
-    paddingTop: spacing.xxxl,
+    paddingBottom: spacing.xl,
   },
+
+  // ── Header ────────────────────────────────────────────────────────
   header: {
     alignItems: "center",
-    marginBottom: spacing.xl,
   },
   logoContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   iconBadge: {
-    width: 56,
-    height: 56,
+    width: 60,
+    height: 60,
     borderRadius: borderRadius.xl,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     marginRight: spacing.sm,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.25)",
   },
   brandText: {
     justifyContent: "center",
   },
   title: {
-    fontSize: 34,
     fontWeight: typography.fontWeight.bold,
-    color: colors.text,
+    color: colors.primaryForeground,
+    letterSpacing: -0.5,
   },
   titleHighlight: {
-    color: colors.primary,
+    color: "#4ade80",
   },
-  subtitle: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    fontWeight: typography.fontWeight.medium,
+  subtitlePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,130,60,0.55)",
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  subtitlePillText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primaryForeground,
+    fontWeight: typography.fontWeight.semibold,
+    letterSpacing: 0.4,
   },
   tagline: {
     fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    opacity: 0.6,
+    color: "rgba(255,255,255,0.70)",
     textAlign: "center",
+    letterSpacing: 0.2,
   },
+
+  // ── Form Card ─────────────────────────────────────────────────────
   form: {
     backgroundColor: colors.card,
-    padding: spacing.lg,
-    paddingTop: 0,
-    borderRadius: borderRadius["2xl"],
+    borderRadius: borderRadius["3xl"],
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "hidden",
+    // Subtle green-tinted shadow
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 6,
   },
   formAccentStripe: {
-    height: 3,
-    backgroundColor: colors.primary,
-    marginHorizontal: -spacing.lg,
-    marginBottom: spacing.lg,
+    height: 4,
   },
-  forgotPasswordRow: {
-    alignSelf: "flex-end",
-    marginTop: -spacing.xs,
+  formInner: {
+    padding: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  formSectionLabel: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.text,
     marginBottom: spacing.md,
+    letterSpacing: 0.1,
   },
-  forgotPasswordText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
-    fontWeight: typography.fontWeight.medium,
-  },
-  rememberRow: {
+
+  // ── Options row ───────────────────────────────────────────────────
+  optionsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: spacing.lg,
+    marginTop: -spacing.xs,
   },
   rememberLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: 6,
+  },
+  switchCompact: {
+    transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
   },
   rememberText: {
     fontSize: typography.fontSize.sm,
     color: colors.text,
     fontWeight: typography.fontWeight.medium,
   },
-  helpText: {
+  forgotPasswordText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+
+  // ── Help row ──────────────────────────────────────────────────────
+  helpRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 5,
     marginTop: spacing.md,
-    textAlign: "center",
+    backgroundColor: colors.muted,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+  },
+  helpText: {
+    flex: 1,
     fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
+    color: colors.mutedForeground,
+    lineHeight: typography.fontSize.xs * 1.6,
+  },
+
+  // ── Footer ────────────────────────────────────────────────────────
+  footer: {
+    alignItems: "center",
+    marginTop: spacing.lg,
+  },
+  footerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: colors.muted,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
   },
   versionText: {
-    textAlign: "center",
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
-    marginTop: spacing.xl,
-    opacity: 0.5,
+    fontWeight: typography.fontWeight.medium,
+    letterSpacing: 0.3,
   },
 });
