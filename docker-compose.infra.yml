@@ -20,6 +20,17 @@ services:
     volumes:
       - qdrantdata:/qdrant/storage
 
+  osrm:
+    image: osrm/osrm-backend:latest
+    platform: linux/amd64
+    container_name: epilink-osrm
+    restart: on-failure
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld /data/sri-lanka-latest.osrm
+    ports:
+      - "5000:5000"
+
 volumes:
   redisdata:
   qdrantdata:

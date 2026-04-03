@@ -324,6 +324,35 @@ export function getPriorityColor(priority: TaskPriority): string {
   return colors[priority] || "text-gray-500";
 }
 
+// Route optimization
+export interface RouteLeg {
+  distanceMeters: number;
+  durationSecs: number;
+}
+
+export interface RouteResult {
+  orderedTaskIds: string[];
+  legs: RouteLeg[];
+  totalDistanceMeters: number | null;
+  totalDurationSecs: number | null;
+  polyline: [number, number][];
+  routingUnavailable: boolean;
+  tasksWithoutLocation: string[];
+}
+
+export async function getOptimizedRoute(
+  taskIds: string[],
+  origin?: { lat: number; lng: number },
+): Promise<RouteResult> {
+  const token = localStorage.getItem("accessToken");
+  const res = await axios.post(
+    `${API_BASE}/tasks/route`,
+    { taskIds, originLat: origin?.lat, originLng: origin?.lng },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.data;
+}
+
 // Geocoding interfaces
 export interface GeocodingResult {
   latitude: number;

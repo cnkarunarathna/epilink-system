@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { TasksService, TaskFilters } from './tasks.service';
 import { GeocodingService } from './geocoding.service';
+import { RouteService } from './route.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import {
   UpdateTaskDto,
@@ -25,6 +26,7 @@ import {
   ReverseGeocodeDto,
   SearchAddressDto,
 } from './dto/geocoding.dto';
+import { RouteTasksDto } from './dto/route-tasks.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TaskStatus, TaskType, TaskPriority } from './entities/task.entity';
 import { UserRole } from '../entities/user.entity';
@@ -35,6 +37,7 @@ export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
     private readonly geocodingService: GeocodingService,
+    private readonly routeService: RouteService,
   ) {}
 
   @Post()
@@ -70,6 +73,11 @@ export class TasksController {
   @Get('phis/:districtName')
   getPhisByDistrict(@Param('districtName') districtName: string) {
     return this.tasksService.getPhisByDistrict(districtName);
+  }
+
+  @Post('route')
+  optimizeRoute(@Body() dto: RouteTasksDto) {
+    return this.routeService.optimizeRoute(dto.taskIds, dto.originLat, dto.originLng);
   }
 
   @Get(':id')

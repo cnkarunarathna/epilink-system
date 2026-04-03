@@ -149,7 +149,7 @@ Frontend renders:
 
 ## Implementation Plan
 
-### Phase 1 — Python Route Optimizer Microservice
+### Phase 1 — Python Route Optimizer Microservice ✅ Complete
 
 #### 1.1 Service directory structure
 
@@ -293,7 +293,7 @@ This runs once. The processed files in `./osrm-data/` are reused on every contai
 
 ---
 
-### Phase 2 — NestJS Backend: RouteService & Endpoint
+### Phase 2 — NestJS Backend: RouteService & Endpoint ✅ Complete
 
 #### 2.1 `RouteService`
 
@@ -380,7 +380,7 @@ OSRM_BASE_URL=http://osrm:5000
 
 ---
 
-### Phase 3 — Frontend: PHI Web Route View
+### Phase 3 — Frontend: PHI Web Route View ✅ Complete
 
 #### 3.1 Extend tasks service
 
@@ -435,7 +435,7 @@ Use the existing `useSocketEvent` hook to listen for `task:assigned` and `task:s
 
 ---
 
-### Phase 4 — Supervisor Route Preview
+### Phase 4 — Supervisor Route Preview ⏳ Pending
 
 File: `frontend/app/(dashboard)/supervisor/tasks/page.tsx`
 
@@ -448,7 +448,7 @@ Add a "Bulk Assign" mode:
 
 ---
 
-### Phase 5 — Mobile App Route View
+### Phase 5 — Mobile App Route View ⏳ Pending
 
 File additions under `mobile/`:
 
@@ -469,7 +469,7 @@ Add "My Route" tab or floating action button on PHI task list screen.
 
 ---
 
-### Phase 6 — Route Order Persistence (Optional Enhancement)
+### Phase 6 — Route Order Persistence (Optional Enhancement) ⏳ Pending
 
 If supervisors want to lock in a custom visit order that overrides the optimizer, add a `route_order` integer column to the `tasks` table:
 
@@ -595,12 +595,12 @@ All routing data is computed on-the-fly. Nothing is persisted.
 
 ## Rollout Order
 
-1. **Sprint 1** — OSRM docker service + Sri Lanka OSM data prep (`scripts/prepare-osrm.sh`) + `route-optimizer` Python service (OR-Tools)
-2. **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
-3. **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
-4. **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
-5. **Sprint 5** — Mobile: route screen + navigation deep links
-6. **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
+1. ✅ **Sprint 1** — OSRM docker service + Sri Lanka OSM data prep (`scripts/prepare-osrm.sh`) + `route-optimizer` Python service (OR-Tools)
+2. ✅ **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
+3. ✅ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
+4. ⏳ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
+5. ⏳ **Sprint 5** — Mobile: route screen + navigation deep links
+6. ⏳ **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
 
 ---
 
