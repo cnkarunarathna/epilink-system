@@ -435,7 +435,7 @@ Use the existing `useSocketEvent` hook to listen for `task:assigned` and `task:s
 
 ---
 
-### Phase 4 — Supervisor Route Preview ⏳ Pending
+### Phase 4 — Supervisor Route Preview ✅ Complete
 
 File: `frontend/app/(dashboard)/supervisor/tasks/page.tsx`
 
@@ -598,7 +598,7 @@ All routing data is computed on-the-fly. Nothing is persisted.
 1. ✅ **Sprint 1** — OSRM docker service + Sri Lanka OSM data prep (`scripts/prepare-osrm.sh`) + `route-optimizer` Python service (OR-Tools)
 2. ✅ **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
 3. ✅ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
-4. ⏳ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
+4. ✅ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
 5. ⏳ **Sprint 5** — Mobile: route screen + navigation deep links
 6. ⏳ **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
 
