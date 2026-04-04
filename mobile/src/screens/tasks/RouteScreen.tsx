@@ -403,8 +403,16 @@ export const RouteScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Unavailable warning */}
-        {routeResult?.routingUnavailable && (
+        {/* Supervisor route badge */}
+        {routeResult?.usedSavedOrder && (
+          <View style={[styles.savedOrderBanner, { top: insets.top + spacing.sm }]}>
+            <MaterialCommunityIcons name="shield-check" size={14} color={colors.primary} />
+            <Text style={styles.savedOrderText}>Route set by supervisor</Text>
+          </View>
+        )}
+
+        {/* Unavailable warning (only shown when not a saved route) */}
+        {routeResult?.routingUnavailable && !routeResult.usedSavedOrder && (
           <View style={[styles.warningBanner, { top: insets.top + spacing.sm }]}>
             <MaterialCommunityIcons name="alert" size={14} color={colors.warning} />
             <Text style={styles.warningText}>Road routing unavailable — estimated order shown</Text>
@@ -568,6 +576,25 @@ const styles = StyleSheet.create({
   recalcText: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
+  },
+  savedOrderBanner: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primary + "40",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    ...shadows.sm,
+  },
+  savedOrderText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
   },
   warningBanner: {
     position: "absolute",

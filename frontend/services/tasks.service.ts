@@ -56,6 +56,7 @@ export interface Task {
   assignedAt: string | null;
   submittedAt: string | null;
   completedAt: string | null;
+  routeOrder: number | null;
   district?: {
     id: number;
     name: string;
@@ -338,6 +339,8 @@ export interface RouteResult {
   polyline: [number, number][];
   routingUnavailable: boolean;
   tasksWithoutLocation: string[];
+  /** True when the order came from a supervisor-saved route_order */
+  usedSavedOrder: boolean;
 }
 
 export async function getOptimizedRoute(
@@ -351,6 +354,17 @@ export async function getOptimizedRoute(
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return res.data;
+}
+
+export async function saveRouteOrder(
+  orders: { taskId: string; order: number }[],
+): Promise<void> {
+  const token = localStorage.getItem("accessToken");
+  await axios.patch(
+    `${API_BASE}/tasks/route-order`,
+    { orders },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
 }
 
 // Geocoding interfaces

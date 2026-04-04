@@ -124,4 +124,7 @@ export class Task {
 
   @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
   completedAt: Date | null;
+
+  @Column({ name: 'route_order', type: 'int', nullable: true })
+  routeOrder: number | null;
 }

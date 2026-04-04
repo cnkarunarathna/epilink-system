@@ -292,6 +292,17 @@ export class TasksService {
     return taskWithRelations;
   }
 
+  async saveRouteOrder(
+    orders: { taskId: string; order: number }[],
+  ): Promise<void> {
+    await Promise.all(
+      orders.map(({ taskId, order }) =>
+        this.taskRepository.update(taskId, { routeOrder: order }),
+      ),
+    );
+    await this.invalidateTaskCaches();
+  }
+
   async remove(id: string): Promise<void> {
     const task = await this.findOne(id);
     const districtName = task.district?.name;

@@ -469,15 +469,28 @@ Add "My Route" tab or floating action button on PHI task list screen.
 
 ---
 
-### Phase 6 — Route Order Persistence (Optional Enhancement) ⏳ Pending
+### Phase 6 — Route Order Persistence ✅ Complete
 
-If supervisors want to lock in a custom visit order that overrides the optimizer, add a `route_order` integer column to the `tasks` table:
+Supervisors can lock in a visit order that overrides the optimizer. When a supervisor previews a route and confirms assignment, the optimized order is automatically saved as `route_order` on each task.
 
+**Database change:**
 ```sql
 ALTER TABLE tasks ADD COLUMN route_order INTEGER;
 ```
 
-This allows a supervisor to save a planned order. The PHI's route view reads `route_order` instead of re-running optimization on every load.
+**New endpoint:**
+```
+PATCH /api/tasks/route-order
+Auth: JWT (SUPERVISOR, ADMIN)
+Body: { "orders": [{ "taskId": "uuid", "order": 1 }, ...] }
+```
+
+**Behavior:**
+- `POST /api/tasks/route` now checks if all requested tasks already have a `route_order`. If so, it returns them in that saved order (skipping OSRM `/table` and OR-Tools) — still calls OSRM `/route` for the road polyline.
+- When the PHI opens "My Route", the saved order is returned instantly with no optimizer overhead.
+- `RouteResult` gains `usedSavedOrder: boolean` so clients can show a "Route set by supervisor" indicator.
+- Mobile app shows a green "Route set by supervisor" pill badge on the map view.
+- Supervisor side: `handleConfirmAssign` calls `saveRouteOrder()` silently after assigning. Failure is non-fatal and logged as a warning (assignment still succeeds).
 
 ---
 
@@ -486,7 +499,7 @@ This allows a supervisor to save a planned order. The PHI's route view reads `ro
 | Change | Type | Migration needed |
 |---|---|---|
 | No schema changes for Phases 1–5 | — | No |
-| `route_order INTEGER` column (Phase 6, optional) | Enhancement | Yes — addColumn migration |
+| `route_order INTEGER` column (Phase 6) | Enhancement | Yes — `1743724800000-AddRouteOrderToTasks` |
 
 All routing data is computed on-the-fly. Nothing is persisted.
 
@@ -600,7 +613,7 @@ All routing data is computed on-the-fly. Nothing is persisted.
 3. ✅ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
 4. ✅ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
 5. ✅ **Sprint 5** — Mobile: route screen + navigation deep links
-6. ⏳ **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
+6. ✅ **Sprint 6** — `route_order` persistence + supervisor route editing
 
 ---
 
