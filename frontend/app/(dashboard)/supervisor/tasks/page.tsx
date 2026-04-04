@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Plus,
   Search,
   RefreshCw,
@@ -36,27 +45,53 @@ import {
   ChevronRight,
   List,
   MapIcon,
+  Route,
+  X,
+  CheckSquare,
+  Users,
 } from "lucide-react";
 import {
   fetchTasks,
+  fetchPhisByDistrict,
+  getOptimizedRoute,
+  assignTask,
   Task,
   TaskStatus,
   TaskType,
-  TaskPriority,
+  RouteResult,
   getStatusColor,
   getPriorityColor,
 } from "@/services/tasks.service";
 import { toast } from "sonner";
 import TasksMap from "@/components/tasks/TasksMap";
+import { RouteMap } from "@/components/tasks/RouteMap";
 import { useSocketEvent } from "@/hooks/useSocket";
+import { useAuth } from "@/contexts/AuthContext";
+
+type PhiOption = { id: string; name: string; email: string; isActive: boolean };
 
 export default function TasksListPage() {
+  const { user } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<TaskType | "all">("all");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+
+  // Bulk select state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [phiOptions, setPhiOptions] = useState<PhiOption[]>([]);
+  const [phiOptionsLoading, setPhiOptionsLoading] = useState(false);
+  const [selectedPhiId, setSelectedPhiId] = useState<string>("");
+
+  // Route preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRoute, setPreviewRoute] = useState<RouteResult | null>(null);
+  const [assigning, setAssigning] = useState(false);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -78,7 +113,17 @@ export default function TasksListPage() {
     loadTasks();
   }, [loadTasks]);
 
-  // ==================== WebSocket: Real-time task updates ====================
+  // Load PHI options when bulk mode is activated
+  useEffect(() => {
+    if (!bulkMode || !user?.district) return;
+    setPhiOptionsLoading(true);
+    fetchPhisByDistrict(user.district)
+      .then((phis) => setPhiOptions(phis.filter((p) => p.isActive)))
+      .catch(() => toast.error("Failed to load PHI list"))
+      .finally(() => setPhiOptionsLoading(false));
+  }, [bulkMode, user?.district]);
+
+  // ==================== WebSocket ====================
 
   const handleTaskCreated = useCallback((newTask: Task) => {
     setTasks((prev) => [newTask, ...prev]);
@@ -122,12 +167,100 @@ export default function TasksListPage() {
   useSocketEvent("task:assigned", handleTaskAssigned, [handleTaskAssigned]);
   useSocketEvent("task:deleted", handleTaskDeleted, [handleTaskDeleted]);
 
-  // Filter by search query
+  // ==================== Filtering ====================
+
   const filteredTasks = tasks.filter(
     (task) =>
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.assignedPhi?.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  // Tasks eligible for bulk route preview (must have lat/lng)
+  const selectedTasksWithLocation = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          selectedIds.has(t.id) &&
+          t.latitude !== null &&
+          t.longitude !== null,
+      ),
+    [tasks, selectedIds],
+  );
+
+  const canPreviewRoute =
+    selectedIds.size >= 1 &&
+    selectedPhiId !== "" &&
+    selectedTasksWithLocation.length >= 2;
+
+  // ==================== Bulk select helpers ====================
+
+  const toggleBulkMode = useCallback(() => {
+    setBulkMode((prev) => !prev);
+    setSelectedIds(new Set());
+    setSelectedPhiId("");
+    setPreviewRoute(null);
+  }, []);
+
+  const toggleTask = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    if (selectedIds.size === filteredTasks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredTasks.map((t) => t.id)));
+    }
+  }, [selectedIds.size, filteredTasks]);
+
+  // ==================== Route preview ====================
+
+  const handlePreviewRoute = useCallback(async () => {
+    const taskIds = Array.from(selectedIds);
+    setPreviewLoading(true);
+    try {
+      const result = await getOptimizedRoute(taskIds);
+      setPreviewRoute(result);
+      setPreviewOpen(true);
+      if (result.routingUnavailable) {
+        toast.warning("Road routing unavailable — showing estimated order.");
+      }
+    } catch {
+      toast.error("Failed to compute route. Please try again.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [selectedIds]);
+
+  // ==================== Assign & confirm ====================
+
+  const handleConfirmAssign = useCallback(async () => {
+    if (!selectedPhiId) return;
+    const taskIds = Array.from(selectedIds);
+    setAssigning(true);
+    try {
+      await Promise.all(taskIds.map((id) => assignTask(id, selectedPhiId)));
+      const phi = phiOptions.find((p) => p.id === selectedPhiId);
+      toast.success(
+        `${taskIds.length} task${taskIds.length !== 1 ? "s" : ""} assigned to ${phi?.name ?? "PHI"}`,
+      );
+      setPreviewOpen(false);
+      setPreviewRoute(null);
+      setBulkMode(false);
+      setSelectedIds(new Set());
+      setSelectedPhiId("");
+      await loadTasks();
+    } catch {
+      toast.error("Failed to assign some tasks. Please try again.");
+    } finally {
+      setAssigning(false);
+    }
+  }, [selectedPhiId, selectedIds, phiOptions, loadTasks]);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
@@ -137,6 +270,8 @@ export default function TasksListPage() {
       year: "numeric",
     });
   };
+
+  const selectedPhi = phiOptions.find((p) => p.id === selectedPhiId);
 
   return (
     <div className="space-y-6">
@@ -148,12 +283,33 @@ export default function TasksListPage() {
             Manage and track all tasks in your district
           </p>
         </div>
-        <Link href="/supervisor/tasks/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Task
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {viewMode === "list" && (
+            <Button
+              variant={bulkMode ? "secondary" : "outline"}
+              size="sm"
+              onClick={toggleBulkMode}
+            >
+              {bulkMode ? (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Exit Bulk Select
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="mr-2 h-4 w-4" />
+                  Bulk Assign
+                </>
+              )}
+            </Button>
+          )}
+          <Link href="/supervisor/tasks/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Task
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -241,6 +397,93 @@ export default function TasksListPage() {
         </CardContent>
       </Card>
 
+      {/* Bulk assign action bar */}
+      {bulkMode && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Users className="h-4 w-4 text-primary" />
+                <span>
+                  {selectedIds.size === 0
+                    ? "Select tasks to assign"
+                    : `${selectedIds.size} task${selectedIds.size !== 1 ? "s" : ""} selected`}
+                </span>
+              </div>
+
+              <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:ml-auto">
+                <Select
+                  value={selectedPhiId}
+                  onValueChange={setSelectedPhiId}
+                  disabled={phiOptionsLoading}
+                >
+                  <SelectTrigger className="w-full sm:w-[220px] bg-background">
+                    {phiOptionsLoading ? (
+                      <span className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Loading PHIs…
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select a PHI…" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {phiOptions.map((phi) => (
+                      <SelectItem key={phi.id} value={phi.id}>
+                        {phi.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  size="sm"
+                  onClick={handlePreviewRoute}
+                  disabled={!canPreviewRoute || previewLoading}
+                  title={
+                    selectedIds.size < 1
+                      ? "Select at least 1 task"
+                      : !selectedPhiId
+                        ? "Choose a PHI first"
+                        : selectedTasksWithLocation.length < 2
+                          ? "Need ≥2 tasks with location to preview route"
+                          : undefined
+                  }
+                >
+                  {previewLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Route className="h-4 w-4" />
+                  )}
+                  <span className="ml-1.5">Preview Route</span>
+                </Button>
+
+                {selectedIds.size > 0 && selectedPhiId && selectedTasksWithLocation.length < 2 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleConfirmAssign}
+                    disabled={assigning || selectedIds.size === 0 || !selectedPhiId}
+                  >
+                    {assigning ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    <span className="ml-1">Assign</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+            {selectedIds.size > 0 && selectedTasksWithLocation.length < 2 && selectedTasksWithLocation.length < selectedIds.size && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {selectedIds.size - selectedTasksWithLocation.length} selected task
+                {selectedIds.size - selectedTasksWithLocation.length !== 1 ? "s" : ""} missing
+                location — route preview requires ≥2 tasks with coordinates.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tasks View */}
       {viewMode === "map" ? (
         <Card>
@@ -279,21 +522,53 @@ export default function TasksListPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {bulkMode && (
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={
+                            filteredTasks.length > 0 &&
+                            selectedIds.size === filteredTasks.length
+                          }
+                          onCheckedChange={toggleAll}
+                          aria-label="Select all"
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Title</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Assigned To</TableHead>
                     <TableHead>Priority</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Due Date</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    {!bulkMode && <TableHead className="w-[50px]"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredTasks.map((task) => (
                     <TableRow
                       key={task.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className={
+                        bulkMode
+                          ? selectedIds.has(task.id)
+                            ? "bg-primary/5 cursor-pointer"
+                            : "cursor-pointer hover:bg-muted/50"
+                          : "cursor-pointer hover:bg-muted/50"
+                      }
+                      onClick={
+                        bulkMode ? () => toggleTask(task.id) : undefined
+                      }
                     >
+                      {bulkMode && (
+                        <TableCell
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={selectedIds.has(task.id)}
+                            onCheckedChange={() => toggleTask(task.id)}
+                            aria-label={`Select ${task.title}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">
                         {task.title}
                       </TableCell>
@@ -314,13 +589,15 @@ export default function TasksListPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{formatDate(task.dueDate)}</TableCell>
-                      <TableCell>
-                        <Link href={`/supervisor/tasks/${task.id}`}>
-                          <Button variant="ghost" size="icon">
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      </TableCell>
+                      {!bulkMode && (
+                        <TableCell>
+                          <Link href={`/supervisor/tasks/${task.id}`}>
+                            <Button variant="ghost" size="icon">
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -336,6 +613,47 @@ export default function TasksListPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Route Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-3xl w-full">
+          <DialogHeader>
+            <DialogTitle>Route Preview</DialogTitle>
+            <DialogDescription>
+              Optimized visit order for{" "}
+              <span className="font-medium">{selectedPhi?.name}</span> —{" "}
+              {selectedIds.size} task{selectedIds.size !== 1 ? "s" : ""}{" "}
+              selected
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewRoute && (
+            <RouteMap
+              tasks={tasks.filter((t) => selectedIds.has(t.id))}
+              routeResult={previewRoute}
+              height={420}
+              basePath="/supervisor/tasks"
+            />
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPreviewOpen(false)}
+              disabled={assigning}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmAssign} disabled={assigning}>
+              {assigning ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Assign {selectedIds.size} task
+              {selectedIds.size !== 1 ? "s" : ""} to {selectedPhi?.name}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -24,7 +24,8 @@ export type MainTabParamList = {
   Tasks: { screen?: string; params?: any } | undefined;
   TaskMap: undefined;
   RiskMap: undefined;
-  Profile: undefined;
+  Route: undefined;
+  Profile: undefined; // hidden from tab bar — navigated via home avatar
 };
 
 // Task Stack Navigator (nested in Tasks tab)

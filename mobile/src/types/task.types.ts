@@ -97,6 +97,22 @@ export interface UpdateTaskStatusRequest {
   rejectionReason?: string;
 }
 
+export interface RouteLeg {
+  distanceMeters: number;
+  durationSecs: number;
+}
+
+export interface RouteResult {
+  orderedTaskIds: string[];
+  legs: RouteLeg[];
+  totalDistanceMeters: number | null;
+  totalDurationSecs: number | null;
+  /** Road-snapped coordinates as [lng, lat] pairs */
+  polyline: [number, number][];
+  routingUnavailable: boolean;
+  tasksWithoutLocation: string[];
+}
+
 export interface CreateEvidenceRequest {
   imageUrl: string;
   notes?: string;

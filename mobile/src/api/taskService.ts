@@ -8,6 +8,7 @@ import {
   TaskStats,
   TaskStatus,
   UpdateTaskStatusRequest,
+  RouteResult,
 } from "../types/task.types";
 
 /**
@@ -53,5 +54,20 @@ export const updateTaskStatus = async (
  */
 export const getTaskStats = async (): Promise<TaskStats> => {
   const response = await apiClient.get<TaskStats>("/tasks/stats");
+  return response.data;
+};
+
+/**
+ * Get optimized visit order for a set of tasks
+ */
+export const getOptimizedRoute = async (
+  taskIds: string[],
+  origin?: { lat: number; lng: number },
+): Promise<RouteResult> => {
+  const response = await apiClient.post<RouteResult>("/tasks/route", {
+    taskIds,
+    originLat: origin?.lat,
+    originLng: origin?.lng,
+  });
   return response.data;
 };

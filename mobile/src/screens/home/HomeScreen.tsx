@@ -290,14 +290,19 @@ export const HomeScreen: React.FC = () => {
                     color="rgba(255,255,255,0.85)"
                   />
                 </TouchableOpacity>
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
-                  style={styles.avatarCircle}
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("Profile")}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.avatarText}>
-                    {(user?.name || "P").charAt(0).toUpperCase()}
-                  </Text>
-                </LinearGradient>
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
+                    style={styles.avatarCircle}
+                  >
+                    <Text style={styles.avatarText}>
+                      {(user?.name || "P").charAt(0).toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -547,16 +552,16 @@ export const HomeScreen: React.FC = () => {
               onPress={() => navigation.navigate("Tasks")}
             />
             <ActionCard
-              icon="map-marker-radius"
-              label="Task Map"
+              icon="map-marker-path"
+              label="My Route"
               color={colors.primaryDark}
-              onPress={() => navigation.navigate("TaskMap")}
+              onPress={() => navigation.navigate("Route")}
             />
             <ActionCard
-              icon="account-circle"
-              label="Profile"
+              icon="map-marker-radius"
+              label="Task Map"
               color={colors.primaryLight}
-              onPress={() => navigation.navigate("Profile")}
+              onPress={() => navigation.navigate("TaskMap")}
             />
           </View>
         </Animated.View>
