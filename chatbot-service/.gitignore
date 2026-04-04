@@ -11,9 +11,6 @@ __pycache__/
 # Virtual environment (uv)
 .venv/
 
-# ChromaDB persistence
-chroma_db/
-
 # IDE
 .idea/
 .vscode/

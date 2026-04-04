@@ -6,9 +6,10 @@ load_dotenv()
 # Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# ChromaDB
-CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-COLLECTION_NAME = "dengue_knowledge"
+# Qdrant
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "dengue_knowledge")
+QDRANT_VECTOR_SIZE = 768  # text-embedding-004 output dimension
 
 # Data directory for PDFs
 DATA_DIR = os.getenv("DATA_DIR", "./data")

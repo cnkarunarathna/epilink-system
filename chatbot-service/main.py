@@ -105,7 +105,7 @@ async def chat(request: ChatRequest):
 
 @app.post("/ingest", response_model=IngestResponse, tags=["Admin"])
 async def ingest_pdfs():
-    """Ingest all PDFs from the data directory into ChromaDB"""
+    """Ingest all PDFs from the data directory into Qdrant"""
     try:
         rag_service = get_rag_service()
         results = rag_service.ingest_all_pdfs()
