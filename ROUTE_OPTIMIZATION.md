@@ -448,7 +448,7 @@ Add a "Bulk Assign" mode:
 
 ---
 
-### Phase 5 — Mobile App Route View ⏳ Pending
+### Phase 5 — Mobile App Route View ✅ Complete
 
 File additions under `mobile/`:
 
@@ -599,7 +599,7 @@ All routing data is computed on-the-fly. Nothing is persisted.
 2. ✅ **Sprint 2** — NestJS `RouteService`: OSRM `/table` → OR-Tools → OSRM `/route` + `POST /api/tasks/route` + graceful degradation
 3. ✅ **Sprint 3** — Frontend PHI web: `RouteMap` component + PHI map page integration + navigate deep links
 4. ✅ **Sprint 4** — Frontend Supervisor: bulk assign + route preview modal
-5. ⏳ **Sprint 5** — Mobile: route screen + navigation deep links
+5. ✅ **Sprint 5** — Mobile: route screen + navigation deep links
 6. ⏳ **Sprint 6 (optional)** — `route_order` persistence + supervisor route editing
 
 ---
