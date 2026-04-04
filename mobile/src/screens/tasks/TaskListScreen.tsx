@@ -137,6 +137,7 @@ export const TaskListScreen: React.FC = () => {
           />
         </View>
       )}
+
     </SafeAreaView>
   );
 };
