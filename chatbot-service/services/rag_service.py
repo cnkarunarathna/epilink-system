@@ -4,7 +4,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from qdrant_client import QdrantClient
@@ -35,10 +35,52 @@ from config import (
     QDRANT_VECTOR_SIZE,
     RETRIEVAL_LIMIT,
     SCORE_THRESHOLD,
+    SESSION_MAX_TURNS,
+    SESSION_TTL_MINUTES,
 )
 
 # Valid categories matching the manifest
 _VALID_CATEGORIES = {"symptoms", "prevention", "treatment", "epidemiology", "general"}
+
+# ── Session store ──────────────────────────────────────────────────────────────
+# Structure: session_id → {"history": [{role, content, timestamp}], "last_active": datetime}
+_sessions: dict[str, dict] = {}
+
+
+def create_session() -> str:
+    """Create a new session and return its ID."""
+    session_id = str(uuid.uuid4())
+    _sessions[session_id] = {
+        "history": [],
+        "last_active": datetime.now(timezone.utc),
+    }
+    return session_id
+
+
+def get_session(session_id: str) -> dict | None:
+    """Return the session dict (touching last_active) or None if not found."""
+    session = _sessions.get(session_id)
+    if session:
+        session["last_active"] = datetime.now(timezone.utc)
+    return session
+
+
+def delete_session(session_id: str) -> bool:
+    """Delete a session. Returns True if it existed."""
+    return bool(_sessions.pop(session_id, None))
+
+
+def cleanup_expired_sessions() -> int:
+    """Remove sessions inactive for longer than SESSION_TTL_MINUTES. Returns count removed."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=SESSION_TTL_MINUTES)
+    expired = [sid for sid, data in list(_sessions.items()) if data["last_active"] < cutoff]
+    for sid in expired:
+        del _sessions[sid]
+    return len(expired)
+
+
+def active_sessions_count() -> int:
+    return len(_sessions)
 
 # Confidence bands by cosine similarity score
 def _score_to_confidence(score: float) -> str:
@@ -359,28 +401,47 @@ class RAGService:
 
     # ── Query & generation ────────────────────────────────────────────────────
 
-    def query(self, question: str, n_results: int = RETRIEVAL_LIMIT, category: str | None = None) -> dict:
+    def query(
+        self,
+        question: str,
+        n_results: int = RETRIEVAL_LIMIT,
+        category: str | None = None,
+        session_id: str | None = None,
+    ) -> dict:
         """
         Query the knowledge base and generate a response.
 
         Pipeline:
-          1. Classify query intent (→ category filter, out-of-scope guard).
-          2. Embed query (dense + sparse).
-          3. Hybrid search via RRF if BM25 available, else dense-only.
-          4. Filter hits below SCORE_THRESHOLD.
-          5. Derive confidence from top score.
-          6. Generate response with improved prompt.
+          1. Load session history (if session_id provided).
+          2. Classify query intent (→ category filter, out-of-scope guard).
+          3. Build retrieval query (current question + last 1-2 user turns for context resolution).
+          4. Embed query (dense + sparse).
+          5. Hybrid search via RRF if BM25 available, else dense-only.
+          6. Filter hits below SCORE_THRESHOLD.
+          7. Derive confidence from top score.
+          8. Generate response with conversation-aware prompt.
+          9. Persist turn in session history.
         """
+        # 1. Load session history
+        session = get_session(session_id) if session_id else None
+        history: list[dict] = session["history"] if session else []
+
         # 1. Classify if no category was explicitly passed
         detected_category = category or self._classify_query(question)
 
         if detected_category == "out_of_scope":
+            out_of_scope_msg = (
+                "I'm EpiBot, specializing in dengue fever information. "
+                "I'm not able to help with that topic, but I'm happy to answer any questions "
+                "about dengue symptoms, prevention, treatment, or related health guidance."
+            )
+            if session is not None:
+                now = datetime.now(timezone.utc).isoformat()
+                history.append({"role": "user", "content": question, "timestamp": now})
+                history.append({"role": "assistant", "content": out_of_scope_msg, "timestamp": now})
+                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
             return {
-                "response": (
-                    "I'm EpiBot, specializing in dengue fever information. "
-                    "I'm not able to help with that topic, but I'm happy to answer any questions "
-                    "about dengue symptoms, prevention, treatment, or related health guidance."
-                ),
+                "response": out_of_scope_msg,
                 "sources": [],
                 "confidence": "high",
             }
@@ -391,9 +452,13 @@ class RAGService:
                 must=[FieldCondition(key="category", match=MatchValue(value=detected_category))]
             )
 
-        # 2. Embed query
-        dense_vector = self._get_dense_embedding(question)
-        sparse_vector = self._get_sparse_embedding(question)
+        # 3. Build retrieval query — prepend last 1-2 user turns to resolve pronouns
+        recent_user_turns = [h["content"] for h in history[-4:] if h["role"] == "user"][-2:]
+        retrieval_query = " ".join(recent_user_turns + [question]) if recent_user_turns else question
+
+        # 4. Embed query (use enriched retrieval_query for vector search)
+        dense_vector = self._get_dense_embedding(retrieval_query)
+        sparse_vector = self._get_sparse_embedding(retrieval_query)
 
         # 3. Search — hybrid if BM25 available, else dense-only
         if sparse_vector is not None:
@@ -439,19 +504,35 @@ class RAGService:
         context = "\n\n".join(context_parts)
 
         if not self.model:
+            fallback_answer = self._get_fallback_response(question)
+            if session is not None:
+                now = datetime.now(timezone.utc).isoformat()
+                history.append({"role": "user", "content": question, "timestamp": now})
+                history.append({"role": "assistant", "content": fallback_answer, "timestamp": now})
+                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
             return {
-                "response": self._get_fallback_response(question),
+                "response": fallback_answer,
                 "sources": sources,
                 "confidence": confidence,
                 "note": "Running without Gemini API key — using fallback responses",
             }
 
-        # 6. Improved prompt
+        # 8. Build conversation-aware prompt
         low_confidence_note = (
             "\n\nNote: My knowledge base has limited information on this specific query. "
             "Please consult a healthcare professional or the Ministry of Health for authoritative guidance."
             if confidence == "low" else ""
         )
+
+        # Include prior conversation turns (last SESSION_MAX_TURNS pairs)
+        conversation_block = ""
+        if history:
+            recent = history[-(SESSION_MAX_TURNS * 2):]
+            lines = []
+            for h in recent:
+                label = "User" if h["role"] == "user" else "EpiBot"
+                lines.append(f"{label}: {h['content']}")
+            conversation_block = "\n\nPrior conversation:\n" + "\n".join(lines)
 
         prompt = f"""You are EpiBot, a trusted public health assistant specializing in dengue fever \
 information for Sri Lanka. You answer questions for members of the public, patients, and caregivers.
@@ -464,9 +545,10 @@ Guidelines:
 seeking immediate medical care.
 - Respond in the same language the user wrote in (English, Sinhala, or Tamil).
 - Do not answer questions unrelated to dengue or public health.
+- Use the prior conversation to resolve follow-up questions (e.g., "it", "those symptoms", "that treatment").
 
 Context documents:
-{context if context else "No specific context retrieved."}
+{context if context else "No specific context retrieved."}{conversation_block}
 
 User question: {question}
 
@@ -474,8 +556,17 @@ Provide a clear, accurate, and concise answer.{low_confidence_note}"""
 
         try:
             response = self.model.generate_content(prompt)
+            answer = response.text
+
+            # 9. Persist turn in session
+            if session is not None:
+                now = datetime.now(timezone.utc).isoformat()
+                history.append({"role": "user", "content": question, "timestamp": now})
+                history.append({"role": "assistant", "content": answer, "timestamp": now})
+                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
+
             return {
-                "response": response.text,
+                "response": answer,
                 "sources": sources,
                 "confidence": confidence,
             }
@@ -534,6 +625,7 @@ Provide a clear, accurate, and concise answer.{low_confidence_note}"""
             "document_count": info.points_count,
             "qdrant_url": QDRANT_URL,
             "hybrid_search": self.bm25_model is not None,
+            "active_sessions": active_sessions_count(),
         }
 
 

@@ -19,6 +19,10 @@ SCORE_THRESHOLD = 0.4        # discard chunks below this cosine similarity
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 MANIFEST_FILE = os.path.join(DATA_DIR, "documents_manifest.json")
 
+# Session management
+SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
+SESSION_MAX_TURNS = 6  # max user+assistant turn pairs kept per session
+
 # Service settings
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))

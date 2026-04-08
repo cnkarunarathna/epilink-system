@@ -1,13 +1,29 @@
 """EpiBot - RAG Chatbot Service for Dengue Information"""
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
-from services import get_rag_service
+from services import (
+    get_rag_service,
+    create_session,
+    delete_session,
+    cleanup_expired_sessions,
+    active_sessions_count,
+)
 from config import HOST, PORT
+
+
+async def _session_cleanup_loop():
+    """Background task: evict sessions inactive for longer than SESSION_TTL_MINUTES."""
+    while True:
+        await asyncio.sleep(60)  # check every minute
+        removed = cleanup_expired_sessions()
+        if removed:
+            print(f"🧹 Expired {removed} inactive session(s)")
 
 
 @asynccontextmanager
@@ -22,14 +38,17 @@ async def lifespan(app: FastAPI):
         print("📁 No PDFs found in data directory")
     stats = rag_service.get_collection_stats()
     print(f"📊 Knowledge base: {stats['document_count']} document chunks")
+
+    cleanup_task = asyncio.create_task(_session_cleanup_loop())
     yield
+    cleanup_task.cancel()
     print("👋 Shutting down EpiBot RAG Service...")
 
 
 app = FastAPI(
     title="EpiBot RAG Service",
     description="Retrieval-Augmented Generation chatbot for dengue information",
-    version="3.0.0",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -73,6 +92,10 @@ class HealthResponse(BaseModel):
     collection_stats: dict
 
 
+class SessionResponse(BaseModel):
+    session_id: str
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Root"])
@@ -82,7 +105,7 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
-    """Service health and Qdrant collection stats"""
+    """Service health, Qdrant collection stats, and active session count"""
     try:
         rag_service = get_rag_service()
         stats = rag_service.get_collection_stats()
@@ -93,15 +116,34 @@ async def health_check():
 
 @app.post("/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat(request: ChatRequest):
-    """Send a message and get an AI-powered response"""
+    """Send a message and get an AI-powered response. Pass session_id for multi-turn conversations."""
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
     try:
         rag_service = get_rag_service()
-        result = rag_service.query(request.message, category=request.category)
+        result = rag_service.query(
+            request.message,
+            category=request.category,
+            session_id=request.session_id,
+        )
         return ChatResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/session", response_model=SessionResponse, tags=["Session"])
+async def start_session():
+    """Create a new conversation session. Returns a session_id to pass with subsequent /chat requests."""
+    session_id = create_session()
+    return {"session_id": session_id}
+
+
+@app.delete("/session/{session_id}", tags=["Session"])
+async def end_session(session_id: str):
+    """Explicitly end a session and discard its conversation history."""
+    if not delete_session(session_id):
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    return {"status": "deleted", "session_id": session_id}
 
 
 @app.post("/ingest", response_model=IngestResponse, tags=["Admin"])

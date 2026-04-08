@@ -2,7 +2,7 @@
 
 ## Current State Summary
 
-> **Phases 1 and 2 are complete.** Phases 3–5 are pending.
+> **Phases 1–4 are complete.** Phase 5 is pending.
 
 The chatbot service as originally found:
 - **Framework**: FastAPI + Uvicorn
@@ -177,7 +177,7 @@ The chatbot service as originally found:
 
 ---
 
-### Phase 4 — Conversation Memory & Session Management _(next)_
+### ✅ Phase 4 — Conversation Memory & Session Management — COMPLETE
 
 **Goal**: Support multi-turn conversations so users can ask follow-up questions with context from prior turns in the same session.
 
@@ -215,7 +215,7 @@ The chatbot service as originally found:
 
 ---
 
-### Phase 5 — Production Hardening
+### Phase 5 — Production Hardening _(next)_
 
 **Goal**: Make the service safe, observable, and robust for public deployment.
 
