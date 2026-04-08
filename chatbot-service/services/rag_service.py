@@ -1,12 +1,15 @@
 """RAG Service with Qdrant and Gemini API"""
 
+import asyncio
 import json
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import structlog
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -20,13 +23,13 @@ from qdrant_client.models import (
     Prefetch,
     SparseVector,
     SparseVectorParams,
-    SparseVectorsConfig,
     VectorParams,
 )
 import google.generativeai as genai
 from pypdf import PdfReader
 
 from config import (
+    ADMIN_API_KEY,
     DATA_DIR,
     GEMINI_API_KEY,
     MANIFEST_FILE,
@@ -39,8 +42,42 @@ from config import (
     SESSION_TTL_MINUTES,
 )
 
+log = structlog.get_logger(__name__)
+
 # Valid categories matching the manifest
 _VALID_CATEGORIES = {"symptoms", "prevention", "treatment", "epidemiology", "general"}
+
+
+# ── Circuit breaker (Gemini API) ───────────────────────────────────────────────
+
+class _CircuitBreaker:
+    """Open after `threshold` consecutive failures; auto-resets after `reset_seconds`."""
+
+    def __init__(self, threshold: int = 3, reset_seconds: int = 60):
+        self._failures = 0
+        self._open_until: datetime | None = None
+        self._threshold = threshold
+        self._reset_seconds = reset_seconds
+
+    def is_open(self) -> bool:
+        if self._open_until and datetime.now(timezone.utc) >= self._open_until:
+            self._failures = 0
+            self._open_until = None
+        return self._open_until is not None
+
+    def record_failure(self):
+        self._failures += 1
+        if self._failures >= self._threshold:
+            self._open_until = datetime.now(timezone.utc) + timedelta(seconds=self._reset_seconds)
+            log.warning("gemini_circuit_opened", failures=self._failures, reset_seconds=self._reset_seconds)
+
+    def record_success(self):
+        self._failures = 0
+        self._open_until = None
+
+
+_gemini_circuit = _CircuitBreaker()
+
 
 # ── Session store ──────────────────────────────────────────────────────────────
 # Structure: session_id → {"history": [{role, content, timestamp}], "last_active": datetime}
@@ -82,7 +119,28 @@ def cleanup_expired_sessions() -> int:
 def active_sessions_count() -> int:
     return len(_sessions)
 
-# Confidence bands by cosine similarity score
+
+# ── Startup validation ─────────────────────────────────────────────────────────
+
+def validate_startup():
+    """
+    Validate the environment before the service starts accepting requests.
+    - Missing GEMINI_API_KEY → warning only (service runs with fallback responses).
+    - Qdrant unreachable → hard fail (service cannot function without vector DB).
+    """
+    if not GEMINI_API_KEY:
+        log.warning("startup_warning", detail="GEMINI_API_KEY not set — fallback responses will be used")
+
+    try:
+        probe = QdrantClient(url=QDRANT_URL, timeout=5)
+        probe.get_collections()
+        log.info("startup_validation_passed", qdrant_url=QDRANT_URL)
+    except Exception as e:
+        raise RuntimeError(f"Qdrant unreachable at {QDRANT_URL}: {e}") from e
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
 def _score_to_confidence(score: float) -> str:
     if score >= 0.7:
         return "high"
@@ -118,9 +176,9 @@ class RAGService:
         try:
             from fastembed import SparseTextEmbedding
             self.bm25_model = SparseTextEmbedding(model_name="Qdrant/bm25")
-            print("✅ BM25 sparse model loaded — hybrid search enabled")
+            log.info("bm25_loaded", detail="hybrid search enabled")
         except Exception as e:
-            print(f"⚠️  BM25 model unavailable ({e}) — using dense-only search")
+            log.warning("bm25_unavailable", error=str(e), detail="dense-only search will be used")
 
         # Initialize Qdrant and ensure collection schema is up to date
         self.qdrant = QdrantClient(url=QDRANT_URL)
@@ -141,7 +199,7 @@ class RAGService:
             info = self.qdrant.get_collection(QDRANT_COLLECTION_NAME)
             # Old schema: vectors_config is a plain VectorParams (not a dict of named vectors)
             if isinstance(info.config.params.vectors, VectorParams):
-                print(f"⚙️  Migrating '{QDRANT_COLLECTION_NAME}' to named-vector schema…")
+                log.info("collection_migration", collection=QDRANT_COLLECTION_NAME, reason="upgrading to named-vector schema")
                 self.qdrant.delete_collection(QDRANT_COLLECTION_NAME)
             else:
                 return  # Already on the correct schema
@@ -151,6 +209,7 @@ class RAGService:
             vectors_config={"dense": VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE)},
             sparse_vectors_config={"sparse": SparseVectorParams()},
         )
+        log.info("collection_created", collection=QDRANT_COLLECTION_NAME)
 
     # ── Embedding helpers ──────────────────────────────────────────────────────
 
@@ -231,9 +290,9 @@ class RAGService:
         """
         Use Gemini to classify the query into a manifest category.
         Returns one of: symptoms | prevention | treatment | epidemiology | general | out_of_scope.
-        Falls back to 'general' if classification fails.
+        Falls back to 'general' if classification fails or circuit is open.
         """
-        if not self.model:
+        if not self.model or _gemini_circuit.is_open():
             return "general"
 
         prompt = (
@@ -274,6 +333,7 @@ class RAGService:
 
     def ingest_pdf(self, pdf_path: str, manifest: dict[str, dict] | None = None) -> int:
         """Ingest a PDF into Qdrant with dense + sparse (BM25) vectors and rich metadata."""
+        t0 = time.monotonic()
         reader = PdfReader(pdf_path)
         filename = os.path.basename(pdf_path)
         doc_meta = (manifest or {}).get(filename, {})
@@ -319,6 +379,8 @@ class RAGService:
                 points=points[batch_start: batch_start + 100],
             )
 
+        duration_ms = round((time.monotonic() - t0) * 1000)
+        log.info("document_ingested", filename=filename, chunks=len(chunks), duration_ms=duration_ms)
         return len(chunks)
 
     def ingest_all_pdfs(self) -> dict:
@@ -340,6 +402,7 @@ class RAGService:
                 chunks_count = self.ingest_pdf(pdf_path, manifest)
                 results[filename] = {"status": "success", "chunks": chunks_count}
             except Exception as e:
+                log.error("ingestion_failed", filename=filename, error=str(e))
                 results[filename] = {"status": "error", "message": str(e)}
 
         return results
@@ -369,6 +432,7 @@ class RAGService:
                 collection_name=QDRANT_COLLECTION_NAME,
                 points_selector=point_ids,
             )
+            log.info("document_deleted", filename=filename, chunks_removed=len(point_ids))
         return len(point_ids)
 
     def list_documents(self) -> list[dict]:
@@ -401,7 +465,7 @@ class RAGService:
 
     # ── Query & generation ────────────────────────────────────────────────────
 
-    def query(
+    async def query(
         self,
         question: str,
         n_results: int = RETRIEVAL_LIMIT,
@@ -409,25 +473,27 @@ class RAGService:
         session_id: str | None = None,
     ) -> dict:
         """
-        Query the knowledge base and generate a response.
-
-        Pipeline:
-          1. Load session history (if session_id provided).
+        Async query pipeline:
+          1. Load session history.
           2. Classify query intent (→ category filter, out-of-scope guard).
-          3. Build retrieval query (current question + last 1-2 user turns for context resolution).
-          4. Embed query (dense + sparse).
-          5. Hybrid search via RRF if BM25 available, else dense-only.
-          6. Filter hits below SCORE_THRESHOLD.
-          7. Derive confidence from top score.
-          8. Generate response with conversation-aware prompt.
-          9. Persist turn in session history.
+          3. Build retrieval query (enrich with last 1-2 user turns).
+          4. Embed query (async via to_thread).
+          5. Hybrid or dense search (async via to_thread).
+          6. Score filter + confidence scoring.
+          7. Generate response (native async Gemini call, circuit-breaker guarded).
+          8. Log query event. Persist turn in session.
         """
-        # 1. Load session history
+        t0 = time.monotonic()
+
+        # 1. Load session
         session = get_session(session_id) if session_id else None
         history: list[dict] = session["history"] if session else []
 
-        # 1. Classify if no category was explicitly passed
-        detected_category = category or self._classify_query(question)
+        # 2. Classify
+        if category:
+            detected_category = category
+        else:
+            detected_category = await asyncio.to_thread(self._classify_query, question)
 
         if detected_category == "out_of_scope":
             out_of_scope_msg = (
@@ -435,16 +501,8 @@ class RAGService:
                 "I'm not able to help with that topic, but I'm happy to answer any questions "
                 "about dengue symptoms, prevention, treatment, or related health guidance."
             )
-            if session is not None:
-                now = datetime.now(timezone.utc).isoformat()
-                history.append({"role": "user", "content": question, "timestamp": now})
-                history.append({"role": "assistant", "content": out_of_scope_msg, "timestamp": now})
-                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
-            return {
-                "response": out_of_scope_msg,
-                "sources": [],
-                "confidence": "high",
-            }
+            self._persist_turn(session, history, question, out_of_scope_msg)
+            return {"response": out_of_scope_msg, "sources": [], "confidence": "high"}
 
         search_filter = None
         if detected_category and detected_category in _VALID_CATEGORIES and detected_category != "general":
@@ -452,17 +510,21 @@ class RAGService:
                 must=[FieldCondition(key="category", match=MatchValue(value=detected_category))]
             )
 
-        # 3. Build retrieval query — prepend last 1-2 user turns to resolve pronouns
+        # 3. Retrieval query — prepend last 1-2 user turns to resolve pronouns
         recent_user_turns = [h["content"] for h in history[-4:] if h["role"] == "user"][-2:]
         retrieval_query = " ".join(recent_user_turns + [question]) if recent_user_turns else question
 
-        # 4. Embed query (use enriched retrieval_query for vector search)
-        dense_vector = self._get_dense_embedding(retrieval_query)
-        sparse_vector = self._get_sparse_embedding(retrieval_query)
+        # 4. Embed (async)
+        dense_vector = await asyncio.to_thread(self._get_dense_embedding, retrieval_query)
+        sparse_vector = (
+            await asyncio.to_thread(self._get_sparse_embedding, retrieval_query)
+            if self.bm25_model else None
+        )
 
-        # 3. Search — hybrid if BM25 available, else dense-only
+        # 5. Search (async)
         if sparse_vector is not None:
-            results = self.qdrant.query_points(
+            results = await asyncio.to_thread(
+                self.qdrant.query_points,
                 collection_name=QDRANT_COLLECTION_NAME,
                 prefetch=[
                     Prefetch(query=dense_vector, using="dense", limit=n_results * 2),
@@ -475,7 +537,8 @@ class RAGService:
             )
             hits = results.points
         else:
-            hits = self.qdrant.search(
+            hits = await asyncio.to_thread(
+                self.qdrant.search,
                 collection_name=QDRANT_COLLECTION_NAME,
                 query_vector=NamedVector(name="dense", vector=dense_vector),
                 limit=n_results,
@@ -483,11 +546,10 @@ class RAGService:
                 with_payload=True,
             )
 
-        # 4. Score filtering (only applies to dense search; RRF uses rank scores)
+        # 6. Score filtering (dense-only path; RRF uses rank scores)
         if sparse_vector is None:
             hits = [h for h in hits if h.score >= SCORE_THRESHOLD]
 
-        # 5. Confidence from top hit
         confidence = _score_to_confidence(hits[0].score) if hits else "low"
 
         context_parts = []
@@ -503,13 +565,10 @@ class RAGService:
 
         context = "\n\n".join(context_parts)
 
+        # No Gemini model available
         if not self.model:
             fallback_answer = self._get_fallback_response(question)
-            if session is not None:
-                now = datetime.now(timezone.utc).isoformat()
-                history.append({"role": "user", "content": question, "timestamp": now})
-                history.append({"role": "assistant", "content": fallback_answer, "timestamp": now})
-                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
+            self._persist_turn(session, history, question, fallback_answer)
             return {
                 "response": fallback_answer,
                 "sources": sources,
@@ -517,21 +576,20 @@ class RAGService:
                 "note": "Running without Gemini API key — using fallback responses",
             }
 
-        # 8. Build conversation-aware prompt
+        # 7. Build conversation-aware prompt
         low_confidence_note = (
             "\n\nNote: My knowledge base has limited information on this specific query. "
             "Please consult a healthcare professional or the Ministry of Health for authoritative guidance."
             if confidence == "low" else ""
         )
 
-        # Include prior conversation turns (last SESSION_MAX_TURNS pairs)
         conversation_block = ""
         if history:
             recent = history[-(SESSION_MAX_TURNS * 2):]
-            lines = []
-            for h in recent:
-                label = "User" if h["role"] == "user" else "EpiBot"
-                lines.append(f"{label}: {h['content']}")
+            lines = [
+                f"{'User' if h['role'] == 'user' else 'EpiBot'}: {h['content']}"
+                for h in recent
+            ]
             conversation_block = "\n\nPrior conversation:\n" + "\n".join(lines)
 
         prompt = f"""You are EpiBot, a trusted public health assistant specializing in dengue fever \
@@ -554,30 +612,56 @@ User question: {question}
 
 Provide a clear, accurate, and concise answer.{low_confidence_note}"""
 
-        try:
-            response = self.model.generate_content(prompt)
-            answer = response.text
+        # 8. Generate (circuit-breaker guarded, native async)
+        note = None
+        if _gemini_circuit.is_open():
+            answer = self._retrieval_only_response(context_parts)
+            note = "AI generation temporarily unavailable — showing retrieved information only."
+            log.warning("gemini_circuit_open_fallback", question_preview=question[:80])
+        else:
+            try:
+                response = await self.model.generate_content_async(prompt)
+                _gemini_circuit.record_success()
+                answer = response.text
+            except Exception as e:
+                _gemini_circuit.record_failure()
+                log.error("gemini_generation_failed", error=str(e))
+                answer = self._retrieval_only_response(context_parts)
+                note = "AI generation temporarily unavailable — showing retrieved information only."
 
-            # 9. Persist turn in session
-            if session is not None:
-                now = datetime.now(timezone.utc).isoformat()
-                history.append({"role": "user", "content": question, "timestamp": now})
-                history.append({"role": "assistant", "content": answer, "timestamp": now})
-                session["history"] = history[-(SESSION_MAX_TURNS * 2):]
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        log.info(
+            "query_completed",
+            question_preview=question[:100],
+            session_id=session_id,
+            category=detected_category,
+            confidence=confidence,
+            chunks_retrieved=len(hits),
+            latency_ms=latency_ms,
+            model="gemini-2.5-flash",
+        )
 
-            return {
-                "response": answer,
-                "sources": sources,
-                "confidence": confidence,
-            }
-        except Exception as e:
-            return {
-                "response": f"I encountered an error: {str(e)}. Please try again.",
-                "sources": sources,
-                "confidence": "low",
-            }
+        self._persist_turn(session, history, question, answer)
 
-    # ── Fallback ───────────────────────────────────────────────────────────────
+        result: dict = {"response": answer, "sources": sources, "confidence": confidence}
+        if note:
+            result["note"] = note
+        return result
+
+    # ── Helpers ────────────────────────────────────────────────────────────────
+
+    def _persist_turn(self, session: dict | None, history: list[dict], question: str, answer: str):
+        if session is None:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        history.append({"role": "user", "content": question, "timestamp": now})
+        history.append({"role": "assistant", "content": answer, "timestamp": now})
+        session["history"] = history[-(SESSION_MAX_TURNS * 2):]
+
+    def _retrieval_only_response(self, context_parts: list[str]) -> str:
+        if not context_parts:
+            return "I couldn't find relevant information in my knowledge base for this question."
+        return "Here is the most relevant information I found:\n\n" + "\n\n".join(context_parts[:3])
 
     def _get_fallback_response(self, question: str) -> str:
         question_lower = question.lower()

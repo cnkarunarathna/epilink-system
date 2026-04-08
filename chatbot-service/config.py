@@ -23,6 +23,12 @@ MANIFEST_FILE = os.path.join(DATA_DIR, "documents_manifest.json")
 SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
 SESSION_MAX_TURNS = 6  # max user+assistant turn pairs kept per session
 
+# Rate limiting (requests per minute per IP on /chat)
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
+
+# Admin API key — if empty, admin endpoints are unprotected (dev mode)
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
 # Service settings
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))

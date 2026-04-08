@@ -8,6 +8,7 @@ from .rag_service import (
     create_session,
     delete_session,
     get_session,
+    validate_startup,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "create_session",
     "delete_session",
     "get_session",
+    "validate_startup",
 ]

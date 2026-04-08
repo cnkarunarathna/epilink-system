@@ -2,7 +2,7 @@
 
 ## Current State Summary
 
-> **Phases 1–4 are complete.** Phase 5 is pending.
+> **All phases complete (1–5).**
 
 The chatbot service as originally found:
 - **Framework**: FastAPI + Uvicorn
@@ -215,7 +215,7 @@ The chatbot service as originally found:
 
 ---
 
-### Phase 5 — Production Hardening _(next)_
+### ✅ Phase 5 — Production Hardening — COMPLETE
 
 **Goal**: Make the service safe, observable, and robust for public deployment.
 
