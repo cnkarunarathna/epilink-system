@@ -26,7 +26,7 @@ import {
   ReverseGeocodeDto,
   SearchAddressDto,
 } from './dto/geocoding.dto';
-import { RouteTasksDto } from './dto/route-tasks.dto';
+import { RouteTasksDto, SaveRouteOrderDto } from './dto/route-tasks.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TaskStatus, TaskType, TaskPriority } from './entities/task.entity';
 import { UserRole } from '../entities/user.entity';
@@ -78,6 +78,11 @@ export class TasksController {
   @Post('route')
   optimizeRoute(@Body() dto: RouteTasksDto) {
     return this.routeService.optimizeRoute(dto.taskIds, dto.originLat, dto.originLng);
+  }
+
+  @Patch('route-order')
+  saveRouteOrder(@Body() dto: SaveRouteOrderDto) {
+    return this.tasksService.saveRouteOrder(dto.orders);
   }
 
   @Get(':id')

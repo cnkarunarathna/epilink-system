@@ -55,6 +55,7 @@ import {
   fetchPhisByDistrict,
   getOptimizedRoute,
   assignTask,
+  saveRouteOrder,
   Task,
   TaskStatus,
   TaskType,
@@ -244,7 +245,19 @@ export default function TasksListPage() {
     const taskIds = Array.from(selectedIds);
     setAssigning(true);
     try {
+      // Assign all tasks to the selected PHI
       await Promise.all(taskIds.map((id) => assignTask(id, selectedPhiId)));
+
+      // Persist the previewed route order so the PHI's route view uses it directly
+      if (previewRoute && previewRoute.orderedTaskIds.length > 0) {
+        await saveRouteOrder(
+          previewRoute.orderedTaskIds.map((id, i) => ({ taskId: id, order: i + 1 })),
+        ).catch(() => {
+          // Non-fatal — route order saving failure should not block assignment
+          console.warn("Failed to save route order");
+        });
+      }
+
       const phi = phiOptions.find((p) => p.id === selectedPhiId);
       toast.success(
         `${taskIds.length} task${taskIds.length !== 1 ? "s" : ""} assigned to ${phi?.name ?? "PHI"}`,

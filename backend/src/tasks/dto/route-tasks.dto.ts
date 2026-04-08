@@ -1,4 +1,14 @@
-import { IsArray, IsNumber, IsOptional, IsUUID, ArrayNotEmpty } from 'class-validator';
+import {
+  IsArray,
+  IsNumber,
+  IsOptional,
+  IsUUID,
+  ArrayNotEmpty,
+  ValidateNested,
+  IsInt,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class RouteTasksDto {
   @IsArray()
@@ -15,6 +25,23 @@ export class RouteTasksDto {
   originLng?: number;
 }
 
+export class RouteOrderItemDto {
+  @IsUUID('4')
+  taskId: string;
+
+  @IsInt()
+  @Min(1)
+  order: number;
+}
+
+export class SaveRouteOrderDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => RouteOrderItemDto)
+  orders: RouteOrderItemDto[];
+}
+
 export interface RouteLeg {
   distanceMeters: number;
   durationSecs: number;
@@ -28,4 +55,6 @@ export interface RouteResult {
   polyline: [number, number][];
   routingUnavailable: boolean;
   tasksWithoutLocation: string[];
+  /** True when the order came from a previously saved route_order (supervisor-set) */
+  usedSavedOrder: boolean;
 }
