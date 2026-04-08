@@ -63,6 +63,7 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  routeOrder: number | null;
   evidence?: Evidence[];
 }
 
@@ -111,6 +112,8 @@ export interface RouteResult {
   polyline: [number, number][];
   routingUnavailable: boolean;
   tasksWithoutLocation: string[];
+  /** True when the order came from a supervisor-saved route_order */
+  usedSavedOrder: boolean;
 }
 
 export interface CreateEvidenceRequest {

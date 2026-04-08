@@ -8,6 +8,7 @@ interface TaskCoord {
   id: string;
   lat: number;
   lng: number;
+  routeOrder?: number | null;
 }
 
 // OSRM /table response
@@ -72,10 +73,10 @@ export class RouteService {
     originLat?: number,
     originLng?: number,
   ): Promise<RouteResult> {
-    // 1. Load task coordinates from DB
+    // 1. Load task coordinates (including saved route_order) from DB
     const tasks = await this.taskRepository
       .createQueryBuilder('task')
-      .select(['task.id', 'task.latitude', 'task.longitude'])
+      .select(['task.id', 'task.latitude', 'task.longitude', 'task.routeOrder'])
       .whereInIds(taskIds)
       .getMany();
 
@@ -84,9 +85,12 @@ export class RouteService {
     const tasksWithoutLocation: string[] = [];
     const coords: TaskCoord[] = [];
 
+    // Extract hasOrigin early — needed for both the saved-order path and the normal path
+    const hasOrigin = originLat !== undefined && originLng !== undefined;
+
     // Prepend origin if provided (will be index 0 in matrix)
-    if (originLat !== undefined && originLng !== undefined) {
-      coords.push({ id: '__origin__', lat: originLat, lng: originLng });
+    if (hasOrigin) {
+      coords.push({ id: '__origin__', lat: originLat!, lng: originLng! });
     }
 
     for (const id of taskIds) {
@@ -94,7 +98,12 @@ export class RouteService {
       if (!task || task.latitude === null || task.longitude === null) {
         tasksWithoutLocation.push(id);
       } else {
-        coords.push({ id, lat: Number(task.latitude), lng: Number(task.longitude) });
+        coords.push({
+          id,
+          lat: Number(task.latitude),
+          lng: Number(task.longitude),
+          routeOrder: task.routeOrder,
+        });
       }
     }
 
@@ -108,8 +117,55 @@ export class RouteService {
         polyline: [],
         routingUnavailable: true,
         tasksWithoutLocation,
+        usedSavedOrder: false,
       };
     }
+
+    // ── Saved-order shortcut ──────────────────────────────────────────────────
+    // If every task coord has a supervisor-saved route_order, use that order
+    // directly and skip the OR-Tools optimizer. Still try OSRM /route for the polyline.
+    const taskCoords = coords.filter((c) => c.id !== '__origin__');
+    const allHaveSavedOrder =
+      taskCoords.length >= 2 && taskCoords.every((c) => c.routeOrder != null);
+
+    if (allHaveSavedOrder) {
+      const sortedCoords = [...taskCoords].sort(
+        (a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0),
+      );
+      const orderedTaskIds = sortedCoords.map((c) => c.id);
+
+      try {
+        const routeCoords = hasOrigin ? [coords[0], ...sortedCoords] : sortedCoords;
+        const { legs, polyline } = await this.fetchOsrmRoute(routeCoords);
+        const total = legs.reduce(
+          (acc, l) => ({ dist: acc.dist + l.distanceMeters, dur: acc.dur + l.durationSecs }),
+          { dist: 0, dur: 0 },
+        );
+        return {
+          orderedTaskIds,
+          legs,
+          totalDistanceMeters: total.dist,
+          totalDurationSecs: total.dur,
+          polyline,
+          routingUnavailable: false,
+          tasksWithoutLocation,
+          usedSavedOrder: true,
+        };
+      } catch {
+        return {
+          orderedTaskIds,
+          legs: [],
+          totalDistanceMeters: null,
+          totalDurationSecs: null,
+          polyline: [],
+          routingUnavailable: true,
+          tasksWithoutLocation,
+          usedSavedOrder: true,
+        };
+      }
+    }
+
+    // ── Normal optimizer path ─────────────────────────────────────────────────
 
     // 2. Build duration matrix (OSRM /table, fallback to Haversine)
     let durationMatrix: number[][];
@@ -130,7 +186,7 @@ export class RouteService {
     } catch (err) {
       this.logger.warn(`route-optimizer unavailable, returning original order: ${err.message}`);
       // Return tasks in original order (skip origin index if present)
-      const startIdx = originLat !== undefined ? 1 : 0;
+      const startIdx = hasOrigin ? 1 : 0;
       return {
         orderedTaskIds: coords.slice(startIdx).map((c) => c.id),
         legs: [],
@@ -139,11 +195,11 @@ export class RouteService {
         polyline: [],
         routingUnavailable: true,
         tasksWithoutLocation,
+        usedSavedOrder: false,
       };
     }
 
     // Strip origin (index 0) from the returned order if it was prepended
-    const hasOrigin = originLat !== undefined && originLng !== undefined;
     const taskIndices = hasOrigin
       ? orderedIndices.filter((i) => i !== 0).map((i) => i - 1)
       : orderedIndices;
@@ -167,6 +223,7 @@ export class RouteService {
         polyline: [],
         routingUnavailable: true,
         tasksWithoutLocation,
+        usedSavedOrder: false,
       };
     }
 
@@ -187,6 +244,7 @@ export class RouteService {
         polyline,
         routingUnavailable: false,
         tasksWithoutLocation,
+        usedSavedOrder: false,
       };
     } catch (err) {
       this.logger.warn(`OSRM /route unavailable, returning order without polyline: ${err.message}`);
@@ -203,6 +261,7 @@ export class RouteService {
         polyline: [],
         routingUnavailable: true,
         tasksWithoutLocation,
+        usedSavedOrder: false,
       };
     }
   }
