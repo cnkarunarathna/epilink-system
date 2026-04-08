@@ -1,0 +1,46 @@
+{
+  "documents": [
+    {
+      "filename": "en_640392739b0b8_dengue_leaflet_english.pdf",
+      "title": "Dengue Fever Information Leaflet",
+      "category": "general",
+      "language": "en",
+      "source": "WHO"
+    },
+    {
+      "filename": "Final_National_Strategic_Plan_for_2024_2030.pdf",
+      "title": "National Strategic Plan for Dengue Prevention and Control 2024–2030",
+      "category": "epidemiology",
+      "language": "en",
+      "source": "Sri Lanka Ministry of Health"
+    },
+    {
+      "filename": "clinicalmanagementofdengueinfectioninpregnancy.pdf",
+      "title": "Clinical Management of Dengue Infection in Pregnancy",
+      "category": "treatment",
+      "language": "en",
+      "source": "Sri Lanka Ministry of Health"
+    },
+    {
+      "filename": "en_640393197fb65_opd_triage_on_dengue_final.pdf",
+      "title": "OPD Triage Guidelines for Dengue",
+      "category": "treatment",
+      "language": "en",
+      "source": "WHO"
+    },
+    {
+      "filename": "en_646de42b29406_Clinical Practice Guidelines for Primary Care Doctors.pdf",
+      "title": "Clinical Practice Guidelines for Primary Care Doctors",
+      "category": "treatment",
+      "language": "en",
+      "source": "Sri Lanka Ministry of Health"
+    },
+    {
+      "filename": "guidelines_to_manage_dengue_in_adults.pdf",
+      "title": "Guidelines to Manage Dengue in Adults",
+      "category": "treatment",
+      "language": "en",
+      "source": "Sri Lanka Ministry of Health"
+    }
+  ]
+}

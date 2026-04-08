@@ -1,28 +1,40 @@
 """RAG Service with Qdrant and Gemini API"""
 
+import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
-    PointStruct,
-    Filter,
     FieldCondition,
+    Filter,
     MatchValue,
+    PointStruct,
+    VectorParams,
 )
 import google.generativeai as genai
 from pypdf import PdfReader
 
 from config import (
-    GEMINI_API_KEY,
-    QDRANT_URL,
-    QDRANT_COLLECTION_NAME,
-    QDRANT_VECTOR_SIZE,
     DATA_DIR,
+    GEMINI_API_KEY,
+    MANIFEST_FILE,
+    QDRANT_COLLECTION_NAME,
+    QDRANT_URL,
+    QDRANT_VECTOR_SIZE,
 )
+
+
+def _load_manifest() -> dict[str, dict]:
+    """Load documents_manifest.json and return a filename→metadata dict."""
+    if not os.path.exists(MANIFEST_FILE):
+        return {}
+    with open(MANIFEST_FILE, "r") as f:
+        data = json.load(f)
+    return {doc["filename"]: doc for doc in data.get("documents", [])}
 
 
 class RAGService:
@@ -82,10 +94,24 @@ class RAGService:
         """Generate a deterministic UUID from filename + chunk index."""
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{filename}:{chunk_index}"))
 
-    def ingest_pdf(self, pdf_path: str) -> int:
-        """Ingest a PDF file into Qdrant."""
+    def _is_already_ingested(self, filename: str) -> bool:
+        """Check if at least one chunk from this file exists in Qdrant."""
+        results = self.qdrant.scroll(
+            collection_name=QDRANT_COLLECTION_NAME,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="source", match=MatchValue(value=filename))]
+            ),
+            limit=1,
+            with_payload=False,
+            with_vectors=False,
+        )
+        return len(results[0]) > 0
+
+    def ingest_pdf(self, pdf_path: str, manifest: dict[str, dict] | None = None) -> int:
+        """Ingest a PDF file into Qdrant with metadata from manifest."""
         reader = PdfReader(pdf_path)
         filename = os.path.basename(pdf_path)
+        doc_meta = (manifest or {}).get(filename, {})
 
         all_text = ""
         for page in reader.pages:
@@ -95,6 +121,7 @@ class RAGService:
 
         chunks = self._chunk_text(all_text)
         points = []
+        ingested_at = datetime.now(timezone.utc).isoformat()
 
         for i, chunk in enumerate(chunks):
             embedding = self._get_embedding(chunk)
@@ -104,8 +131,13 @@ class RAGService:
                     vector=embedding,
                     payload={
                         "source": filename,
+                        "document_title": doc_meta.get("title", filename),
+                        "category": doc_meta.get("category", "general"),
+                        "language": doc_meta.get("language", "en"),
+                        "doc_source": doc_meta.get("source", "Unknown"),
                         "chunk_index": i,
                         "text": chunk,
+                        "ingested_at": ingested_at,
                     },
                 )
             )
@@ -121,30 +153,103 @@ class RAGService:
         return len(chunks)
 
     def ingest_all_pdfs(self) -> dict:
-        """Ingest all PDFs from the data directory."""
+        """Ingest all PDFs from the data directory, skipping already-ingested files."""
         results = {}
         if not os.path.exists(DATA_DIR):
             return {"error": f"Data directory {DATA_DIR} not found"}
 
+        manifest = _load_manifest()
+
         for filename in os.listdir(DATA_DIR):
-            if filename.lower().endswith(".pdf"):
-                pdf_path = os.path.join(DATA_DIR, filename)
-                try:
-                    chunks_count = self.ingest_pdf(pdf_path)
-                    results[filename] = {"status": "success", "chunks": chunks_count}
-                except Exception as e:
-                    results[filename] = {"status": "error", "message": str(e)}
+            if not filename.lower().endswith(".pdf"):
+                continue
+            if self._is_already_ingested(filename):
+                results[filename] = {"status": "skipped", "reason": "already ingested"}
+                continue
+            pdf_path = os.path.join(DATA_DIR, filename)
+            try:
+                chunks_count = self.ingest_pdf(pdf_path, manifest)
+                results[filename] = {"status": "success", "chunks": chunks_count}
+            except Exception as e:
+                results[filename] = {"status": "error", "message": str(e)}
 
         return results
 
-    def query(self, question: str, n_results: int = 3) -> dict:
+    def delete_document(self, filename: str) -> int:
+        """Delete all chunks for a given source file. Returns deleted point count."""
+        # Collect all point IDs for this file
+        point_ids = []
+        offset = None
+        while True:
+            batch, offset = self.qdrant.scroll(
+                collection_name=QDRANT_COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="source", match=MatchValue(value=filename))]
+                ),
+                limit=100,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            point_ids.extend([p.id for p in batch])
+            if offset is None:
+                break
+
+        if point_ids:
+            self.qdrant.delete(
+                collection_name=QDRANT_COLLECTION_NAME,
+                points_selector=point_ids,
+            )
+
+        return len(point_ids)
+
+    def list_documents(self) -> list[dict]:
+        """List all ingested documents with their chunk counts and metadata."""
+        manifest = _load_manifest()
+        counts: dict[str, dict] = {}
+
+        offset = None
+        while True:
+            batch, offset = self.qdrant.scroll(
+                collection_name=QDRANT_COLLECTION_NAME,
+                limit=100,
+                offset=offset,
+                with_payload=["source", "document_title", "category", "language", "doc_source", "ingested_at"],
+                with_vectors=False,
+            )
+            for point in batch:
+                src = point.payload.get("source", "unknown")
+                if src not in counts:
+                    counts[src] = {
+                        "source": src,
+                        "document_title": point.payload.get("document_title", src),
+                        "category": point.payload.get("category", "general"),
+                        "language": point.payload.get("language", "en"),
+                        "doc_source": point.payload.get("doc_source", "Unknown"),
+                        "ingested_at": point.payload.get("ingested_at"),
+                        "chunk_count": 0,
+                    }
+                counts[src]["chunk_count"] += 1
+            if offset is None:
+                break
+
+        return list(counts.values())
+
+    def query(self, question: str, n_results: int = 3, category: str | None = None) -> dict:
         """Query the knowledge base and generate a response."""
         query_embedding = self._get_embedding(question)
+
+        search_filter = None
+        if category:
+            search_filter = Filter(
+                must=[FieldCondition(key="category", match=MatchValue(value=category))]
+            )
 
         hits = self.qdrant.search(
             collection_name=QDRANT_COLLECTION_NAME,
             query_vector=query_embedding,
             limit=n_results,
+            query_filter=search_filter,
             with_payload=True,
         )
 
@@ -153,9 +258,10 @@ class RAGService:
 
         for hit in hits:
             text = hit.payload.get("text", "")
-            context_parts.append(text)
+            title = hit.payload.get("document_title", hit.payload.get("source", "Unknown"))
+            context_parts.append(f"[Source: {title}]\n{text}")
             sources.append({
-                "title": hit.payload.get("source", "Unknown"),
+                "title": title,
                 "snippet": text[:200] + "..." if len(text) > 200 else text,
             })
 

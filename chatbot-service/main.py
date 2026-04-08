@@ -13,48 +13,52 @@ from config import HOST, PORT
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    # Startup: Auto-ingest PDFs
     print("🚀 Starting EpiBot RAG Service...")
     rag_service = get_rag_service()
     results = rag_service.ingest_all_pdfs()
     if results:
-        print(f"📚 Auto-ingested PDFs: {results}")
+        print(f"📚 Ingestion results: {results}")
     else:
         print("📁 No PDFs found in data directory")
     stats = rag_service.get_collection_stats()
     print(f"📊 Knowledge base: {stats['document_count']} document chunks")
     yield
-    # Shutdown
     print("👋 Shutting down EpiBot RAG Service...")
 
 
 app = FastAPI(
     title="EpiBot RAG Service",
     description="Retrieval-Augmented Generation chatbot for dengue information",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request/Response models
+# ── Request / Response models ─────────────────────────────────────────────────
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    category: Optional[str] = None  # filter by category if provided
 
 
 class ChatResponse(BaseModel):
     response: str
     sources: list[dict] = []
     note: Optional[str] = None
+
+
+class IngestRequest(BaseModel):
+    category: Optional[str] = None
+    language: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -68,7 +72,8 @@ class HealthResponse(BaseModel):
     collection_stats: dict
 
 
-# Endpoints
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
 @app.get("/", tags=["Root"])
 async def root():
     return {"message": "EpiBot RAG Service is running", "docs": "/docs"}
@@ -76,15 +81,11 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
-    """Check service health and get collection stats"""
+    """Service health and Qdrant collection stats"""
     try:
         rag_service = get_rag_service()
         stats = rag_service.get_collection_stats()
-        return {
-            "status": "healthy",
-            "service": "epibot-rag",
-            "collection_stats": stats,
-        }
+        return {"status": "healthy", "service": "epibot-rag", "collection_stats": stats}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -94,10 +95,9 @@ async def chat(request: ChatRequest):
     """Send a message and get an AI-powered response"""
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-
     try:
         rag_service = get_rag_service()
-        result = rag_service.query(request.message)
+        result = rag_service.query(request.message, category=request.category)
         return ChatResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -105,19 +105,40 @@ async def chat(request: ChatRequest):
 
 @app.post("/ingest", response_model=IngestResponse, tags=["Admin"])
 async def ingest_pdfs():
-    """Ingest all PDFs from the data directory into Qdrant"""
+    """Ingest all PDFs from the data directory into Qdrant (skips already-ingested files)"""
     try:
         rag_service = get_rag_service()
         results = rag_service.ingest_all_pdfs()
-        return {
-            "status": "completed",
-            "results": results,
-        }
+        return {"status": "completed", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/documents", tags=["Admin"])
+async def list_documents():
+    """List all ingested documents with chunk counts and metadata"""
+    try:
+        rag_service = get_rag_service()
+        return {"documents": rag_service.list_documents()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/documents/{filename}", tags=["Admin"])
+async def delete_document(filename: str):
+    """Remove all chunks for a document from the knowledge base"""
+    try:
+        rag_service = get_rag_service()
+        deleted = rag_service.delete_document(filename)
+        if deleted == 0:
+            raise HTTPException(status_code=404, detail=f"No chunks found for '{filename}'")
+        return {"status": "deleted", "filename": filename, "chunks_removed": deleted}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host=HOST, port=PORT)

@@ -2,12 +2,14 @@
 
 ## Current State Summary
 
-The chatbot service is a functional but basic RAG implementation:
+> **Phases 1 and 2 are complete.** Phases 3–5 are pending.
+
+The chatbot service as originally found:
 - **Framework**: FastAPI + Uvicorn
 - **LLM**: Gemini 2.5-flash (via `google-generativeai`)
 - **Embeddings**: `text-embedding-004` (Gemini)
-- **Vector DB**: ChromaDB (local persistent, SQLite + HNSWLIB)
-- **Knowledge source**: Single dengue leaflet PDF (~1 MB)
+- **Vector DB**: ~~ChromaDB (local persistent, SQLite + HNSWLIB)~~ → **Qdrant** (shared instance)
+- **Knowledge source**: ~~Single dengue leaflet PDF~~ → **6 PDFs** with rich metadata
 - **Chunking**: Fixed 1000-char chunks with 200-char overlap
 - **Retrieval**: Top-3 similarity search, no reranking
 - **Session**: `session_id` accepted but not used
@@ -42,7 +44,7 @@ The chatbot service is a functional but basic RAG implementation:
 
 ---
 
-### Phase 1 — Vector Database Migration (ChromaDB → Qdrant)
+### ✅ Phase 1 — Vector Database Migration (ChromaDB → Qdrant) — COMPLETE
 
 **Goal**: Replace ChromaDB with Qdrant running in Docker. No feature changes — purely an infrastructure swap with a cleaner foundation.
 
@@ -85,7 +87,7 @@ The chatbot service is a functional but basic RAG implementation:
 
 ---
 
-### Phase 2 — Document Library & Metadata Schema
+### ✅ Phase 2 — Document Library & Metadata Schema — COMPLETE
 
 **Goal**: Build a structured, queryable document library that supports multiple dengue-related documents with rich metadata for filtered retrieval.
 
@@ -133,7 +135,7 @@ The chatbot service is a functional but basic RAG implementation:
 
 ---
 
-### Phase 3 — RAG Pipeline Quality Improvements
+### Phase 3 — RAG Pipeline Quality Improvements _(next)_
 
 **Goal**: Improve retrieval accuracy and response quality through better chunking, hybrid search, and smarter prompt construction.
 

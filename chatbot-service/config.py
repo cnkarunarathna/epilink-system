@@ -13,6 +13,7 @@ QDRANT_VECTOR_SIZE = 768  # text-embedding-004 output dimension
 
 # Data directory for PDFs
 DATA_DIR = os.getenv("DATA_DIR", "./data")
+MANIFEST_FILE = os.path.join(DATA_DIR, "documents_manifest.json")
 
 # Service settings
 HOST = os.getenv("HOST", "0.0.0.0")
