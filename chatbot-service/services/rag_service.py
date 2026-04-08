@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,8 +12,15 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    Fusion,
+    FusionQuery,
     MatchValue,
+    NamedVector,
     PointStruct,
+    Prefetch,
+    SparseVector,
+    SparseVectorParams,
+    SparseVectorsConfig,
     VectorParams,
 )
 import google.generativeai as genai
@@ -25,7 +33,20 @@ from config import (
     QDRANT_COLLECTION_NAME,
     QDRANT_URL,
     QDRANT_VECTOR_SIZE,
+    RETRIEVAL_LIMIT,
+    SCORE_THRESHOLD,
 )
+
+# Valid categories matching the manifest
+_VALID_CATEGORIES = {"symptoms", "prevention", "treatment", "epidemiology", "general"}
+
+# Confidence bands by cosine similarity score
+def _score_to_confidence(score: float) -> str:
+    if score >= 0.7:
+        return "high"
+    if score >= 0.5:
+        return "medium"
+    return "low"
 
 
 def _load_manifest() -> dict[str, dict]:
@@ -50,27 +71,51 @@ class RAGService:
             self.model = None
             self.embedding_model = None
 
-        # Initialize Qdrant client
+        # Attempt to load BM25 sparse embedding model (optional — falls back gracefully)
+        self.bm25_model = None
+        try:
+            from fastembed import SparseTextEmbedding
+            self.bm25_model = SparseTextEmbedding(model_name="Qdrant/bm25")
+            print("✅ BM25 sparse model loaded — hybrid search enabled")
+        except Exception as e:
+            print(f"⚠️  BM25 model unavailable ({e}) — using dense-only search")
+
+        # Initialize Qdrant and ensure collection schema is up to date
         self.qdrant = QdrantClient(url=QDRANT_URL)
         self._ensure_collection()
 
-    def _ensure_collection(self):
-        """Create the collection if it doesn't already exist."""
-        existing = {c.name for c in self.qdrant.get_collections().collections}
-        if QDRANT_COLLECTION_NAME not in existing:
-            self.qdrant.create_collection(
-                collection_name=QDRANT_COLLECTION_NAME,
-                vectors_config=VectorParams(
-                    size=QDRANT_VECTOR_SIZE,
-                    distance=Distance.COSINE,
-                ),
-            )
+    # ── Collection management ──────────────────────────────────────────────────
 
-    def _get_embedding(self, text: str) -> list[float]:
-        """Generate embedding using Gemini text-embedding-004."""
+    def _ensure_collection(self):
+        """
+        Create or migrate the Qdrant collection.
+        Phase 3 schema: named 'dense' vector + 'sparse' slot for hybrid search.
+        If an old unnamed-vector collection exists it is deleted so data is
+        re-ingested cleanly on the next startup call to ingest_all_pdfs().
+        """
+        existing = {c.name for c in self.qdrant.get_collections().collections}
+
+        if QDRANT_COLLECTION_NAME in existing:
+            info = self.qdrant.get_collection(QDRANT_COLLECTION_NAME)
+            # Old schema: vectors_config is a plain VectorParams (not a dict of named vectors)
+            if isinstance(info.config.params.vectors, VectorParams):
+                print(f"⚙️  Migrating '{QDRANT_COLLECTION_NAME}' to named-vector schema…")
+                self.qdrant.delete_collection(QDRANT_COLLECTION_NAME)
+            else:
+                return  # Already on the correct schema
+
+        self.qdrant.create_collection(
+            collection_name=QDRANT_COLLECTION_NAME,
+            vectors_config={"dense": VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE)},
+            sparse_vectors_config={"sparse": SparseVectorParams()},
+        )
+
+    # ── Embedding helpers ──────────────────────────────────────────────────────
+
+    def _get_dense_embedding(self, text: str) -> list[float]:
+        """Gemini text-embedding-004 dense vector (768-dim)."""
         if not GEMINI_API_KEY:
             return [0.0] * QDRANT_VECTOR_SIZE
-
         result = genai.embed_content(
             model=self.embedding_model,
             content=text,
@@ -78,24 +123,102 @@ class RAGService:
         )
         return result["embedding"]
 
+    def _get_sparse_embedding(self, text: str) -> SparseVector | None:
+        """BM25 sparse vector. Returns None when BM25 model is not available."""
+        if not self.bm25_model:
+            return None
+        result = list(self.bm25_model.embed([text]))[0]
+        return SparseVector(
+            indices=result.indices.tolist(),
+            values=result.values.tolist(),
+        )
+
+    # ── Semantic chunking ──────────────────────────────────────────────────────
+
     def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:
-        """Split text into overlapping chunks."""
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            if chunk.strip():
-                chunks.append(chunk.strip())
-            start = end - overlap
-        return chunks
+        """
+        Semantic-aware chunking:
+          1. Split on paragraph boundaries (\\n\\n).
+          2. For oversized paragraphs, split on sentence endings.
+          3. Fall back to character splitting only for sentences that still exceed chunk_size.
+        Overlap is taken from the tail of the previous chunk.
+        """
+        def _split_sentences(para: str) -> list[str]:
+            return [s.strip() for s in re.split(r'(?<=[.!?])\s+', para) if s.strip()]
+
+        paragraphs = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+        chunks: list[str] = []
+        current = ""
+
+        def _flush(buf: str) -> str:
+            """Save buf as a chunk and return the overlap tail for the next chunk."""
+            if buf.strip():
+                chunks.append(buf.strip())
+                return buf[-overlap:].strip() if len(buf) > overlap else buf.strip()
+            return ""
+
+        for para in paragraphs:
+            pieces = [para] if len(para) <= chunk_size else _split_sentences(para)
+
+            for piece in pieces:
+                # If piece itself exceeds chunk_size, split by characters
+                if len(piece) > chunk_size:
+                    if current:
+                        current = _flush(current)
+                    for i in range(0, len(piece), chunk_size - overlap):
+                        sub = piece[i: i + chunk_size].strip()
+                        if sub:
+                            chunks.append(sub)
+                    current = piece[-(overlap):].strip() if len(piece) > overlap else ""
+                    continue
+
+                if len(current) + len(piece) + 2 <= chunk_size:
+                    current = (current + "\n\n" + piece).strip() if current else piece
+                else:
+                    current = _flush(current)
+                    current = (current + " " + piece).strip() if current else piece
+
+        if current.strip():
+            chunks.append(current.strip())
+
+        return [c for c in chunks if c.strip()]
+
+    # ── Query classification ───────────────────────────────────────────────────
+
+    def _classify_query(self, question: str) -> str:
+        """
+        Use Gemini to classify the query into a manifest category.
+        Returns one of: symptoms | prevention | treatment | epidemiology | general | out_of_scope.
+        Falls back to 'general' if classification fails.
+        """
+        if not self.model:
+            return "general"
+
+        prompt = (
+            "Classify the following question about dengue into exactly one category.\n\n"
+            "Categories:\n"
+            "- symptoms: dengue signs, fever, rash, warning signs, platelet count\n"
+            "- prevention: mosquito control, repellents, eliminating breeding sites\n"
+            "- treatment: medications, clinical management, hospitalization, nursing care\n"
+            "- epidemiology: statistics, outbreaks, surveillance, national plans, trends\n"
+            "- general: what is dengue, overview, transmission, lifecycle\n"
+            "- out_of_scope: unrelated to dengue entirely\n\n"
+            f"Question: {question}\n\n"
+            "Reply with just the category name, nothing else."
+        )
+        try:
+            resp = self.model.generate_content(prompt)
+            category = resp.text.strip().lower()
+            return category if category in _VALID_CATEGORIES | {"out_of_scope"} else "general"
+        except Exception:
+            return "general"
+
+    # ── Ingestion ──────────────────────────────────────────────────────────────
 
     def _point_id(self, filename: str, chunk_index: int) -> str:
-        """Generate a deterministic UUID from filename + chunk index."""
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{filename}:{chunk_index}"))
 
     def _is_already_ingested(self, filename: str) -> bool:
-        """Check if at least one chunk from this file exists in Qdrant."""
         results = self.qdrant.scroll(
             collection_name=QDRANT_COLLECTION_NAME,
             scroll_filter=Filter(
@@ -108,7 +231,7 @@ class RAGService:
         return len(results[0]) > 0
 
     def ingest_pdf(self, pdf_path: str, manifest: dict[str, dict] | None = None) -> int:
-        """Ingest a PDF file into Qdrant with metadata from manifest."""
+        """Ingest a PDF into Qdrant with dense + sparse (BM25) vectors and rich metadata."""
         reader = PdfReader(pdf_path)
         filename = os.path.basename(pdf_path)
         doc_meta = (manifest or {}).get(filename, {})
@@ -124,11 +247,17 @@ class RAGService:
         ingested_at = datetime.now(timezone.utc).isoformat()
 
         for i, chunk in enumerate(chunks):
-            embedding = self._get_embedding(chunk)
+            dense = self._get_dense_embedding(chunk)
+            sparse = self._get_sparse_embedding(chunk)
+
+            vectors: dict = {"dense": dense}
+            if sparse is not None:
+                vectors["sparse"] = sparse
+
             points.append(
                 PointStruct(
                     id=self._point_id(filename, i),
-                    vector=embedding,
+                    vector=vectors,
                     payload={
                         "source": filename,
                         "document_title": doc_meta.get("title", filename),
@@ -142,12 +271,10 @@ class RAGService:
                 )
             )
 
-        # Upsert in batches of 100
-        batch_size = 100
-        for batch_start in range(0, len(points), batch_size):
+        for batch_start in range(0, len(points), 100):
             self.qdrant.upsert(
                 collection_name=QDRANT_COLLECTION_NAME,
-                points=points[batch_start: batch_start + batch_size],
+                points=points[batch_start: batch_start + 100],
             )
 
         return len(chunks)
@@ -175,9 +302,9 @@ class RAGService:
 
         return results
 
+    # ── Document management ────────────────────────────────────────────────────
+
     def delete_document(self, filename: str) -> int:
-        """Delete all chunks for a given source file. Returns deleted point count."""
-        # Collect all point IDs for this file
         point_ids = []
         offset = None
         while True:
@@ -200,14 +327,10 @@ class RAGService:
                 collection_name=QDRANT_COLLECTION_NAME,
                 points_selector=point_ids,
             )
-
         return len(point_ids)
 
     def list_documents(self) -> list[dict]:
-        """List all ingested documents with their chunk counts and metadata."""
-        manifest = _load_manifest()
         counts: dict[str, dict] = {}
-
         offset = None
         while True:
             batch, offset = self.qdrant.scroll(
@@ -232,30 +355,78 @@ class RAGService:
                 counts[src]["chunk_count"] += 1
             if offset is None:
                 break
-
         return list(counts.values())
 
-    def query(self, question: str, n_results: int = 3, category: str | None = None) -> dict:
-        """Query the knowledge base and generate a response."""
-        query_embedding = self._get_embedding(question)
+    # ── Query & generation ────────────────────────────────────────────────────
+
+    def query(self, question: str, n_results: int = RETRIEVAL_LIMIT, category: str | None = None) -> dict:
+        """
+        Query the knowledge base and generate a response.
+
+        Pipeline:
+          1. Classify query intent (→ category filter, out-of-scope guard).
+          2. Embed query (dense + sparse).
+          3. Hybrid search via RRF if BM25 available, else dense-only.
+          4. Filter hits below SCORE_THRESHOLD.
+          5. Derive confidence from top score.
+          6. Generate response with improved prompt.
+        """
+        # 1. Classify if no category was explicitly passed
+        detected_category = category or self._classify_query(question)
+
+        if detected_category == "out_of_scope":
+            return {
+                "response": (
+                    "I'm EpiBot, specializing in dengue fever information. "
+                    "I'm not able to help with that topic, but I'm happy to answer any questions "
+                    "about dengue symptoms, prevention, treatment, or related health guidance."
+                ),
+                "sources": [],
+                "confidence": "high",
+            }
 
         search_filter = None
-        if category:
+        if detected_category and detected_category in _VALID_CATEGORIES and detected_category != "general":
             search_filter = Filter(
-                must=[FieldCondition(key="category", match=MatchValue(value=category))]
+                must=[FieldCondition(key="category", match=MatchValue(value=detected_category))]
             )
 
-        hits = self.qdrant.search(
-            collection_name=QDRANT_COLLECTION_NAME,
-            query_vector=query_embedding,
-            limit=n_results,
-            query_filter=search_filter,
-            with_payload=True,
-        )
+        # 2. Embed query
+        dense_vector = self._get_dense_embedding(question)
+        sparse_vector = self._get_sparse_embedding(question)
+
+        # 3. Search — hybrid if BM25 available, else dense-only
+        if sparse_vector is not None:
+            results = self.qdrant.query_points(
+                collection_name=QDRANT_COLLECTION_NAME,
+                prefetch=[
+                    Prefetch(query=dense_vector, using="dense", limit=n_results * 2),
+                    Prefetch(query=sparse_vector, using="sparse", limit=n_results * 2),
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=n_results,
+                query_filter=search_filter,
+                with_payload=True,
+            )
+            hits = results.points
+        else:
+            hits = self.qdrant.search(
+                collection_name=QDRANT_COLLECTION_NAME,
+                query_vector=NamedVector(name="dense", vector=dense_vector),
+                limit=n_results,
+                query_filter=search_filter,
+                with_payload=True,
+            )
+
+        # 4. Score filtering (only applies to dense search; RRF uses rank scores)
+        if sparse_vector is None:
+            hits = [h for h in hits if h.score >= SCORE_THRESHOLD]
+
+        # 5. Confidence from top hit
+        confidence = _score_to_confidence(hits[0].score) if hits else "low"
 
         context_parts = []
         sources = []
-
         for hit in hits:
             text = hit.payload.get("text", "")
             title = hit.payload.get("document_title", hit.payload.get("source", "Unknown"))
@@ -271,37 +442,54 @@ class RAGService:
             return {
                 "response": self._get_fallback_response(question),
                 "sources": sources,
-                "note": "Running without Gemini API key - using fallback responses",
+                "confidence": confidence,
+                "note": "Running without Gemini API key — using fallback responses",
             }
 
-        prompt = f"""You are EpiBot, a helpful assistant specializing in dengue fever information for Sri Lanka.
-Use the following context to answer the user's question. If the context doesn't contain relevant information,
-provide general dengue-related knowledge.
+        # 6. Improved prompt
+        low_confidence_note = (
+            "\n\nNote: My knowledge base has limited information on this specific query. "
+            "Please consult a healthcare professional or the Ministry of Health for authoritative guidance."
+            if confidence == "low" else ""
+        )
 
-Context:
-{context if context else "No specific context available."}
+        prompt = f"""You are EpiBot, a trusted public health assistant specializing in dengue fever \
+information for Sri Lanka. You answer questions for members of the public, patients, and caregivers.
 
-User Question: {question}
+Guidelines:
+- Base your answer on the provided context documents. Cite the source document name when relevant.
+- If the context is insufficient, draw on established dengue medical knowledge but say so clearly.
+- For questions about symptoms or treatment, always advise the user to consult a healthcare professional.
+- For emergency warning signs (severe abdominal pain, bleeding, rapid breathing), stress the urgency of \
+seeking immediate medical care.
+- Respond in the same language the user wrote in (English, Sinhala, or Tamil).
+- Do not answer questions unrelated to dengue or public health.
 
-Provide a helpful, accurate, and concise response. If discussing symptoms or treatment,
-always recommend consulting a healthcare professional."""
+Context documents:
+{context if context else "No specific context retrieved."}
+
+User question: {question}
+
+Provide a clear, accurate, and concise answer.{low_confidence_note}"""
 
         try:
             response = self.model.generate_content(prompt)
             return {
                 "response": response.text,
                 "sources": sources,
+                "confidence": confidence,
             }
         except Exception as e:
             return {
                 "response": f"I encountered an error: {str(e)}. Please try again.",
                 "sources": sources,
+                "confidence": "low",
             }
 
-    def _get_fallback_response(self, question: str) -> str:
-        """Provide fallback responses when Gemini API is not available."""
-        question_lower = question.lower()
+    # ── Fallback ───────────────────────────────────────────────────────────────
 
+    def _get_fallback_response(self, question: str) -> str:
+        question_lower = question.lower()
         if "symptom" in question_lower:
             return (
                 "Common dengue symptoms include: high fever (40°C/104°F), severe headache, "
@@ -337,13 +525,15 @@ always recommend consulting a healthcare professional."""
                 "What would you like to know about dengue?"
             )
 
+    # ── Stats ──────────────────────────────────────────────────────────────────
+
     def get_collection_stats(self) -> dict:
-        """Get statistics about the knowledge base."""
         info = self.qdrant.get_collection(QDRANT_COLLECTION_NAME)
         return {
             "collection_name": QDRANT_COLLECTION_NAME,
             "document_count": info.points_count,
             "qdrant_url": QDRANT_URL,
+            "hybrid_search": self.bm25_model is not None,
         }
 
 
@@ -352,7 +542,6 @@ _rag_service: Optional[RAGService] = None
 
 
 def get_rag_service() -> RAGService:
-    """Get or create RAG service instance."""
     global _rag_service
     if _rag_service is None:
         _rag_service = RAGService()

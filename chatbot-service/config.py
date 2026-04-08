@@ -11,6 +11,10 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "dengue_knowledge")
 QDRANT_VECTOR_SIZE = 768  # text-embedding-004 output dimension
 
+# RAG pipeline
+RETRIEVAL_LIMIT = 6          # number of chunks to retrieve before score filtering
+SCORE_THRESHOLD = 0.4        # discard chunks below this cosine similarity
+
 # Data directory for PDFs
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 MANIFEST_FILE = os.path.join(DATA_DIR, "documents_manifest.json")

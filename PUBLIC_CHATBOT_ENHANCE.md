@@ -135,7 +135,7 @@ The chatbot service as originally found:
 
 ---
 
-### Phase 3 — RAG Pipeline Quality Improvements _(next)_
+### ✅ Phase 3 — RAG Pipeline Quality Improvements — COMPLETE
 
 **Goal**: Improve retrieval accuracy and response quality through better chunking, hybrid search, and smarter prompt construction.
 
@@ -177,7 +177,7 @@ The chatbot service as originally found:
 
 ---
 
-### Phase 4 — Conversation Memory & Session Management
+### Phase 4 — Conversation Memory & Session Management _(next)_
 
 **Goal**: Support multi-turn conversations so users can ask follow-up questions with context from prior turns in the same session.
 

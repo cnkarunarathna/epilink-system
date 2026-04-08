@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="EpiBot RAG Service",
     description="Retrieval-Augmented Generation chatbot for dengue information",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -53,6 +53,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     sources: list[dict] = []
+    confidence: Optional[str] = None   # "high" | "medium" | "low"
     note: Optional[str] = None
 
 
