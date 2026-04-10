@@ -25,7 +25,7 @@ The current ML model (`ml-model/app.py`) predicts dengue cases at the district l
 10. Homagama
 11. Kesbewa
 12. Maharagama
-13. Ratmalana
+13. Hanwella
 
 ---
 
@@ -73,37 +73,44 @@ All weights sum to 1.0 across the 13 DS divisions.
 
 ---
 
-### Phase 3 — API Endpoint
+### Phase 3 — Backend Endpoint (NestJS)
 
-**File:** `ml-model/app.py`
+> **Architecture note:** The weekly pipeline already stores the Colombo district prediction in the `weekly_forecasts` table. DS-level breakdown is pure deterministic math (`cases × weight[i]`), so it is computed at serve-time in the backend — no ML model call, no new DB table, no pipeline changes.
 
-Add new endpoint:
+**Files:**
+- `backend/src/analytics/colombo-ds-weights.ts` — static weight table (TS constant mirroring the Python config)
+- `backend/src/analytics/analytics.service.ts` — add `getColombosDsBreakdown()` method
+- `backend/src/analytics/analytics.controller.ts` — expose new endpoint
 
+**New endpoint:**
 ```
-GET /predict/colombo/ds-breakdown
+GET /analytics/colombo/ds-breakdown?year=2026&week=15
 ```
 
-**Query parameters:**
-- `cases_lag1`, `cases_lag2`, `cases_lag3`, `cases_mean_4w` — lag features
-- `temperature_2m_mean`, `precipitation_sum` — weather features
+**Service logic (`getColombosDsBreakdown`):**
+1. Query `weekly_forecasts` for Colombo district at the requested year/week (defaults to latest)
+2. Extract `predicted_cases`, `uncertainty_lower`, `uncertainty_upper`
+3. Apply DS weights from `colombo-ds-weights.ts` in-memory
+4. Return sorted breakdown
 
 **Response shape:**
 ```json
 {
   "district": "Colombo",
+  "year": 2026,
+  "week": 15,
   "district_predicted_cases": 142,
+  "disaggregation_method": "population_density_burden_weighted",
   "ds_breakdown": [
     {
-      "ds_division": "Colombo",
-      "predicted_cases": 28,
-      "proportion": 0.197,
+      "ds_division": "Thimbirigasyaya",
+      "predicted_cases": 24,
+      "proportion": 0.166,
       "risk_level": "high",
-      "confidence_interval": { "lower": 19, "upper": 36 }
+      "confidence_interval": { "lower": 16, "upper": 31 }
     },
     ...
-  ],
-  "model_version": "2.0.0",
-  "disaggregation_method": "population_density_burden_weighted"
+  ]
 }
 ```
 
@@ -113,22 +120,22 @@ Results sorted by predicted cases descending.
 
 ### Phase 4 — Frontend Visualization
 
-**Location:** Frontend dashboard (to be confirmed)
+**Location:** Frontend dashboard — Colombo district detail view
 
 - Choropleth map of Colombo district DS divisions colored by risk level
-- Tooltip on hover: DS division name, predicted cases, risk level
+- Tooltip on hover: DS division name, predicted cases, risk level, CI range
 - Bar chart showing ranked DS divisions by case count
-- Use GeoJSON boundary data for Colombo DS divisions
+- Data fetched from `GET /analytics/colombo/ds-breakdown` (backend, not ML model)
 
-**GeoJSON source:** Colombo DS division boundaries from GADM / OpenStreetMap / Statistics Department SL
+**GeoJSON source:** Colombo DS division boundaries from GADM v4.1 or OpenStreetMap administrative level 6
 
 ---
 
 ### Phase 5 — Validation & Documentation
 
-- Document disaggregation assumptions and weight sources
-- Add a `/predict/colombo/ds-breakdown/weights` endpoint to expose the weight table (useful for academic transparency)
-- Write unit tests for the disaggregation logic
+- Add a `GET /analytics/colombo/ds-breakdown/weights` endpoint to expose the weight table (academic transparency)
+- Write unit tests for the backend `getColombosDsBreakdown()` method
+- Write unit tests for Python `compute_ds_breakdown()` in `ml-model`
 - Add academic framing note: *"Two-stage pipeline: district-level XGBoost ensemble forecast + spatial disaggregation using population density and historical dengue burden weights"*
 
 ---
@@ -137,11 +144,18 @@ Results sorted by predicted cases descending.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `ml-model/src/config/colombo_ds_weights.py` | Create | Static weight table with cited sources |
-| `ml-model/src/forecasting/ds_disaggregation.py` | Create | Disaggregation logic |
-| `ml-model/app.py` | Edit | Add `/predict/colombo/ds-breakdown` endpoint |
-| `ml-model/app.py` | Edit | Add `/predict/colombo/ds-breakdown/weights` endpoint |
+| `ml-model/src/config/colombo_ds_weights.py` | ✅ Created | Static weight table with cited sources (Python) |
+| `ml-model/src/forecasting/ds_disaggregation.py` | ✅ Created | Disaggregation logic + risk classification (Python) |
+| `backend/src/analytics/colombo-ds-weights.ts` | Create | Weight table as TS constant (mirrors Python config) |
+| `backend/src/analytics/analytics.service.ts` | Edit | Add `getColombosDsBreakdown()` method |
+| `backend/src/analytics/analytics.controller.ts` | Edit | Add `GET /analytics/colombo/ds-breakdown` endpoint |
+| `backend/src/analytics/analytics.controller.ts` | Edit | Add `GET /analytics/colombo/ds-breakdown/weights` endpoint |
 | Frontend (TBD) | Create | Colombo DS choropleth map component |
+
+**No changes needed to:**
+- `ml-model/src/forecasting/weekly.py` — pipeline unchanged
+- `ml-model/app.py` — ML API unchanged
+- DB schema — no new tables
 
 ---
 
