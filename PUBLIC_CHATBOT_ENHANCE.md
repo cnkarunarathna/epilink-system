@@ -315,3 +315,351 @@ chatbot-service:
 ```
 
 The `chatbot_chroma` named volume has been removed from the compose file.
+
+---
+
+## Phase 6 — Public Chatbot UI Enhancement
+
+> **Status**: Planned — implementation follows this guide.
+
+### Objective
+
+Deliver an intuitive, responsive chatbot interface that correctly surfaces all data the backend already returns (`response`, `sources`, `confidence`, `note`, `session_id`) and renders AI-generated content with proper formatting.
+
+---
+
+### Current State Audit
+
+| Concern | Current Behaviour | Target Behaviour |
+|---|---|---|
+| Response rendering | Plain text (`{message.content}`) | Markdown rendered (lists, bold, code blocks) |
+| `sources` field | Ignored | Collapsible source citations below each response |
+| `confidence` field | Ignored | Inline badge (`High / Medium / Low`) on assistant bubbles |
+| `note` field | Ignored | Soft warning pill under the message when present |
+| `session_id` | Read from `data.session_id` — **not in `ChatResponse` model** | Backend fix: add `session_id` to `ChatResponse`; frontend reads it |
+| Responsive width | Fixed `w-[380px]` — clips on narrow phones | Full-screen on mobile (`<640px`), fixed panel on desktop |
+| Suggested questions | None | 3 quick-tap chips on welcome screen |
+| Typing indicator | 3-dot bounce (correct) | Keep as-is |
+| Error state | Generic fallback text | Distinct error bubble with retry button |
+| Copy response | None | Copy-to-clipboard icon on assistant bubbles |
+| Chat header | Static | Show online/offline indicator based on `/health` poll |
+| Empty state | Shows welcome message only | Welcome + 3 suggestion chips |
+| Input area | Single-line `<input>` | Auto-growing `<textarea>` (max 4 lines) for longer questions |
+| Scroll behaviour | `scrollIntoView` on every message | Smooth scroll, paused if user scrolled up |
+| Timestamps | Stored but not rendered | Show relative time on hover/tap |
+
+---
+
+### Data Contract Changes Required
+
+#### Backend — `chatbot-service/main.py`
+
+Add `session_id` to `ChatResponse` so the frontend does not need a separate session creation call to persist the ID:
+
+```python
+class ChatResponse(BaseModel):
+    response: str
+    sources: list[dict] = []
+    confidence: Optional[str] = None   # "high" | "medium" | "low"
+    note: Optional[str] = None
+    session_id: Optional[str] = None   # ← ADD: echo back the active session_id
+```
+
+Update the `/chat` endpoint to include `session_id` in the returned dict from `rag_service.query()`, or inject it explicitly:
+
+```python
+result = await rag_service.query(body.message, category=body.category, session_id=body.session_id)
+result["session_id"] = body.session_id  # echo back so frontend can persist on first turn
+return ChatResponse(**result)
+```
+
+#### Frontend — `ChatMessage` interface
+
+```ts
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  sources?: Source[];
+  confidence?: "high" | "medium" | "low";
+  note?: string;
+  isError?: boolean;
+}
+
+interface Source {
+  document_title?: string;
+  source_file?: string;
+  category?: string;
+  page_number?: number;
+  score?: number;
+}
+```
+
+---
+
+### Component Architecture
+
+```
+ChatbotWidget (root, state + session management)
+├── ChatFAB (floating action button — shown when closed)
+├── ChatPanel (the visible window)
+│   ├── ChatHeader (title, status dot, close button)
+│   ├── ChatMessageList (scrollable, virtualisable)
+│   │   ├── ChatMessageBubble (user variant)
+│   │   └── ChatMessageBubble (assistant variant)
+│   │       ├── MarkdownContent (react-markdown renderer)
+│   │       ├── ConfidenceBadge (optional)
+│   │       ├── NoteWarning (optional)
+│   │       ├── SourceCitations (collapsible)
+│   │       └── CopyButton
+│   ├── SuggestionChips (shown only when messages.length === 1)
+│   ├── TypingIndicator (shown when isTyping)
+│   └── ChatInputBar
+│       ├── AutoResizeTextarea
+│       └── SendButton
+```
+
+All sub-components stay in the same file unless they grow beyond ~60 lines, at which point they move to sibling files under `frontend/components/chatbot/`.
+
+---
+
+### Markdown Rendering
+
+Install `react-markdown` and `remark-gfm` (GitHub Flavoured Markdown — tables, strikethrough, task lists):
+
+```bash
+npm install react-markdown remark-gfm
+```
+
+Render assistant message content through a thin wrapper:
+
+```tsx
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Tailwind-compatible element overrides
+        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="list-disc pl-4 mb-1 space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 space-y-0.5">{children}</ol>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        code: ({ children }) => (
+          <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+```
+
+---
+
+### Responsive Layout
+
+| Breakpoint | Behaviour |
+|---|---|
+| `< 640px` (mobile) | Chat panel takes full viewport (`fixed inset-0`) |
+| `≥ 640px` (tablet+) | Fixed bottom-right panel `w-[400px] h-[560px]` |
+
+Use Tailwind responsive variants:
+
+```tsx
+className="fixed bottom-0 right-0 z-50
+  w-full h-full
+  sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[560px]
+  sm:rounded-2xl"
+```
+
+The chat panel should always cap its height at `calc(100vh - 3rem)` on desktop to avoid overflow on small laptop screens.
+
+---
+
+### Confidence Badge
+
+```tsx
+const CONFIDENCE_CONFIG = {
+  high:   { label: "High confidence",   className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  medium: { label: "Medium confidence", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
+  low:    { label: "Low confidence",    className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+};
+
+function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
+  const cfg = CONFIDENCE_CONFIG[level];
+  return (
+    <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full", cfg.className)}>
+      {cfg.label}
+    </span>
+  );
+}
+```
+
+---
+
+### Source Citations
+
+Render as a collapsible `<details>` element below the message bubble. Each source shows the document title, category badge, and page number if available.
+
+```tsx
+function SourceCitations({ sources }: { sources: Source[] }) {
+  if (!sources.length) return null;
+  return (
+    <details className="mt-1 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none hover:text-foreground transition-colors">
+        {sources.length} source{sources.length > 1 ? "s" : ""}
+      </summary>
+      <ul className="mt-1 space-y-0.5 pl-2 border-l border-muted">
+        {sources.map((src, i) => (
+          <li key={i}>
+            <span className="font-medium">{src.document_title ?? src.source_file}</span>
+            {src.page_number != null && <span> · p.{src.page_number}</span>}
+            {src.category && (
+              <span className="ml-1 px-1 bg-muted rounded text-[10px]">{src.category}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+```
+
+---
+
+### Suggestion Chips
+
+Shown below the welcome message when no user message has been sent yet:
+
+```tsx
+const SUGGESTIONS = [
+  "What are the early symptoms of dengue?",
+  "How can I prevent dengue at home?",
+  "When should I go to the hospital?",
+];
+
+function SuggestionChips({ onSelect }: { onSelect: (text: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2 px-4 pb-2">
+      {SUGGESTIONS.map((s) => (
+        <button
+          key={s}
+          onClick={() => onSelect(s)}
+          className="text-xs rounded-full border px-3 py-1.5 hover:bg-muted transition-colors text-left"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+### Auto-Resize Textarea
+
+Replace the single-line `<input>` with an `<textarea>` that grows up to 4 lines:
+
+```tsx
+function AutoResizeTextarea({ value, onChange, onKeyDown, placeholder, disabled, inputRef }) {
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`; // 4 × 24px line-height
+  }, [value]);
+
+  return (
+    <textarea
+      ref={inputRef}
+      rows={1}
+      value={value}
+      onChange={onChange}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      disabled={disabled}
+      className="flex-1 resize-none rounded-2xl border bg-background px-4 py-2 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-primary max-h-24 overflow-y-auto"
+    />
+  );
+}
+```
+
+The `Enter` key sends; `Shift+Enter` inserts a newline.
+
+---
+
+### Error State & Retry
+
+Track a `failedMessage` ref. On error, render a styled error bubble with a retry button that re-sends the last user message:
+
+```tsx
+{message.isError && (
+  <button
+    onClick={() => retrySend(message)}
+    className="text-xs text-destructive hover:underline mt-1"
+  >
+    Retry
+  </button>
+)}
+```
+
+---
+
+### Online / Offline Status Dot
+
+Poll `/api/chatbot/health` (which proxies to `/health`) every 60 seconds on mount. Show a green dot in the header when healthy, amber when unreachable:
+
+```tsx
+const [online, setOnline] = useState<boolean | null>(null);
+
+useEffect(() => {
+  const check = () =>
+    fetch("/api/chatbot/health")
+      .then((r) => setOnline(r.ok))
+      .catch(() => setOnline(false));
+  check();
+  const interval = setInterval(check, 60_000);
+  return () => clearInterval(interval);
+}, []);
+```
+
+Add a `/health` proxy in `frontend/app/api/chatbot/health/route.ts`.
+
+---
+
+### Implementation Checklist
+
+- [ ] **6.1** Add `session_id` to `ChatResponse` in `chatbot-service/main.py`
+- [ ] **6.2** Install `react-markdown` and `remark-gfm`
+- [ ] **6.3** Add `/api/chatbot/health` proxy route
+- [ ] **6.4** Refactor `ChatbotWidget.tsx`:
+  - [ ] Replace `<input>` with auto-resize `<textarea>`
+  - [ ] Responsive layout (full-screen mobile, fixed-panel desktop)
+  - [ ] Render `MarkdownContent` for assistant messages
+  - [ ] Show `ConfidenceBadge` when `confidence` is present
+  - [ ] Show `NoteWarning` pill when `note` is present
+  - [ ] Show `SourceCitations` collapsible when `sources.length > 0`
+  - [ ] Show `SuggestionChips` when only the welcome message exists
+  - [ ] Add copy-to-clipboard on assistant bubbles
+  - [ ] Error bubble with retry button
+  - [ ] Online/offline status dot in header
+  - [ ] Read `session_id` from `/chat` response (no longer only from `/session`)
+  - [ ] Smart auto-scroll (pause when user scrolls up)
+
+---
+
+### Files Changed in Phase 6
+
+| File | Change |
+|---|---|
+| `chatbot-service/main.py` | Add `session_id` to `ChatResponse`; echo it from `/chat` |
+| `frontend/app/api/chatbot/health/route.ts` | New — proxies `GET /health` from chatbot service |
+| `frontend/components/chatbot/ChatbotWidget.tsx` | Full rewrite of the UI layer |
+| `package.json` | Add `react-markdown`, `remark-gfm` |
