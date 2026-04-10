@@ -25,7 +25,8 @@ from qdrant_client.models import (
     SparseVectorParams,
     VectorParams,
 )
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 from pypdf import PdfReader
 
 from config import (
@@ -164,11 +165,12 @@ class RAGService:
     def __init__(self):
         # Initialize Gemini
         if GEMINI_API_KEY:
-            genai.configure(api_key=GEMINI_API_KEY)
-            self.model = genai.GenerativeModel("gemini-2.5-flash")
-            self.embedding_model = "models/text-embedding-004"
+            self.client = genai.Client(api_key=GEMINI_API_KEY)
+            self.gen_model = "gemini-2.5-flash"
+            self.embedding_model = "gemini-embedding-001"
         else:
-            self.model = None
+            self.client = None
+            self.gen_model = None
             self.embedding_model = None
 
         # Attempt to load BM25 sparse embedding model (optional — falls back gracefully)
@@ -197,9 +199,15 @@ class RAGService:
 
         if QDRANT_COLLECTION_NAME in existing:
             info = self.qdrant.get_collection(QDRANT_COLLECTION_NAME)
-            # Old schema: vectors_config is a plain VectorParams (not a dict of named vectors)
-            if isinstance(info.config.params.vectors, VectorParams):
+            vectors = info.config.params.vectors
+            # Old schema: plain VectorParams (unnamed) — needs migration to named vectors
+            if isinstance(vectors, VectorParams):
                 log.info("collection_migration", collection=QDRANT_COLLECTION_NAME, reason="upgrading to named-vector schema")
+                self.qdrant.delete_collection(QDRANT_COLLECTION_NAME)
+            # Dimension mismatch — model changed (e.g. 768 → 3072)
+            elif isinstance(vectors, dict) and vectors.get("dense") and vectors["dense"].size != QDRANT_VECTOR_SIZE:
+                log.info("collection_migration", collection=QDRANT_COLLECTION_NAME,
+                         reason=f"vector size mismatch: {vectors['dense'].size} → {QDRANT_VECTOR_SIZE}")
                 self.qdrant.delete_collection(QDRANT_COLLECTION_NAME)
             else:
                 return  # Already on the correct schema
@@ -215,14 +223,14 @@ class RAGService:
 
     def _get_dense_embedding(self, text: str) -> list[float]:
         """Gemini text-embedding-004 dense vector (768-dim)."""
-        if not GEMINI_API_KEY:
+        if not self.client:
             return [0.0] * QDRANT_VECTOR_SIZE
-        result = genai.embed_content(
+        result = self.client.models.embed_content(
             model=self.embedding_model,
-            content=text,
-            task_type="retrieval_document",
+            contents=text,
+            config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
         )
-        return result["embedding"]
+        return result.embeddings[0].values
 
     def _get_sparse_embedding(self, text: str) -> SparseVector | None:
         """BM25 sparse vector. Returns None when BM25 model is not available."""
@@ -292,7 +300,7 @@ class RAGService:
         Returns one of: symptoms | prevention | treatment | epidemiology | general | out_of_scope.
         Falls back to 'general' if classification fails or circuit is open.
         """
-        if not self.model or _gemini_circuit.is_open():
+        if not self.client or _gemini_circuit.is_open():
             return "general"
 
         prompt = (
@@ -308,7 +316,7 @@ class RAGService:
             "Reply with just the category name, nothing else."
         )
         try:
-            resp = self.model.generate_content(prompt)
+            resp = self.client.models.generate_content(model=self.gen_model, contents=prompt)
             category = resp.text.strip().lower()
             return category if category in _VALID_CATEGORIES | {"out_of_scope"} else "general"
         except Exception:
@@ -565,8 +573,8 @@ class RAGService:
 
         context = "\n\n".join(context_parts)
 
-        # No Gemini model available
-        if not self.model:
+        # No Gemini client available
+        if not self.client:
             fallback_answer = self._get_fallback_response(question)
             self._persist_turn(session, history, question, fallback_answer)
             return {
@@ -620,7 +628,10 @@ Provide a clear, accurate, and concise answer.{low_confidence_note}"""
             log.warning("gemini_circuit_open_fallback", question_preview=question[:80])
         else:
             try:
-                response = await self.model.generate_content_async(prompt)
+                response = await self.client.aio.models.generate_content(
+                    model=self.gen_model,
+                    contents=prompt,
+                )
                 _gemini_circuit.record_success()
                 answer = response.text
             except Exception as e:

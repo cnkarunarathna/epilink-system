@@ -2,7 +2,7 @@
   "scripts": {
     "start": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\"",
     "all": "concurrently -n FRONTEND,BACKEND,CHATBOT,ANALYTICS,ROUTE -c magenta,cyan,green,yellow,blue \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\" \"npm run chatbot\" \"npm run analytics\" \"npm run route\"",
-    "chatbot": "cd chatbot-service && uv run uvicorn main:app --reload --port 8000",
+    "chatbot": "cd chatbot-service && uv run uvicorn main:app --reload --port 8002",
     "analytics": "cd explain-analytics && uv run analytics",
     "route": "cd route-optimizer && uv run route",
     "install:frontend": "npm install --prefix frontend",

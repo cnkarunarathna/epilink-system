@@ -9,7 +9,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Qdrant
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "dengue_knowledge")
-QDRANT_VECTOR_SIZE = 768  # text-embedding-004 output dimension
+QDRANT_VECTOR_SIZE = 3072  # gemini-embedding-001 output dimension
 
 # RAG pipeline
 RETRIEVAL_LIMIT = 6          # number of chunks to retrieve before score filtering

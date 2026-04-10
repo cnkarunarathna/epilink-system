@@ -155,8 +155,10 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: http://localhost:3001/api
       NEXT_PUBLIC_SOCKET_URL: http://localhost:3001
+      CHATBOT_SERVICE_URL: http://chatbot-service:8000
     depends_on:
       - backend
+      - chatbot-service
     ports:
       - "3000:3000"
 

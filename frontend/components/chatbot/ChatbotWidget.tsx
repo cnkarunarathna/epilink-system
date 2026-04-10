@@ -21,28 +21,6 @@ const INITIAL_MESSAGE: ChatMessage = {
   timestamp: new Date(),
 };
 
-// Mock responses for Phase 1
-const MOCK_RESPONSES: Record<string, string> = {
-  symptoms:
-    "Common dengue symptoms include high fever, severe headache, pain behind the eyes, joint and muscle pain, fatigue, nausea, and skin rash. If you experience these symptoms, please consult a doctor immediately.",
-  prevention:
-    "To prevent dengue: 1) Remove stagnant water from containers, 2) Use mosquito repellents, 3) Wear long-sleeved clothing, 4) Use mosquito nets while sleeping, 5) Keep surroundings clean.",
-  treatment:
-    "There's no specific treatment for dengue. Rest, drink plenty of fluids, and take paracetamol for fever. Avoid aspirin and ibuprofen. Seek medical care if symptoms worsen.",
-  default:
-    "I'm currently in demo mode. Once fully connected, I'll be able to provide detailed information about dengue risk levels, prevention tips, and more. For now, try asking about 'symptoms', 'prevention', or 'treatment'.",
-};
-
-function getMockResponse(message: string): string {
-  const lowerMessage = message.toLowerCase();
-  if (lowerMessage.includes("symptom")) return MOCK_RESPONSES.symptoms;
-  if (lowerMessage.includes("prevent") || lowerMessage.includes("avoid"))
-    return MOCK_RESPONSES.prevention;
-  if (lowerMessage.includes("treat") || lowerMessage.includes("cure"))
-    return MOCK_RESPONSES.treatment;
-  return MOCK_RESPONSES.default;
-}
-
 function ChatMessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
 
@@ -83,6 +61,7 @@ export function ChatbotWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -115,39 +94,47 @@ export function ChatbotWidget() {
     setIsTyping(true);
 
     try {
-      // Call the RAG backend API
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch("/api/chatbot", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: userMessage.content }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage.content,
+          session_id: sessionIdRef.current,
+        }),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to get response");
-      }
 
       const data = await response.json();
 
-      const botResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.response,
-        timestamp: new Date(),
-      };
+      if (!response.ok) {
+        throw new Error(data?.detail?.message ?? data?.error ?? "Request failed");
+      }
 
-      setMessages((prev) => [...prev, botResponse]);
+      // Persist session ID from first response if not already set
+      if (data.session_id && !sessionIdRef.current) {
+        sessionIdRef.current = data.session_id;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.response,
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error) {
       console.error("Chat API error:", error);
-      // Fallback to mock response if API is unavailable
-      const botResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: getMockResponse(userMessage.content),
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botResponse]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsTyping(false);
     }
@@ -157,6 +144,23 @@ export function ChatbotWidget() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleOpen = async () => {
+    setIsOpen(true);
+
+    // Create a session on first open so conversation history is tracked
+    if (!sessionIdRef.current) {
+      try {
+        const res = await fetch("/api/chatbot/session", { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          sessionIdRef.current = data.session_id ?? null;
+        }
+      } catch {
+        // session creation is best-effort; stateless chat still works
+      }
     }
   };
 
@@ -174,7 +178,7 @@ export function ChatbotWidget() {
             <Button
               size="lg"
               className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow"
-              onClick={() => setIsOpen(true)}
+              onClick={handleOpen}
             >
               <MessageCircle className="h-6 w-6" />
               <span className="sr-only">Open chat</span>
