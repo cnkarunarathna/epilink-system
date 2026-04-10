@@ -186,4 +186,22 @@ export class AnalyticsController {
   async demographicHotspots(@Param('district') district: string) {
     return this.analyticsService.getDemographicHotspots(district);
   }
+
+  // ── DS-Level Disaggregation — Colombo District ────────────────────
+
+  @Get('colombo/ds-breakdown')
+  async colomboDsBreakdown(
+    @Query('year') year?: string,
+    @Query('week') week?: string,
+  ) {
+    return this.analyticsService.getColombosDsBreakdown(
+      year ? parseInt(year) : undefined,
+      week ? parseInt(week) : undefined,
+    );
+  }
+
+  @Get('colombo/ds-breakdown/weights')
+  async colomboDsWeights() {
+    return this.analyticsService.getColombosDsWeights();
+  }
 }

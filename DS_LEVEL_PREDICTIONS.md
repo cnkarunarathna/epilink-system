@@ -178,6 +178,6 @@ Results sorted by predicted cases descending.
 
 - [x] Phase 1 — Weight configuration
 - [x] Phase 2 — Disaggregation logic
-- [ ] Phase 3 — API endpoint
+- [x] Phase 3 — API endpoint
 - [ ] Phase 4 — Frontend visualization
 - [ ] Phase 5 — Validation & documentation
