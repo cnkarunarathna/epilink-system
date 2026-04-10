@@ -138,6 +138,7 @@ class ChatResponse(BaseModel):
     sources: list[dict] = []
     confidence: Optional[str] = None   # "high" | "medium" | "low"
     note: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -201,6 +202,7 @@ async def chat(request: Request, body: ChatRequest):
             category=body.category,
             session_id=body.session_id,
         )
+        result["session_id"] = body.session_id
         return ChatResponse(**result)
     except Exception as e:
         log.error("chat_endpoint_error", error=str(e))

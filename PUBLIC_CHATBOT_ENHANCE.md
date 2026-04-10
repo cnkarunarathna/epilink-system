@@ -320,7 +320,7 @@ The `chatbot_chroma` named volume has been removed from the compose file.
 
 ## Phase 6 — Public Chatbot UI Enhancement
 
-> **Status**: Planned — implementation follows this guide.
+> **Status**: Complete.
 
 ### Objective
 
@@ -636,22 +636,22 @@ Add a `/health` proxy in `frontend/app/api/chatbot/health/route.ts`.
 
 ### Implementation Checklist
 
-- [ ] **6.1** Add `session_id` to `ChatResponse` in `chatbot-service/main.py`
-- [ ] **6.2** Install `react-markdown` and `remark-gfm`
-- [ ] **6.3** Add `/api/chatbot/health` proxy route
-- [ ] **6.4** Refactor `ChatbotWidget.tsx`:
-  - [ ] Replace `<input>` with auto-resize `<textarea>`
-  - [ ] Responsive layout (full-screen mobile, fixed-panel desktop)
-  - [ ] Render `MarkdownContent` for assistant messages
-  - [ ] Show `ConfidenceBadge` when `confidence` is present
-  - [ ] Show `NoteWarning` pill when `note` is present
-  - [ ] Show `SourceCitations` collapsible when `sources.length > 0`
-  - [ ] Show `SuggestionChips` when only the welcome message exists
-  - [ ] Add copy-to-clipboard on assistant bubbles
-  - [ ] Error bubble with retry button
-  - [ ] Online/offline status dot in header
-  - [ ] Read `session_id` from `/chat` response (no longer only from `/session`)
-  - [ ] Smart auto-scroll (pause when user scrolls up)
+- [x] **6.1** Add `session_id` to `ChatResponse` in `chatbot-service/main.py`
+- [x] **6.2** Install `react-markdown` and `remark-gfm`
+- [x] **6.3** Add `/api/chatbot/health` proxy route
+- [x] **6.4** Refactor `ChatbotWidget.tsx`:
+  - [x] Replace `<input>` with auto-resize `<textarea>`
+  - [x] Responsive layout (full-screen mobile, fixed-panel desktop)
+  - [x] Render `MarkdownContent` for assistant messages
+  - [x] Show `ConfidenceBadge` when `confidence` is present
+  - [x] Show `NoteWarning` pill when `note` is present
+  - [x] Show `SourceCitations` collapsible when `sources.length > 0`
+  - [x] Show `SuggestionChips` when only the welcome message exists
+  - [x] Add copy-to-clipboard on assistant bubbles
+  - [x] Error bubble with retry button
+  - [x] Online/offline status dot in header
+  - [x] Read `session_id` from `/chat` response (no longer only from `/session`)
+  - [x] Smart auto-scroll (pause when user scrolls up)
 
 ---
 
