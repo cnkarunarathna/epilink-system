@@ -1,13 +1,25 @@
 /**
- * Task List Screen — Enhanced with shimmer loading, staggered cards, gradient header
+ * Task List Screen — Enhanced with shimmer loading, staggered cards, gradient header,
+ * swipe-to-filter (PanResponder), long-press context menu wiring, EmptyState,
+ * KeyboardAvoidingView and animated search input handling.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  PanResponder,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import {
   colors,
   spacing,
@@ -21,14 +33,25 @@ import {
   AnimatedCounter,
   ShimmerCardSkeleton,
   Button,
+  EmptyState,
 } from "../../components/common";
 import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { Task } from "../../types/task.types";
+import { Task, TaskStatus, UpdateTaskStatusRequest } from "../../types/task.types";
 import { TaskStackNavigationProp } from "../../navigation/types";
 import { TAB_BAR_HEIGHT } from "../../utils/responsive";
+import { updateTaskStatus } from "../../api/taskService";
+
+// Filter cycle order for swipe-to-filter gesture
+const FILTER_CYCLE: TaskFilterValue[] = [
+  "all",
+  TaskStatus.ASSIGNED,
+  TaskStatus.IN_PROGRESS,
+  TaskStatus.SUBMITTED,
+  TaskStatus.COMPLETED,
+];
 
 export const TaskListScreen: React.FC = () => {
   const navigation = useNavigation<TaskStackNavigationProp>();
@@ -50,14 +73,72 @@ export const TaskListScreen: React.FC = () => {
     showToast({ message: "Task list refreshed.", variant: "info" });
   }, [refresh, showToast]);
 
+  // ─── Swipe-to-filter ─────────────────────────────────────────────────────
+  const cycleFilter = useCallback(
+    (direction: 1 | -1) => {
+      setFilter((current) => {
+        const idx = FILTER_CYCLE.indexOf(current);
+        const next =
+          (idx + direction + FILTER_CYCLE.length) % FILTER_CYCLE.length;
+        Haptics.selectionAsync();
+        return FILTER_CYCLE[next];
+      });
+    },
+    [],
+  );
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 20 && Math.abs(gs.dy) < 15,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx < -50) cycleFilter(+1); // swipe left → next filter
+        if (gs.dx > 50) cycleFilter(-1);  // swipe right → prev filter
+      },
+    }),
+  ).current;
+
+  // ─── Long-press action handlers ───────────────────────────────────────────
+  const handleMarkInProgress = useCallback(
+    async (task: Task) => {
+      try {
+        const req: UpdateTaskStatusRequest = { status: TaskStatus.IN_PROGRESS };
+        await updateTaskStatus(task.id, req);
+        showToast({ message: "Task marked as In Progress.", variant: "success" });
+        await refresh();
+      } catch {
+        showToast({
+          message: "Failed to update task status.",
+          variant: "error",
+        });
+      }
+    },
+    [refresh, showToast],
+  );
+
+  const handleViewOnMap = useCallback(
+    (_task: Task) => {
+      navigation.navigate("TaskMap");
+    },
+    [navigation],
+  );
+
   const emptyMessage = useMemo(() => {
     if (filter === "all") return "No tasks assigned yet";
     return "No tasks found for this filter";
   }, [filter]);
 
-  const handleTaskPress = (task: Task) => {
-    navigation.navigate("TaskDetail", { taskId: task.id });
-  };
+  const emptySubtitle = useMemo(() => {
+    if (filter === "all") return "Pull down to refresh";
+    return "Try a different filter or pull to refresh";
+  }, [filter]);
+
+  const handleTaskPress = useCallback(
+    (task: Task) => {
+      navigation.navigate("TaskDetail", { taskId: task.id });
+    },
+    [navigation],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -93,6 +174,8 @@ export const TaskListScreen: React.FC = () => {
             onChangeText={setSearch}
             leftIcon="magnify"
             containerStyle={styles.searchInput}
+            returnKeyType="search"
+            blurOnSubmit={true}
           />
         </View>
 
@@ -102,41 +185,52 @@ export const TaskListScreen: React.FC = () => {
       {isLoading ? (
         <ShimmerCardSkeleton count={4} />
       ) : (
-        <FlatList
-          data={tasks}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-          renderItem={({ item, index }) => (
-            <TaskCard task={item} onPress={handleTaskPress} index={index} />
-          )}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-          }
-          // Render performance
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={8}
-          windowSize={5}
-          initialNumToRender={6}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <LinearGradient
-                colors={[colors.muted, colors.border]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.emptyIconCircle}
-              >
-                <MaterialCommunityIcons
-                  name="clipboard-alert-outline"
-                  size={48}
-                  color={colors.textSecondary}
-                />
-              </LinearGradient>
-              <Text style={styles.emptyText}>{emptyMessage}</Text>
-              {error && <ErrorMessage message={error} />}
-            </View>
-          }
-          ListFooterComponent={error ? <ErrorMessage message={error} /> : null}
-        />
+        // KeyboardAvoidingView ensures the list shrinks when the search keyboard is open
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
+          <FlatList
+            {...panResponder.panHandlers}
+            data={tasks}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: listPaddingBottom },
+            ]}
+            renderItem={({ item, index }) => (
+              <TaskCard
+                task={item}
+                onPress={handleTaskPress}
+                onMarkInProgress={handleMarkInProgress}
+                onViewOnMap={handleViewOnMap}
+                index={index}
+              />
+            )}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            }
+            // Render performance
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            initialNumToRender={6}
+            ListEmptyComponent={
+              <EmptyState
+                icon="clipboard-check-outline"
+                title={emptyMessage}
+                subtitle={emptySubtitle}
+                action={
+                  filter !== "all"
+                    ? { label: "View All Tasks", onPress: () => setFilter("all") }
+                    : undefined
+                }
+              />
+            }
+            ListFooterComponent={error ? <ErrorMessage message={error} /> : null}
+          />
+        </KeyboardAvoidingView>
       )}
 
       {!isLoading && !isRefreshing && !tasks.length && error && (
@@ -150,7 +244,6 @@ export const TaskListScreen: React.FC = () => {
           />
         </View>
       )}
-
     </SafeAreaView>
   );
 };
@@ -159,6 +252,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  flex: {
+    flex: 1,
   },
   heroCard: {
     backgroundColor: colors.card,
@@ -224,26 +320,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingTop: spacing.xxl,
-    paddingHorizontal: spacing.lg,
-  },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.muted,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.md,
-  },
-  emptyText: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-    textAlign: "center",
   },
   retryContainer: {
     alignItems: "center",

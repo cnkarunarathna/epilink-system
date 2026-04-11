@@ -27,6 +27,7 @@ import * as Location from "expo-location";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTasks } from "../../hooks/useTasks";
+import { EmptyState } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import {
   Task,
@@ -636,16 +637,12 @@ export const TaskMapScreen: React.FC = () => {
       )}
 
       {!isLoading && taskMarkers.length === 0 && !error && (
-        <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="map-marker-off"
-            size={48}
-            color={colors.textSecondary}
-            style={styles.emptyIcon}
+        <View style={styles.emptyOverlay}>
+          <EmptyState
+            icon="map-marker-off-outline"
+            title="No tasks on map"
+            subtitle="None of your assigned tasks have location coordinates yet."
           />
-          <Text style={styles.emptyText}>
-            No tasks with locations to display on the map.
-          </Text>
         </View>
       )}
     </View>
@@ -996,7 +993,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: "center",
   },
-  emptyState: {
+  emptyOverlay: {
     position: "absolute",
     bottom: spacing.xl,
     left: spacing.lg,
@@ -1004,17 +1001,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    alignItems: "center",
-  },
-  emptyIcon: {
-    marginBottom: spacing.sm,
-    opacity: 0.5,
-  },
-  emptyText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: "center",
+    borderRadius: borderRadius.xl,
+    paddingBottom: spacing.lg,
   },
 });

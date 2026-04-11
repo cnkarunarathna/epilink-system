@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   Animated,
   Easing,
-  Platform,
   Dimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,7 +28,7 @@ import {
   shadows,
   animation,
 } from "../../theme";
-import { AnimatedCounter } from "../../components/common";
+import { AnimatedCounter, ShimmerPlaceholder } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { getTaskStats } from "../../api/taskService";
@@ -111,6 +110,64 @@ const ActionCard = React.memo<ActionCardProps>(({ icon, label, color, onPress })
       </TouchableOpacity>
     </Animated.View>
   );
+});
+
+// ─── HomeScreenSkeleton ───────────────────────────────────────────────────────
+// Shown on first load before any data arrives. Mirrors the HomeScreen layout:
+// gradient header block → 4 stat cards (2×2) → risk card → 3 action cards.
+
+const HomeScreenSkeleton: React.FC = () => (
+  <ScrollView
+    contentContainerStyle={skeletonStyles.container}
+    scrollEnabled={false}
+    showsVerticalScrollIndicator={false}
+  >
+    {/* Gradient header block */}
+    <ShimmerPlaceholder height={120} borderRadiusValue={0} style={skeletonStyles.headerBlock} />
+
+    {/* Stat cards — 2×2 grid */}
+    <View style={skeletonStyles.sectionRow}>
+      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+    </View>
+    <View style={skeletonStyles.sectionRow}>
+      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+    </View>
+
+    {/* Total summary bar */}
+    <ShimmerPlaceholder height={60} borderRadiusValue={16} style={skeletonStyles.fullRow} />
+
+    {/* Risk card */}
+    <ShimmerPlaceholder height={100} borderRadiusValue={16} style={skeletonStyles.fullRow} />
+
+    {/* Action cards — 1 row of 3 */}
+    <View style={skeletonStyles.sectionRow}>
+      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
+      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
+      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
+    </View>
+  </ScrollView>
+);
+
+const skeletonStyles = StyleSheet.create({
+  container: {
+    gap: spacing.sm,
+  },
+  headerBlock: {
+    marginBottom: spacing.md,
+  },
+  sectionRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  fullRow: {
+    marginHorizontal: spacing.lg,
+  },
+  actionCard: {
+    flex: 1,
+  },
 });
 
 // ─── HomeScreen ───────────────────────────────────────────────────────────────
@@ -307,6 +364,14 @@ export const HomeScreen: React.FC = () => {
       color: colors.status.completed,
     },
   ];
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <HomeScreenSkeleton />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

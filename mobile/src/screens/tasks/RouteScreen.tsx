@@ -35,6 +35,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 import { getTasks, getOptimizedRoute, updateTaskStatus } from "../../api/taskService";
+import { EmptyState } from "../../components/common";
 import { Task, TaskStatus, RouteResult, RouteLeg } from "../../types/task.types";
 import { useAuth } from "../../context/AuthContext";
 import { MainTabNavigationProp } from "../../navigation/types";
@@ -339,11 +340,12 @@ export const RouteScreen: React.FC = () => {
   if (tasksWithLocation.length < 2) {
     return (
       <SafeAreaView style={styles.centered} edges={["top"]}>
-        <MaterialCommunityIcons name="map-marker-off" size={48} color={colors.textSecondary} />
-        <Text style={styles.emptyTitle}>Not enough locations</Text>
-        <Text style={styles.emptySubtitle}>
-          You need at least 2 active tasks with GPS coordinates to generate a route.
-        </Text>
+        <EmptyState
+          icon="map-marker-path"
+          title="Not enough locations"
+          subtitle="You need at least 2 active tasks with GPS coordinates to generate a route."
+          action={{ label: "Refresh", onPress: loadRoute }}
+        />
       </SafeAreaView>
     );
   }
@@ -479,6 +481,13 @@ export const RouteScreen: React.FC = () => {
           renderItem={renderStopItem}
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="routes"
+              title="No stops yet"
+              subtitle="Pull down to refresh or wait for route calculation."
+            />
+          }
           ListFooterComponent={
             routeResult?.tasksWithoutLocation.length
               ? (
@@ -532,21 +541,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
   },
-  emptyTitle: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    marginTop: spacing.sm,
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-
   // Map
   mapContainer: {
     flex: 1,

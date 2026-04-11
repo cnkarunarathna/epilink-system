@@ -61,6 +61,17 @@ export const EvidenceUploadScreen: React.FC = () => {
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(24)).current;
 
+  // Animated progress bar — interpolates 0→100 to 0%→100% width
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: uploadProgress,
+      duration: 200,
+      useNativeDriver: false, // width animation requires JS driver
+    }).start();
+  }, [uploadProgress]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeIn, {
@@ -344,7 +355,12 @@ export const EvidenceUploadScreen: React.FC = () => {
               <Animated.View
                 style={[
                   styles.progressFill,
-                  { width: `${uploadProgress}%` as any },
+                  {
+                    width: progressAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ["0%", "100%"],
+                    }),
+                  },
                 ]}
               />
             </View>
