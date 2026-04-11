@@ -229,7 +229,11 @@ export default function AnalyticsPage() {
     }
   };
 
-  const handleDistrictClick = async (district: string) => {
+  // Wrapped in useCallback so its reference only changes when `predictions`
+  // actually changes (data refresh), not on every district click re-render.
+  // Without this, SriLankaMap would receive a new prop reference on every
+  // render, causing GeoJSONLayer to tear down and rebuild the map layers.
+  const handleDistrictClick = useCallback(async (district: string) => {
     setSelectedDistrict(district);
     const districtData = predictions.find((p) => p.district === district);
     if (districtData) {
@@ -243,7 +247,7 @@ export default function AnalyticsPage() {
     } catch (error: any) {
       console.error("Failed to load timeseries:", error);
     }
-  };
+  }, [predictions]);
 
   const openDsBreakdown = async () => {
     setDsBreakdownOpen(true);
