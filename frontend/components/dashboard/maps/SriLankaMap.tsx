@@ -125,9 +125,18 @@ function GeoJSONLayer({
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const hoveredIdRef = useRef<string | number | null>(null);
-  const sourceId = "districts-source";
+
+  // ── Callback refs — updated every render without being effect deps ──
+  // This prevents setupLayers from re-running (and the map from blinking)
+  // whenever the parent recreates these functions on re-render.
+  const onClickRef  = useRef(onDistrictClick);
+  const onHoverRef  = useRef(onDistrictHover);
+  onClickRef.current  = onDistrictClick;
+  onHoverRef.current  = onDistrictHover;
+
+  const sourceId      = "districts-source";
   const labelsSourceId = "districts-labels-source";
-  const layerId = "districts-fill";
+  const layerId       = "districts-fill";
   const outlineLayerId = "districts-outline";
   const labelsLayerId = "districts-labels";
 
@@ -154,8 +163,19 @@ function GeoJSONLayer({
       return matchExpression as MapLibreGL.ExpressionSpecification;
     }, [data, isDark]);
 
+  // ── Layer setup ───────────────────────────────────────────────────────────
+  // Deps: only isLoaded, map, isDark — NOT onDistrictClick/onDistrictHover
+  // (those are accessed via refs) and NOT buildColorExpression (handled below).
+  // This means clicking a district never causes layers to tear down and rebuild.
   useEffect(() => {
     if (!isLoaded || !map) return;
+
+    // Cancellation flag: if this effect is cleaned up while the async setup is
+    // still in-flight (e.g., waiting on styledata or the GeoJSON fetch), we
+    // bail out instead of registering handlers that can never be cleaned up.
+    let cancelled = false;
+    // Filled in after async setup completes so the sync cleanup below can call it.
+    let detachHandlers: (() => void) | null = null;
 
     const setupLayers = async () => {
       try {
@@ -164,6 +184,7 @@ function GeoJSONLayer({
             map.once("styledata", () => resolve());
           });
         }
+        if (cancelled) return;
 
         // Clean up existing layers / sources
         if (map.getLayer(labelsLayerId))   map.removeLayer(labelsLayerId);
@@ -173,7 +194,9 @@ function GeoJSONLayer({
         if (map.getSource(sourceId))       map.removeSource(sourceId);
 
         const response = await fetch("/District_geo.json");
+        if (cancelled) return;
         const geoJsonData = await response.json();
+        if (cancelled) return;
 
         geoJsonData.features = geoJsonData.features.map(
           (feature: any, index: number) => ({ ...feature, id: index })
@@ -186,7 +209,6 @@ function GeoJSONLayer({
         });
 
         // One centroid point per district — prevents duplicate labels on MultiPolygon features
-        // Only include features that are in our known district mapping (excludes "[unknown]" etc.)
         const knownGeoNames = new Set(Object.keys(districtNameMapping));
         const centroidFeatures = geoJsonData.features
           .filter((f: any) => knownGeoNames.has(f.properties?.ADM2_EN))
@@ -225,7 +247,7 @@ function GeoJSONLayer({
             "line-color": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              isDark ? "#6ee7b7" : "#059669", // emerald on hover
+              isDark ? "#6ee7b7" : "#059669",
               isDark ? "#1f2937" : "#ffffff",
             ],
             "line-width": [
@@ -237,7 +259,7 @@ function GeoJSONLayer({
           },
         });
 
-        // District name labels — one per district centroid, always on top
+        // District name labels — one per centroid, always on top
         map.addLayer({
           id: labelsLayerId,
           type: "symbol",
@@ -262,7 +284,8 @@ function GeoJSONLayer({
           },
         });
 
-        // ── Mouse event handlers ──
+        // ── Mouse event handlers — call through refs so they are always
+        //    current without needing to be removed/re-added on every render ──
         const handleMouseMove = (
           e: MapLibreGL.MapMouseEvent & {
             features?: MapLibreGL.MapGeoJSONFeature[];
@@ -295,7 +318,7 @@ function GeoJSONLayer({
 
           const geoJsonName = feature.properties?.ADM2_EN;
           const apiName = districtNameMapping[geoJsonName];
-          onDistrictHover?.(apiName || null);
+          onHoverRef.current?.(apiName || null);
         };
 
         const handleMouseLeave = () => {
@@ -309,7 +332,7 @@ function GeoJSONLayer({
           }
           hoveredIdRef.current = null;
           map.getCanvas().style.cursor = "";
-          onDistrictHover?.(null);
+          onHoverRef.current?.(null);
         };
 
         const handleClick = (
@@ -320,14 +343,15 @@ function GeoJSONLayer({
           if (!e.features?.length) return;
           const geoJsonName = e.features[0].properties?.ADM2_EN;
           const apiName = districtNameMapping[geoJsonName];
-          if (apiName && onDistrictClick) onDistrictClick(apiName);
+          if (apiName) onClickRef.current?.(apiName);
         };
 
         map.on("mousemove", layerId, handleMouseMove);
         map.on("mouseleave", layerId, handleMouseLeave);
         map.on("click", layerId, handleClick);
 
-        return () => {
+        // Store cleanup so the synchronous effect teardown can call it
+        detachHandlers = () => {
           map.off("mousemove", layerId, handleMouseMove);
           map.off("mouseleave", layerId, handleMouseLeave);
           map.off("click", layerId, handleClick);
@@ -340,6 +364,8 @@ function GeoJSONLayer({
     setupLayers();
 
     return () => {
+      cancelled = true;
+      detachHandlers?.();
       try {
         if (map.getLayer(labelsLayerId))   map.removeLayer(labelsLayerId);
         if (map.getLayer(outlineLayerId))  map.removeLayer(outlineLayerId);
@@ -348,9 +374,9 @@ function GeoJSONLayer({
         if (map.getSource(sourceId))       map.removeSource(sourceId);
       } catch { /* ignore cleanup errors */ }
     };
-  }, [isLoaded, map, onDistrictClick, onDistrictHover, isDark, buildColorExpression]);
+  }, [isLoaded, map, isDark]); // ← intentionally excludes callbacks (refs) and buildColorExpression (separate effect)
 
-  // Colour-only update when data changes (no layer rebuild / no re-fit)
+  // ── Colour-only update when data changes — no layer rebuild ──────────────
   useEffect(() => {
     if (!isLoaded || !map || !map.getLayer(layerId)) return;
     try {
