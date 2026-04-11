@@ -12,3 +12,4 @@ export { AnimatedCard } from "./AnimatedCard";
 export { GradientHeader } from "./GradientHeader";
 export { AnimatedCounter } from "./AnimatedCounter";
 export { ShimmerPlaceholder, ShimmerCardSkeleton } from "./ShimmerPlaceholder";
+export { ToastContainer } from "./Toast";

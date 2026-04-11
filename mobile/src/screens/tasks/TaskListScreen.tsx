@@ -2,7 +2,7 @@
  * Task List Screen — Enhanced with shimmer loading, staggered cards, gradient header
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,12 +25,14 @@ import {
 import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { Task } from "../../types/task.types";
 import { TaskStackNavigationProp } from "../../navigation/types";
 
 export const TaskListScreen: React.FC = () => {
   const navigation = useNavigation<TaskStackNavigationProp>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [filter, setFilter] = useState<TaskFilterValue>("all");
   const [search, setSearch] = useState("");
 
@@ -39,6 +41,11 @@ export const TaskListScreen: React.FC = () => {
     assignedPhiId: user?.id,
     search,
   });
+
+  const handleRefresh = useCallback(async () => {
+    await refresh();
+    showToast({ message: "Task list refreshed.", variant: "info" });
+  }, [refresh, showToast]);
 
   const emptyMessage = useMemo(() => {
     if (filter === "all") return "No tasks assigned yet";
@@ -100,7 +107,7 @@ export const TaskListScreen: React.FC = () => {
             <TaskCard task={item} onPress={handleTaskPress} index={index} />
           )}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={refresh} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>

@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   Animated,
   Easing,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,6 +30,7 @@ import {
 } from "../../theme";
 import { AnimatedCounter } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { getTaskStats } from "../../api/taskService";
 import {
   getDistrictLatest,
@@ -39,6 +41,7 @@ import { MainTabNavigationProp } from "../../navigation/types";
 
 export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigation = useNavigation<MainTabNavigationProp>();
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [districtRisk, setDistrictRisk] = useState<DistrictPrediction | null>(
@@ -46,6 +49,36 @@ export const HomeScreen: React.FC = () => {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Alert banner pulse (fires when overdue tasks >= 3)
+  const alertPulse = useRef(new Animated.Value(0.2)).current;
+  const alertPulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (stats && stats.overdueCount >= 3) {
+      alertPulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(alertPulse, {
+            toValue: 0.65,
+            duration: 850,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+          Animated.timing(alertPulse, {
+            toValue: 0.2,
+            duration: 850,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+        ]),
+      );
+      alertPulseLoop.current.start();
+    } else {
+      alertPulseLoop.current?.stop();
+      alertPulse.setValue(0.2);
+    }
+    return () => alertPulseLoop.current?.stop();
+  }, [stats?.overdueCount]);
 
   // Staggered entrance anims
   const fadeHeader = useRef(new Animated.Value(0)).current;
@@ -75,6 +108,7 @@ export const HomeScreen: React.FC = () => {
         // silently handle
       } finally {
         refresh ? setIsRefreshing(false) : setIsLoading(false);
+        if (refresh) showToast({ message: "Dashboard updated.", variant: "info" });
         // Start staggered entrance
         Animated.stagger(120, [
           Animated.timing(fadeHeader, {
@@ -283,12 +317,27 @@ export const HomeScreen: React.FC = () => {
                 </View>
               </View>
               <View style={styles.headerRight}>
-                <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.bellButton}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    navigation.navigate("Notifications");
+                  }}
+                >
                   <MaterialCommunityIcons
                     name="bell-outline"
                     size={22}
                     color="rgba(255,255,255,0.85)"
                   />
+                  {stats && (stats.overdueCount > 0 || stats.rejected > 0) && (
+                    <View style={styles.bellBadge}>
+                      <Text style={styles.bellBadgeText}>
+                        {Math.min(stats.overdueCount + stats.rejected, 9)}
+                        {stats.overdueCount + stats.rejected > 9 ? "+" : ""}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => navigation.navigate("Profile")}
@@ -326,7 +375,15 @@ export const HomeScreen: React.FC = () => {
         {stats && stats.overdueCount > 0 && (
           <Animated.View style={{ opacity: fadeAlert }}>
             <TouchableOpacity
-              style={styles.alertBanner}
+              style={[
+                styles.alertBanner,
+                {
+                  borderColor: alertPulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [colors.destructive + "20", colors.destructive + "AA"],
+                  }) as any,
+                },
+              ]}
               onPress={() => navigation.navigate("Tasks")}
               activeOpacity={0.8}
             >
@@ -631,6 +688,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  bellBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.destructive,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+    borderWidth: 1.5,
+    borderColor: "rgba(0,130,60,0.9)",
+  },
+  bellBadgeText: {
+    fontSize: 9,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryForeground,
+    lineHeight: 13,
+  },
   greeting: {
     fontSize: typography.fontSize.base,
     color: "rgba(255,255,255,0.75)",
@@ -698,7 +775,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: colors.destructive + "20",
     ...shadows.sm,
   },
   alertIconCircle: {

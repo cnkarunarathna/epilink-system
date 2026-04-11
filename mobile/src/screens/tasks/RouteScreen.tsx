@@ -39,6 +39,7 @@ import { Task, TaskStatus, RouteResult, RouteLeg } from "../../types/task.types"
 import { useAuth } from "../../context/AuthContext";
 import { MainTabNavigationProp } from "../../navigation/types";
 import { colors, spacing, typography, borderRadius, shadows } from "../../theme";
+import { useToast } from "../../context/ToastContext";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ const DEFAULT_REGION: Region = {
 export const RouteScreen: React.FC = () => {
   const navigation = useNavigation<MainTabNavigationProp>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
@@ -120,6 +122,12 @@ export const RouteScreen: React.FC = () => {
       const result = await getOptimizedRoute(routableIds, origin);
       setRouteResult(result);
 
+      const stopCount = result.orderedTaskIds.length;
+      showToast({
+        message: `Route optimised for ${stopCount} stop${stopCount !== 1 ? "s" : ""}.`,
+        variant: "info",
+      });
+
       // Fit map to all task coordinates
       if (result.orderedTaskIds.length > 0) {
         const taskMap = new Map(active.map((t) => [t.id, t]));
@@ -139,6 +147,7 @@ export const RouteScreen: React.FC = () => {
       }
     } catch {
       setError("Failed to load route. Please try again.");
+      showToast({ message: "Failed to load route. Please try again.", variant: "error" });
     } finally {
       setLoading(false);
       setRouteLoading(false);
@@ -206,8 +215,9 @@ export const RouteScreen: React.FC = () => {
             t.id === task.id ? { ...t, status: TaskStatus.IN_PROGRESS } : t,
           ),
         );
+        showToast({ message: "Task marked as In Progress.", variant: "success" });
       } catch {
-        Alert.alert("Error", "Failed to update task status.");
+        showToast({ message: "Failed to update task status.", variant: "error" });
       } finally {
         setMarkingId(null);
       }
