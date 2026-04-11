@@ -46,7 +46,10 @@ import {
   fetchTimeseries,
   fetchDashboardSummary,
   fetchTrends,
+  fetchColomboDsBreakdown,
+  type ColomboDsBreakdownResponse,
 } from "@/services/analytics.service";
+import ColomboDsBreakdownModal from "@/components/dashboard/analytics/ColomboDsBreakdownModal";
 import {
   BarChart as RechartsBar,
   Bar,
@@ -159,6 +162,9 @@ export default function AnalyticsPage() {
     TimeSeriesData[]
   >([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dsBreakdownOpen, setDsBreakdownOpen] = useState(false);
+  const [dsBreakdown, setDsBreakdown] = useState<ColomboDsBreakdownResponse | null>(null);
+  const [dsBreakdownLoading, setDsBreakdownLoading] = useState(false);
 
   const { isConnected } = useSocket();
   const hasFetchedRef = useRef(false);
@@ -236,6 +242,23 @@ export default function AnalyticsPage() {
       setDistrictTimeseries(ts || []);
     } catch (error: any) {
       console.error("Failed to load timeseries:", error);
+    }
+  };
+
+  const openDsBreakdown = async () => {
+    setDsBreakdownOpen(true);
+    if (dsBreakdown) return; // already loaded
+    try {
+      setDsBreakdownLoading(true);
+      const data = await fetchColomboDsBreakdown();
+      setDsBreakdown(data);
+    } catch (error: any) {
+      toast.error("Failed to load DS breakdown", {
+        description: error.response?.data?.message || error.message,
+      });
+      setDsBreakdownOpen(false);
+    } finally {
+      setDsBreakdownLoading(false);
     }
   };
 
@@ -738,6 +761,15 @@ export default function AnalyticsPage() {
                                         {risk?.level}
                                       </Badge>
                                     </div>
+                                    {selectedDistrict === "Colombo" && (
+                                      <button
+                                        onClick={openDsBreakdown}
+                                        className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-sm font-medium transition-colors"
+                                      >
+                                        <MapPin className="h-4 w-4" />
+                                        View DS-Level Breakdown
+                                      </button>
+                                    )}
                                   </>
                                 ) : null;
                               })()}
@@ -1037,6 +1069,14 @@ export default function AnalyticsPage() {
           highRiskCount: summary?.high_risk_districts,
           topDistricts: predictions.slice(0, 5).map((p) => p.district),
         }}
+      />
+
+      {/* Colombo DS-Level Breakdown Modal */}
+      <ColomboDsBreakdownModal
+        open={dsBreakdownOpen}
+        onClose={() => setDsBreakdownOpen(false)}
+        data={dsBreakdown}
+        loading={dsBreakdownLoading}
       />
     </div>
   );

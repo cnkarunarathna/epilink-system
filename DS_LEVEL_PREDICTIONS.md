@@ -150,7 +150,9 @@ Results sorted by predicted cases descending.
 | `backend/src/analytics/analytics.service.ts` | Edit | Add `getColombosDsBreakdown()` method |
 | `backend/src/analytics/analytics.controller.ts` | Edit | Add `GET /analytics/colombo/ds-breakdown` endpoint |
 | `backend/src/analytics/analytics.controller.ts` | Edit | Add `GET /analytics/colombo/ds-breakdown/weights` endpoint |
-| Frontend (TBD) | Create | Colombo DS choropleth map component |
+| `frontend/components/dashboard/analytics/ColomboDsBreakdownModal.tsx` | ✅ Created | Dialog with ranked bar chart + DS division cards + CI ranges + academic footnote |
+| `frontend/services/analytics.service.ts` | ✅ Edited | Added `fetchColomboDsBreakdown()` + `ColomboDsBreakdownResponse` / `DsDivisionBreakdown` interfaces |
+| `frontend/app/(dashboard)/admin/analytics/page.tsx` | ✅ Edited | State + handler + "View DS-Level Breakdown" button (Colombo only) + modal render |
 
 **No changes needed to:**
 - `ml-model/src/forecasting/weekly.py` — pipeline unchanged
@@ -179,5 +181,5 @@ Results sorted by predicted cases descending.
 - [x] Phase 1 — Weight configuration
 - [x] Phase 2 — Disaggregation logic
 - [x] Phase 3 — API endpoint
-- [ ] Phase 4 — Frontend visualization
+- [x] Phase 4 — Frontend visualization
 - [ ] Phase 5 — Validation & documentation
