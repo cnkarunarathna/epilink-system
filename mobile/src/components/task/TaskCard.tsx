@@ -38,7 +38,7 @@ interface TaskCardProps {
   index?: number;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({
+const TaskCardInner: React.FC<TaskCardProps> = ({
   task,
   onPress,
   index = 0,
@@ -254,6 +254,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     </Animated.View>
   );
 };
+
+// Only re-render when the task's own id or status changes — not when other tasks in the list update
+export const TaskCard = React.memo(TaskCardInner, (prev, next) =>
+  prev.task.id === next.task.id &&
+  prev.task.status === next.task.status &&
+  prev.index === next.index
+);
 
 const styles = StyleSheet.create({
   card: {

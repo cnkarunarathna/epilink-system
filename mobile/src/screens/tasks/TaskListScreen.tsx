@@ -4,7 +4,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -28,11 +28,14 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { Task } from "../../types/task.types";
 import { TaskStackNavigationProp } from "../../navigation/types";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 export const TaskListScreen: React.FC = () => {
   const navigation = useNavigation<TaskStackNavigationProp>();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+  const listPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [filter, setFilter] = useState<TaskFilterValue>("all");
   const [search, setSearch] = useState("");
 
@@ -102,13 +105,18 @@ export const TaskListScreen: React.FC = () => {
         <FlatList
           data={tasks}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           renderItem={({ item, index }) => (
             <TaskCard task={item} onPress={handleTaskPress} index={index} />
           )}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
+          // Render performance
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          initialNumToRender={6}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <LinearGradient
@@ -128,8 +136,6 @@ export const TaskListScreen: React.FC = () => {
             </View>
           }
           ListFooterComponent={error ? <ErrorMessage message={error} /> : null}
-          onRefresh={refresh}
-          refreshing={isRefreshing}
         />
       )}
 

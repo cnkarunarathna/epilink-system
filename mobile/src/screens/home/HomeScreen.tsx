@@ -14,8 +14,9 @@ import {
   Animated,
   Easing,
   Platform,
+  Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useNavigation } from "@react-navigation/native";
@@ -38,11 +39,88 @@ import {
 } from "../../api/analyticsService";
 import { TaskStats } from "../../types/task.types";
 import { MainTabNavigationProp } from "../../navigation/types";
+import {
+  scale,
+  TAB_BAR_HEIGHT,
+  HEADER_PADDING_BOTTOM,
+} from "../../utils/responsive";
+
+// ─── Module-level constants ───────────────────────────────────────────────────
+
+const STALE_TIME_MS = 30_000; // 30-second stale threshold — prevents re-fetch on tab focus
+
+// Stats card width: two cards + one gap fit exactly within the horizontal padding
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CARD_WIDTH = Math.floor(
+  (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm) / 2,
+);
+
+// ─── ActionCard — hoisted to module scope so React never re-creates the type ──
+// Defining this inside HomeScreen would cause every HomeScreen render to create
+// a *new* component type, forcing all three cards to fully unmount + remount.
+
+interface ActionCardProps {
+  icon: string;
+  label: string;
+  color: string;
+  onPress: () => void;
+}
+
+const ActionCard = React.memo<ActionCardProps>(({ icon, label, color, onPress }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.93,
+      ...animation.spring.snappy,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      ...animation.spring.bouncy,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={[styles.actionCard, shadows.md]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPress();
+        }}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={1}
+      >
+        <LinearGradient
+          colors={[color + "15", color + "08"]}
+          style={styles.actionIcon}
+        >
+          <MaterialCommunityIcons
+            name={icon as any}
+            size={24}
+            color={color}
+          />
+        </LinearGradient>
+        <Text style={styles.actionText}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+// ─── HomeScreen ───────────────────────────────────────────────────────────────
 
 export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigation = useNavigation<MainTabNavigationProp>();
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [districtRisk, setDistrictRisk] = useState<DistrictPrediction | null>(
     null,
@@ -80,6 +158,9 @@ export const HomeScreen: React.FC = () => {
     return () => alertPulseLoop.current?.stop();
   }, [stats?.overdueCount]);
 
+  // Stale-time gate — prevent re-fetch within 30 s of the last fetch
+  const lastFetchTime = useRef<number>(0);
+
   // Staggered entrance anims
   const fadeHeader = useRef(new Animated.Value(0)).current;
   const fadeAlert = useRef(new Animated.Value(0)).current;
@@ -91,6 +172,10 @@ export const HomeScreen: React.FC = () => {
 
   const fetchData = useCallback(
     async (refresh = false) => {
+      const now = Date.now();
+      if (!refresh && now - lastFetchTime.current < STALE_TIME_MS) return;
+      lastFetchTime.current = now;
+
       refresh ? setIsRefreshing(true) : setIsLoading(true);
       try {
         const [statsData, districtData] = await Promise.allSettled([
@@ -109,13 +194,8 @@ export const HomeScreen: React.FC = () => {
       } finally {
         refresh ? setIsRefreshing(false) : setIsLoading(false);
         if (refresh) showToast({ message: "Dashboard updated.", variant: "info" });
-        // Start staggered entrance
+        // Content sections stagger in after data arrives; header animates separately on mount
         Animated.stagger(120, [
-          Animated.timing(fadeHeader, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
           Animated.timing(fadeAlert, {
             toValue: 1,
             duration: 300,
@@ -153,17 +233,18 @@ export const HomeScreen: React.FC = () => {
         ]).start();
       }
     },
-    [
-      user?.district,
-      fadeHeader,
-      fadeAlert,
-      fadeStats,
-      slideStats,
-      fadeRisk,
-      slideRisk,
-      fadeActions,
-    ],
+    // Animated.Value refs are stable — omit from deps intentionally
+    [user?.district, showToast], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // Header fades in immediately on mount — no data needed
+  useEffect(() => {
+    Animated.timing(fadeHeader, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchData();
@@ -227,62 +308,10 @@ export const HomeScreen: React.FC = () => {
     },
   ];
 
-  const ActionCard: React.FC<{
-    icon: string;
-    label: string;
-    color: string;
-    onPress: () => void;
-  }> = ({ icon, label, color, onPress }) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 0.93,
-        ...animation.spring.snappy,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        ...animation.spring.bouncy,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    return (
-      <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
-        <TouchableOpacity
-          style={[styles.actionCard, shadows.md]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onPress();
-          }}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          activeOpacity={1}
-        >
-          <LinearGradient
-            colors={[color + "15", color + "08"]}
-            style={styles.actionIcon}
-          >
-            <MaterialCommunityIcons
-              name={icon as any}
-              size={24}
-              color={color}
-            />
-          </LinearGradient>
-          <Text style={styles.actionText}>{label}</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -641,7 +670,7 @@ const styles = StyleSheet.create({
   gradientHeader: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: HEADER_PADDING_BOTTOM,
     borderBottomLeftRadius: borderRadius["3xl"],
     borderBottomRightRadius: borderRadius["3xl"],
     overflow: "hidden",
@@ -649,18 +678,18 @@ const styles = StyleSheet.create({
   },
   decorCircle1: {
     position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: scale(140),
+    height: scale(140),
+    borderRadius: scale(70),
     backgroundColor: "rgba(255,255,255,0.06)",
     top: -30,
     right: -20,
   },
   decorCircle2: {
     position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: scale(90),
+    height: scale(90),
+    borderRadius: scale(45),
     backgroundColor: "rgba(255,255,255,0.04)",
     bottom: -20,
     left: 20,
@@ -736,9 +765,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
   },
   avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(26),
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -837,9 +866,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   statCard: {
-    width: "48%" as any,
-    flexGrow: 1,
-    flexBasis: "46%",
+    width: CARD_WIDTH,
     backgroundColor: colors.card,
     borderRadius: borderRadius.xl,
     padding: spacing.md,
@@ -847,9 +874,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   statIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: scale(42),
+    height: scale(42),
+    borderRadius: scale(21),
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.sm,
@@ -923,9 +950,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   riskIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: scale(46),
+    height: scale(46),
+    borderRadius: scale(23),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -986,9 +1013,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   actionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(25),
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.sm,

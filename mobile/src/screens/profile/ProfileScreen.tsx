@@ -14,7 +14,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -31,9 +31,12 @@ import { useAuth } from "../../context/AuthContext";
 import { getTaskStats } from "../../api/taskService";
 import { TaskStats } from "../../types/task.types";
 import { API_CONFIG } from "../../utils/constants";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 export const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -160,7 +163,7 @@ export const ProfileScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

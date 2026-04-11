@@ -40,6 +40,7 @@ import { useAuth } from "../../context/AuthContext";
 import { MainTabNavigationProp } from "../../navigation/types";
 import { colors, spacing, typography, borderRadius, shadows } from "../../theme";
 import { useToast } from "../../context/ToastContext";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export const RouteScreen: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const mapRef = useRef<MapView>(null);
 
   const [loading, setLoading] = useState(true);
@@ -475,7 +477,7 @@ export const RouteScreen: React.FC = () => {
           data={orderedTasks}
           keyExtractor={(item) => item.id}
           renderItem={renderStopItem}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           showsVerticalScrollIndicator={false}
           ListFooterComponent={
             routeResult?.tasksWithoutLocation.length

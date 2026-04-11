@@ -56,6 +56,45 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 2.5,
 };
 
+// ─── Memoized marker view ────────────────────────────────────────────────────
+// Hoisted to module scope so React.memo comparator is effective.
+// tracksViewChanges is set to `isSelected` on the parent Marker — only the
+// selected marker pays the re-measure cost; all others are frozen.
+
+interface MarkerViewProps {
+  markerColor: string;
+  isSelected: boolean;
+}
+
+const MarkerView = React.memo<MarkerViewProps>(({ markerColor, isSelected }) => (
+  <View
+    style={[
+      styles.markerContainer,
+      isSelected && styles.markerContainerSelected,
+    ]}
+  >
+    <View
+      style={[
+        styles.markerDot,
+        { backgroundColor: markerColor },
+        isSelected && styles.markerDotSelected,
+      ]}
+    />
+    <View
+      style={[
+        styles.markerRing,
+        { borderColor: markerColor },
+        isSelected && styles.markerRingSelected,
+      ]}
+    />
+    {isSelected && (
+      <View
+        style={[styles.markerPulse, { borderColor: markerColor }]}
+      />
+    )}
+  </View>
+), (prev, next) => prev.markerColor === next.markerColor && prev.isSelected === next.isSelected);
+
 export const TaskMapScreen: React.FC = () => {
   const navigation = useNavigation<MainTabNavigationProp>();
   const { user } = useAuth();
@@ -270,36 +309,9 @@ export const TaskMapScreen: React.FC = () => {
                     longitude: Number(task.longitude),
                   }}
                   onPress={() => handleMarkerPress(task)}
+                  tracksViewChanges={isSelected}
                 >
-                  <View
-                    style={[
-                      styles.markerContainer,
-                      isSelected && styles.markerContainerSelected,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.markerDot,
-                        { backgroundColor: markerColor },
-                        isSelected && styles.markerDotSelected,
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.markerRing,
-                        { borderColor: markerColor },
-                        isSelected && styles.markerRingSelected,
-                      ]}
-                    />
-                    {isSelected && (
-                      <View
-                        style={[
-                          styles.markerPulse,
-                          { borderColor: markerColor },
-                        ]}
-                      />
-                    )}
-                  </View>
+                  <MarkerView markerColor={markerColor} isSelected={isSelected} />
                 </Marker>
               );
             })}
