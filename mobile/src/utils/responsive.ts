@@ -61,3 +61,17 @@ export const TAB_BAR_HEIGHT = 72;
  * Taller phones get slightly more breathing room; short phones stay compact.
  */
 export const HEADER_PADDING_BOTTOM = SCREEN_HEIGHT > 800 ? 48 : 32;
+
+/**
+ * Accessibility-aware font size.
+ * Respects the OS large-text setting (PixelRatio.getFontScale) but caps
+ * growth at 1.3× to prevent layout breakage in dense UI sections.
+ *
+ * Apply to: task titles, status badges, counter values.
+ * Leave decorative labels (role pill, district banner) at fixed sizes.
+ *
+ * Usage:
+ *   fontSize: accessibleFontSize(typography.fontSize.base)
+ */
+export const accessibleFontSize = (size: number): number =>
+  Math.min(size * PixelRatio.getFontScale(), size * 1.3);

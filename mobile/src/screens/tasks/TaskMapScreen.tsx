@@ -13,16 +13,8 @@ import {
   Animated,
   ScrollView,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
-import MapView, {
-  Marker,
-  Region,
-  PROVIDER_GOOGLE,
-  Callout,
-} from "react-native-maps";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -49,6 +41,7 @@ import {
   TASK_PRIORITY_LABELS,
 } from "../../utils/constants";
 import { formatDate, isOverdue } from "../../utils/dateFormatter";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 const DEFAULT_REGION: Region = {
   latitude: 7.8731,
@@ -67,34 +60,37 @@ interface MarkerViewProps {
   isSelected: boolean;
 }
 
-const MarkerView = React.memo<MarkerViewProps>(({ markerColor, isSelected }) => (
-  <View
-    style={[
-      styles.markerContainer,
-      isSelected && styles.markerContainerSelected,
-    ]}
-  >
+const MarkerView = React.memo<MarkerViewProps>(
+  ({ markerColor, isSelected }) => (
     <View
       style={[
-        styles.markerDot,
-        { backgroundColor: markerColor },
-        isSelected && styles.markerDotSelected,
+        styles.markerContainer,
+        isSelected && styles.markerContainerSelected,
       ]}
-    />
-    <View
-      style={[
-        styles.markerRing,
-        { borderColor: markerColor },
-        isSelected && styles.markerRingSelected,
-      ]}
-    />
-    {isSelected && (
+    >
       <View
-        style={[styles.markerPulse, { borderColor: markerColor }]}
+        style={[
+          styles.markerDot,
+          { backgroundColor: markerColor },
+          isSelected && styles.markerDotSelected,
+        ]}
       />
-    )}
-  </View>
-), (prev, next) => prev.markerColor === next.markerColor && prev.isSelected === next.isSelected);
+      <View
+        style={[
+          styles.markerRing,
+          { borderColor: markerColor },
+          isSelected && styles.markerRingSelected,
+        ]}
+      />
+      {isSelected && (
+        <View style={[styles.markerPulse, { borderColor: markerColor }]} />
+      )}
+    </View>
+  ),
+  (prev, next) =>
+    prev.markerColor === next.markerColor &&
+    prev.isSelected === next.isSelected,
+);
 
 export const TaskMapScreen: React.FC = () => {
   const navigation = useNavigation<MainTabNavigationProp>();
@@ -111,6 +107,9 @@ export const TaskMapScreen: React.FC = () => {
   >("idle");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showLegend, setShowLegend] = useState(true);
+  const [tracksViewChanges, setTracksViewChanges] = useState(
+    Platform.OS === "android",
+  );
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -139,9 +138,71 @@ export const TaskMapScreen: React.FC = () => {
     requestLocation();
   }, []);
 
+  const getTaskCoordinate = (task: Task) => {
+    if (task.latitude === null || task.longitude === null) {
+      return null;
+    }
+
+    const latitude = Number(task.latitude);
+    const longitude = Number(task.longitude);
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return null;
+    }
+
+    return { latitude, longitude };
+  };
+
   const taskMarkers = useMemo(() => {
-    return tasks.filter((task) => task.latitude && task.longitude);
+    return tasks
+      .map((task) => ({ task, coordinate: getTaskCoordinate(task) }))
+      .filter(
+        (
+          item,
+        ): item is {
+          task: Task;
+          coordinate: { latitude: number; longitude: number };
+        } => item.coordinate !== null,
+      );
   }, [tasks]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [taskMarkers.length]);
+
+  useEffect(() => {
+    if (!mapRef.current || taskMarkers.length === 0 || selectedTask) {
+      return;
+    }
+
+    const bottomPadding = TAB_BAR_HEIGHT + insets.bottom;
+    const coordinates = taskMarkers.map((item) => item.coordinate);
+    mapRef.current.fitToCoordinates(coordinates, {
+      edgePadding: {
+        top: 140,
+        right: 48,
+        bottom: bottomPadding + 220,
+        left: 48,
+      },
+      animated: true,
+    });
+  }, [taskMarkers, selectedTask, insets.bottom]);
 
   const taskStats = useMemo(() => {
     const assigned = tasks.filter((t) => t.status === "assigned").length;
@@ -153,11 +214,12 @@ export const TaskMapScreen: React.FC = () => {
   const handleMarkerPress = (task: Task) => {
     setSelectedTask(task);
     // Center map on selected task
-    if (task.latitude && task.longitude) {
+    const coordinate = getTaskCoordinate(task);
+    if (coordinate) {
       mapRef.current?.animateToRegion(
         {
-          latitude: Number(task.latitude),
-          longitude: Number(task.longitude),
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         },
@@ -277,351 +339,341 @@ export const TaskMapScreen: React.FC = () => {
     },
   ];
 
+  // Bottom clearance for overlays: floating tab bar + device safe area
+  const overlayBottom = TAB_BAR_HEIGHT + insets.bottom;
+
   return (
     <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.center}>
+      {/* Map is always mounted — unmounting on isLoading toggle causes custom
+          marker views to silently fail to render on Android (tracksViewChanges
+          is frozen before the native view paints). */}
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        initialRegion={region}
+        onRegionChangeComplete={setRegion}
+        customMapStyle={customMapStyle}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+        followsUserLocation={false}
+        showsCompass={false}
+        onPress={() => selectedTask && handleCloseDetail()}
+      >
+        {taskMarkers.map(({ task, coordinate }) => {
+          const isSelected = selectedTask?.id === task.id;
+          const markerColor = colors.status[task.status] || colors.primary;
+          return (
+            <Marker
+              key={task.id}
+              coordinate={coordinate}
+              onPress={() => handleMarkerPress(task)}
+              tracksViewChanges={isSelected || tracksViewChanges}
+            >
+              <MarkerView markerColor={markerColor} isSelected={isSelected} />
+            </Marker>
+          );
+        })}
+      </MapView>
+
+      {/* Loading overlay — sits above map while tasks are fetching */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading tasks...</Text>
         </View>
-      ) : (
-        <>
-          <MapView
-            ref={mapRef}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={region}
-            onRegionChangeComplete={setRegion}
-            customMapStyle={customMapStyle}
-            showsUserLocation={true}
-            showsMyLocationButton={false}
-            followsUserLocation={false}
-            showsCompass={false}
-            onPress={() => selectedTask && handleCloseDetail()}
-          >
-            {taskMarkers.map((task) => {
-              const isSelected = selectedTask?.id === task.id;
-              const markerColor = colors.status[task.status] || colors.primary;
-              return (
-                <Marker
-                  key={task.id}
-                  coordinate={{
-                    latitude: Number(task.latitude),
-                    longitude: Number(task.longitude),
-                  }}
-                  onPress={() => handleMarkerPress(task)}
-                  tracksViewChanges={isSelected}
-                >
-                  <MarkerView markerColor={markerColor} isSelected={isSelected} />
-                </Marker>
-              );
-            })}
-          </MapView>
+      )}
 
-          {/* Floating Header Card */}
-          <View
-            style={[styles.headerCard, { top: insets.top + 20 }, shadows.lg]}
-          >
-            <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
-                <View style={styles.iconBadge}>
-                  <MaterialCommunityIcons
-                    name="map-marker-radius"
-                    size={20}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.headerInfo}>
-                  <Text style={styles.headerTitle}>Task Locations</Text>
-                  <Text style={styles.headerSubtitle}>
-                    {taskMarkers.length} task
-                    {taskMarkers.length !== 1 ? "s" : ""} on map
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowLegend(!showLegend)}
-                style={styles.legendToggle}
-              >
-                <MaterialCommunityIcons
-                  name={showLegend ? "eye-off" : "eye"}
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
+      {/* Floating Header Card */}
+      <View style={[styles.headerCard, { top: insets.top + 20 }, shadows.lg]}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <View style={styles.iconBadge}>
+              <MaterialCommunityIcons
+                name="map-marker-radius"
+                size={20}
+                color={colors.primary}
+              />
+            </View>
+            <View style={styles.headerInfo}>
+              <Text style={styles.headerTitle}>Task Locations</Text>
+              <Text style={styles.headerSubtitle}>
+                {taskMarkers.length} task
+                {taskMarkers.length !== 1 ? "s" : ""} on map
+              </Text>
             </View>
           </View>
-
-          {/* Stats Pills */}
-          <View
-            style={[styles.statsCard, { top: insets.top + 90 }, shadows.md]}
-          >
-            <TouchableOpacity style={styles.statPill}>
-              <View
-                style={[
-                  styles.statDot,
-                  { backgroundColor: colors.status.assigned },
-                ]}
-              />
-              <Text style={styles.statLabel}>Assigned</Text>
-              <Text style={styles.statText}>{taskStats.assigned}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statPill}>
-              <View
-                style={[
-                  styles.statDot,
-                  { backgroundColor: colors.status.in_progress },
-                ]}
-              />
-              <Text style={styles.statLabel}>Active</Text>
-              <Text style={styles.statText}>{taskStats.inProgress}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statPill}>
-              <View
-                style={[
-                  styles.statDot,
-                  { backgroundColor: colors.status.completed },
-                ]}
-              />
-              <Text style={styles.statLabel}>Done</Text>
-              <Text style={styles.statText}>{taskStats.completed}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Zoom Controls */}
-          <View
-            style={[styles.zoomControls, { top: insets.top + 180 }, shadows.md]}
-          >
-            <TouchableOpacity
-              style={styles.zoomButton}
-              onPress={handleZoomIn}
-              activeOpacity={0.7}
-            >
-              <MaterialCommunityIcons
-                name="plus"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-            <View style={styles.zoomDivider} />
-            <TouchableOpacity
-              style={styles.zoomButton}
-              onPress={handleZoomOut}
-              activeOpacity={0.7}
-            >
-              <MaterialCommunityIcons
-                name="minus"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* My Location Button */}
           <TouchableOpacity
-            style={[
-              styles.myLocationButton,
-              { top: insets.top + 280 },
-              shadows.md,
-            ]}
-            onPress={handleMyLocation}
-            activeOpacity={0.7}
+            onPress={() => setShowLegend(!showLegend)}
+            style={styles.legendToggle}
           >
             <MaterialCommunityIcons
-              name="crosshairs-gps"
-              size={24}
-              color={colors.primary}
+              name={showLegend ? "eye-off" : "eye"}
+              size={20}
+              color={colors.textSecondary}
             />
           </TouchableOpacity>
+        </View>
+      </View>
 
-          {/* Enhanced Legend Card with Toggle */}
-          {showLegend && taskMarkers.length > 0 && (
-            <Animated.View
-              style={[styles.legendCard, { opacity: fadeAnim }, shadows.md]}
-            >
-              <View style={styles.legendHeader}>
+      {/* Stats Pills */}
+      <View style={[styles.statsCard, { top: insets.top + 90 }, shadows.md]}>
+        <TouchableOpacity style={styles.statPill}>
+          <View
+            style={[
+              styles.statDot,
+              { backgroundColor: colors.status.assigned },
+            ]}
+          />
+          <Text style={styles.statLabel}>Assigned</Text>
+          <Text style={styles.statText}>{taskStats.assigned}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.statPill}>
+          <View
+            style={[
+              styles.statDot,
+              { backgroundColor: colors.status.in_progress },
+            ]}
+          />
+          <Text style={styles.statLabel}>Active</Text>
+          <Text style={styles.statText}>{taskStats.inProgress}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.statPill}>
+          <View
+            style={[
+              styles.statDot,
+              { backgroundColor: colors.status.completed },
+            ]}
+          />
+          <Text style={styles.statLabel}>Done</Text>
+          <Text style={styles.statText}>{taskStats.completed}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Zoom Controls */}
+      <View
+        style={[styles.zoomControls, { top: insets.top + 180 }, shadows.md]}
+      >
+        <TouchableOpacity
+          style={styles.zoomButton}
+          onPress={handleZoomIn}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="plus" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <View style={styles.zoomDivider} />
+        <TouchableOpacity
+          style={styles.zoomButton}
+          onPress={handleZoomOut}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="minus" size={24} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      {/* My Location Button */}
+      <TouchableOpacity
+        style={[styles.myLocationButton, { top: insets.top + 280 }, shadows.md]}
+        onPress={handleMyLocation}
+        activeOpacity={0.7}
+      >
+        <MaterialCommunityIcons
+          name="crosshairs-gps"
+          size={24}
+          color={colors.primary}
+        />
+      </TouchableOpacity>
+
+      {/* Legend Card — positioned above the floating tab bar */}
+      {showLegend && taskMarkers.length > 0 && (
+        <Animated.View
+          style={[
+            styles.legendCard,
+            { opacity: fadeAnim, bottom: overlayBottom + spacing.sm },
+            shadows.md,
+          ]}
+        >
+          <View style={styles.legendHeader}>
+            <MaterialCommunityIcons
+              name="format-list-bulleted"
+              size={16}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.legendTitle}>Task Status</Text>
+          </View>
+          <View style={styles.legendContent}>
+            {[
+              {
+                status: "assigned" as const,
+                label: "Assigned",
+                icon: "clock-outline",
+              },
+              {
+                status: "in_progress" as const,
+                label: "In Progress",
+                icon: "progress-clock",
+              },
+              {
+                status: "completed" as const,
+                label: "Completed",
+                icon: "check-circle",
+              },
+            ].map((item) => (
+              <View key={item.status} style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: colors.status[item.status] },
+                  ]}
+                />
                 <MaterialCommunityIcons
-                  name="format-list-bulleted"
+                  name={item.icon as any}
+                  size={14}
+                  color={colors.textSecondary}
+                  style={styles.legendIcon}
+                />
+                <Text style={styles.legendText}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.legendHint}>Tap markers to view details</Text>
+        </Animated.View>
+      )}
+
+      {/* Task Detail Panel — raised above the floating tab bar */}
+      {selectedTask && (
+        <Animated.View
+          style={[
+            styles.taskDetailPanel,
+            {
+              bottom: overlayBottom,
+              transform: [
+                {
+                  translateY: slideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [500, 0],
+                  }),
+                },
+              ],
+            },
+            shadows.lg,
+          ]}
+        >
+          <View style={styles.panelHandle}>
+            <View style={styles.panelHandleBar} />
+          </View>
+
+          <ScrollView
+            style={styles.panelScroll}
+            contentContainerStyle={styles.panelContent}
+          >
+            {/* Header */}
+            <View style={styles.panelHeader}>
+              <View style={styles.panelHeaderLeft}>
+                <View
+                  style={[
+                    styles.panelStatusBadge,
+                    { backgroundColor: colors.status[selectedTask.status] },
+                  ]}
+                >
+                  <Text style={styles.panelStatusText}>
+                    {TASK_STATUS_LABELS[selectedTask.status]}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleCloseDetail}
+                  style={styles.closeButton}
+                >
+                  <MaterialCommunityIcons
+                    name="close"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Title */}
+            <Text style={styles.panelTitle}>{selectedTask.title}</Text>
+
+            {/* Meta Info */}
+            <View style={styles.panelMeta}>
+              <View style={styles.panelMetaItem}>
+                <MaterialCommunityIcons
+                  name={getTypeIcon(selectedTask.type)}
                   size={16}
                   color={colors.textSecondary}
                 />
-                <Text style={styles.legendTitle}>Task Status</Text>
+                <Text style={styles.panelMetaText}>
+                  {TASK_TYPE_LABELS[selectedTask.type]}
+                </Text>
               </View>
-              <View style={styles.legendContent}>
-                {[
-                  {
-                    status: "assigned" as const,
-                    label: "Assigned",
-                    icon: "clock-outline",
-                  },
-                  {
-                    status: "in_progress" as const,
-                    label: "In Progress",
-                    icon: "progress-clock",
-                  },
-                  {
-                    status: "completed" as const,
-                    label: "Completed",
-                    icon: "check-circle",
-                  },
-                ].map((item) => (
-                  <View key={item.status} style={styles.legendItem}>
-                    <View
-                      style={[
-                        styles.legendDot,
-                        { backgroundColor: colors.status[item.status] },
-                      ]}
-                    />
-                    <MaterialCommunityIcons
-                      name={item.icon as any}
-                      size={14}
-                      color={colors.textSecondary}
-                      style={styles.legendIcon}
-                    />
-                    <Text style={styles.legendText}>{item.label}</Text>
-                  </View>
-                ))}
+              <View style={styles.panelMetaItem}>
+                <MaterialCommunityIcons
+                  name="flag"
+                  size={16}
+                  color={getPriorityColor(selectedTask.priority)}
+                />
+                <Text style={styles.panelMetaText}>
+                  {TASK_PRIORITY_LABELS[selectedTask.priority]}
+                </Text>
               </View>
-              <Text style={styles.legendHint}>Tap markers to view details</Text>
-            </Animated.View>
-          )}
+            </View>
 
-          {/* Task Detail Sliding Panel */}
-          {selectedTask && (
-            <Animated.View
-              style={[
-                styles.taskDetailPanel,
-                {
-                  bottom: insets.bottom,
-                  transform: [
-                    {
-                      translateY: slideAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [500, 0],
-                      }),
-                    },
-                  ],
-                },
-                shadows.lg,
-              ]}
-            >
-              <View style={styles.panelHandle}>
-                <View style={styles.panelHandleBar} />
+            {/* Address */}
+            {selectedTask.address && (
+              <View style={styles.panelDetail}>
+                <MaterialCommunityIcons
+                  name="map-marker"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.panelDetailText}>
+                  {selectedTask.address}
+                </Text>
               </View>
+            )}
 
-              <ScrollView
-                style={styles.panelScroll}
-                contentContainerStyle={styles.panelContent}
-              >
-                {/* Header */}
-                <View style={styles.panelHeader}>
-                  <View style={styles.panelHeaderLeft}>
-                    <View
-                      style={[
-                        styles.panelStatusBadge,
-                        { backgroundColor: colors.status[selectedTask.status] },
-                      ]}
-                    >
-                      <Text style={styles.panelStatusText}>
-                        {TASK_STATUS_LABELS[selectedTask.status]}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleCloseDetail}
-                      style={styles.closeButton}
-                    >
-                      <MaterialCommunityIcons
-                        name="close"
-                        size={20}
-                        color={colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Title */}
-                <Text style={styles.panelTitle}>{selectedTask.title}</Text>
-
-                {/* Meta Info */}
-                <View style={styles.panelMeta}>
-                  <View style={styles.panelMetaItem}>
-                    <MaterialCommunityIcons
-                      name={getTypeIcon(selectedTask.type)}
-                      size={16}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.panelMetaText}>
-                      {TASK_TYPE_LABELS[selectedTask.type]}
-                    </Text>
-                  </View>
-                  <View style={styles.panelMetaItem}>
-                    <MaterialCommunityIcons
-                      name="flag"
-                      size={16}
-                      color={getPriorityColor(selectedTask.priority)}
-                    />
-                    <Text style={styles.panelMetaText}>
-                      {TASK_PRIORITY_LABELS[selectedTask.priority]}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Details */}
-                {selectedTask.address && (
-                  <View style={styles.panelDetail}>
-                    <MaterialCommunityIcons
-                      name="map-marker"
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.panelDetailText}>
-                      {selectedTask.address}
-                    </Text>
-                  </View>
-                )}
-
-                {selectedTask.dueDate && (
-                  <View style={styles.panelDetail}>
-                    <MaterialCommunityIcons
-                      name="calendar-clock"
-                      size={18}
-                      color={
-                        isOverdue(selectedTask.dueDate)
-                          ? colors.destructive
-                          : colors.textSecondary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.panelDetailText,
-                        isOverdue(selectedTask.dueDate) && styles.overdueText,
-                      ]}
-                    >
-                      Due: {formatDate(selectedTask.dueDate)}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Action Button */}
-                <TouchableOpacity
-                  style={styles.viewDetailButton}
-                  onPress={handleNavigateToDetail}
+            {/* Due date */}
+            {selectedTask.dueDate && (
+              <View style={styles.panelDetail}>
+                <MaterialCommunityIcons
+                  name="calendar-clock"
+                  size={18}
+                  color={
+                    isOverdue(selectedTask.dueDate)
+                      ? colors.destructive
+                      : colors.textSecondary
+                  }
+                />
+                <Text
+                  style={[
+                    styles.panelDetailText,
+                    isOverdue(selectedTask.dueDate) && styles.overdueText,
+                  ]}
                 >
-                  <Text style={styles.viewDetailButtonText}>
-                    View Full Details
-                  </Text>
-                  <MaterialCommunityIcons
-                    name="arrow-right"
-                    size={20}
-                    color={colors.primaryForeground}
-                  />
-                </TouchableOpacity>
-              </ScrollView>
-            </Animated.View>
-          )}
-        </>
+                  Due: {formatDate(selectedTask.dueDate)}
+                </Text>
+              </View>
+            )}
+
+            {/* Action Button */}
+            <TouchableOpacity
+              style={styles.viewDetailButton}
+              onPress={handleNavigateToDetail}
+            >
+              <Text style={styles.viewDetailButtonText}>View Full Details</Text>
+              <MaterialCommunityIcons
+                name="arrow-right"
+                size={20}
+                color={colors.primaryForeground}
+              />
+            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
       )}
 
+      {/* Location denied banner */}
       {locationStatus === "denied" && (
         <View style={[styles.banner, { top: insets.top + 20 }]}>
           <Text style={styles.bannerText}>
@@ -630,14 +682,18 @@ export const TaskMapScreen: React.FC = () => {
         </View>
       )}
 
+      {/* Error banner */}
       {error && (
         <View style={styles.bannerError}>
           <Text style={styles.bannerText}>{error}</Text>
         </View>
       )}
 
+      {/* Empty state — no tasks with coordinates */}
       {!isLoading && taskMarkers.length === 0 && !error && (
-        <View style={styles.emptyOverlay}>
+        <View
+          style={[styles.emptyOverlay, { bottom: overlayBottom + spacing.sm }]}
+        >
           <EmptyState
             icon="map-marker-off-outline"
             title="No tasks on map"
@@ -661,6 +717,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.background + "cc",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
   },
   loadingText: {
     marginTop: spacing.sm,
@@ -795,7 +858,6 @@ const styles = StyleSheet.create({
   },
   legendCard: {
     position: "absolute",
-    bottom: spacing.xl,
     right: spacing.lg,
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
@@ -995,7 +1057,6 @@ const styles = StyleSheet.create({
   },
   emptyOverlay: {
     position: "absolute",
-    bottom: spacing.xl,
     left: spacing.lg,
     right: spacing.lg,
     backgroundColor: colors.card,

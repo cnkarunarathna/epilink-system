@@ -35,7 +35,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 import { getTasks, getOptimizedRoute, updateTaskStatus } from "../../api/taskService";
-import { EmptyState } from "../../components/common";
+import { EmptyState, ShimmerPlaceholder } from "../../components/common";
 import { Task, TaskStatus, RouteResult, RouteLeg } from "../../types/task.types";
 import { useAuth } from "../../context/AuthContext";
 import { MainTabNavigationProp } from "../../navigation/types";
@@ -70,6 +70,65 @@ const DEFAULT_REGION: Region = {
   latitudeDelta: 1.5,
   longitudeDelta: 1.5,
 };
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+const RouteScreenSkeleton: React.FC = () => (
+  <View style={skeletonStyles.container}>
+    {/* Map placeholder */}
+    <ShimmerPlaceholder height={240} borderRadiusValue={0} style={skeletonStyles.mapBlock} />
+    {/* Summary bar */}
+    <View style={skeletonStyles.summaryRow}>
+      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
+      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
+    </View>
+    {/* Stop cards */}
+    {[0, 1, 2, 3].map((i) => (
+      <View key={i} style={skeletonStyles.stopCard}>
+        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={16} />
+        <View style={skeletonStyles.stopInfo}>
+          <ShimmerPlaceholder width="60%" height={13} borderRadiusValue={6} />
+          <ShimmerPlaceholder width="40%" height={10} borderRadiusValue={6} style={skeletonStyles.gap} />
+        </View>
+        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={8} />
+      </View>
+    ))}
+  </View>
+);
+
+const skeletonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  mapBlock: {
+    width: "100%",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  stopCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  stopInfo: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  gap: {
+    marginTop: spacing.xs,
+  },
+});
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -316,9 +375,8 @@ export const RouteScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered} edges={["top"]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Calculating your route…</Text>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <RouteScreenSkeleton />
       </SafeAreaView>
     );
   }

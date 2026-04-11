@@ -34,6 +34,7 @@ import {
   formatRelativeTime,
   isOverdue,
 } from "../../utils/dateFormatter";
+import { accessibleFontSize } from "../../utils/responsive";
 
 interface TaskCardProps {
   task: Task;
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: typography.fontSize.base,
+    fontSize: accessibleFontSize(typography.fontSize.base),
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
     lineHeight: 22,
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   statusText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: accessibleFontSize(typography.fontSize.xs),
     fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
     letterSpacing: 0.3,

@@ -44,6 +44,15 @@ import { TaskStackNavigationProp } from "../../navigation/types";
 import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 import { updateTaskStatus } from "../../api/taskService";
 
+// Measured height of a single TaskCard (including vertical margins) — used by getItemLayout
+// to skip dynamic measurement and enable scroll-to-index.
+const TASK_CARD_HEIGHT = 132;
+const getItemLayout = (_: unknown, index: number) => ({
+  length: TASK_CARD_HEIGHT,
+  offset: TASK_CARD_HEIGHT * index,
+  index,
+});
+
 // Filter cycle order for swipe-to-filter gesture
 const FILTER_CYCLE: TaskFilterValue[] = [
   "all",
@@ -216,6 +225,7 @@ export const TaskListScreen: React.FC = () => {
             maxToRenderPerBatch={8}
             windowSize={5}
             initialNumToRender={6}
+            getItemLayout={getItemLayout}
             ListEmptyComponent={
               <EmptyState
                 icon="clipboard-check-outline"
