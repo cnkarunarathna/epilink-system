@@ -138,6 +138,38 @@ export async function fetchWeeklyForecast() {
   return res.data;
 }
 
+export interface DsDivisionBreakdown {
+  ds_division: string;
+  predicted_cases: number;
+  proportion: number;
+  risk_level: "low" | "medium" | "high" | "critical";
+  confidence_interval: { lower: number; upper: number };
+}
+
+export interface ColomboDsBreakdownResponse {
+  district: string;
+  year: number;
+  week: number;
+  district_predicted_cases: number;
+  disaggregation_method: string;
+  ds_breakdown: DsDivisionBreakdown[];
+}
+
+export async function fetchColomboDsBreakdown(
+  year?: number,
+  week?: number,
+): Promise<ColomboDsBreakdownResponse> {
+  const params = new URLSearchParams();
+  if (year) params.append("year", year.toString());
+  if (week) params.append("week", week.toString());
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const res = await axios.get(
+    `${API_BASE}/analytics/colombo/ds-breakdown${query}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
 export interface DocumentReference {
   title: string;
   source: string;

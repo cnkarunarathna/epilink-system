@@ -5,6 +5,7 @@ import { District } from '../entities/district.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
 import axios from 'axios';
+import { COLOMBO_DS_WEIGHTS, classifyDsRisk } from './colombo-ds-weights';
 
 type DashboardSummary = {
   current_week: { year: number | null; week: number | null };
@@ -1360,5 +1361,131 @@ export class AnalyticsService implements OnModuleInit {
     return this._toolGet(
       `/v1/tools/demographic-hotspots/${encodeURIComponent(district)}`,
     );
+  }
+
+  // ── DS-Level Disaggregation — Colombo District ────────────────────
+
+  /**
+   * Disaggregate the latest (or a specific) Colombo district prediction
+   * into 13 DS-division estimates using pre-computed composite weights.
+   *
+   * No ML model call is made — the district prediction is read from the
+   * weekly_forecasts table and the breakdown is computed in-memory.
+   */
+  async getColombosDsBreakdown(year?: number, week?: number) {
+    const cacheKey = year && week
+      ? `analytics:colombo_ds_breakdown:${year}:${week}`
+      : 'analytics:colombo_ds_breakdown:latest';
+
+    return this.cacheHelper.getOrRefresh(
+      cacheKey,
+      1800000, // 30 minutes
+      async () => {
+        const manager = this.dataSource.manager;
+
+        // Resolve year/week: use supplied values or fall back to latest
+        let targetYear = year;
+        let targetWeek = week;
+
+        if (!targetYear || !targetWeek) {
+          const latest = await manager.query(`
+            SELECT wf.year, wf.week
+            FROM weekly_forecasts wf
+            JOIN districts d ON d.id = wf.district_id
+            WHERE d.name = 'Colombo'
+            ORDER BY wf.year DESC, wf.week DESC
+            LIMIT 1
+          `);
+
+          if (latest.length === 0) {
+            return { error: 'No forecast data available for Colombo' };
+          }
+
+          targetYear = Number(latest[0].year);
+          targetWeek = Number(latest[0].week);
+        }
+
+        // Fetch Colombo district prediction for the resolved week
+        const rows = await manager.query(`
+          SELECT wf.predicted_cases, wf.uncertainty_lower, wf.uncertainty_upper
+          FROM weekly_forecasts wf
+          JOIN districts d ON d.id = wf.district_id
+          WHERE d.name = 'Colombo'
+            AND wf.year = $1
+            AND wf.week = $2
+          LIMIT 1
+        `, [targetYear, targetWeek]);
+
+        if (rows.length === 0) {
+          return {
+            error: `No forecast found for Colombo at year=${targetYear} week=${targetWeek}`,
+          };
+        }
+
+        const districtCases = Number(rows[0].predicted_cases);
+
+        // Derive CI bounds in case units.
+        // uncertainty_lower/upper are stored as normalised risk scores (0–1,
+        // where 1.0 = 120 cases). Reverse-normalize to get case counts,
+        // falling back to ±30 % if the stored values look unreliable.
+        const MAX_NORM = 120;
+        const rawLower = rows[0].uncertainty_lower != null
+          ? Number(rows[0].uncertainty_lower) * MAX_NORM
+          : null;
+        const rawUpper = rows[0].uncertainty_upper != null
+          ? Number(rows[0].uncertainty_upper) * MAX_NORM
+          : null;
+
+        const ciLower = (rawLower !== null && rawLower < districtCases)
+          ? Math.max(0, rawLower)
+          : districtCases * 0.7;
+        const ciUpper = (rawUpper !== null && rawUpper > districtCases)
+          ? rawUpper
+          : districtCases * 1.3;
+
+        // Apply DS weights
+        const dsBreakdown = COLOMBO_DS_WEIGHTS.map((ds) => {
+          const dsCases = districtCases * ds.weight;
+          return {
+            ds_division: ds.name,
+            predicted_cases: Math.round(dsCases),
+            proportion: ds.weight,
+            confidence_interval: {
+              lower: Math.round(Math.max(0, ciLower * ds.weight)),
+              upper: Math.round(ciUpper * ds.weight),
+              confidence_level: 0.80,
+            },
+            risk_level: classifyDsRisk(dsCases),
+          };
+        });
+
+        // Sort highest predicted cases first
+        dsBreakdown.sort((a, b) => b.predicted_cases - a.predicted_cases);
+
+        return {
+          district: 'Colombo',
+          year: targetYear,
+          week: targetWeek,
+          district_predicted_cases: districtCases,
+          disaggregation_method: 'population_density_burden_weighted',
+          ds_breakdown: dsBreakdown,
+        };
+      },
+    );
+  }
+
+  /** Expose the raw DS weight table for academic transparency. */
+  getColombosDsWeights() {
+    return {
+      district: 'Colombo',
+      ds_division_count: COLOMBO_DS_WEIGHTS.length,
+      weight_formula: '0.5 × population_proportion + 0.3 × density_score + 0.2 × burden_index',
+      sources: [
+        'Census of Population and Housing 2012, Department of Census and Statistics, Sri Lanka',
+        'Administrative boundaries, Survey Department of Sri Lanka',
+        'NCDS Annual Dengue Surveillance Reports 2015–2023',
+      ],
+      weights: COLOMBO_DS_WEIGHTS,
+    };
   }
 }
