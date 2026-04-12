@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
@@ -29,6 +29,7 @@ import {
 } from "../../api/analyticsService";
 
 import districtGeoJSON from "../../../assets/District_geo.json";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 /* ── Risk helpers ─────────────────────────────────────────────────────────── */
 const getRiskLevel = (cases: number) => {
@@ -448,6 +449,8 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
 
 /* ── Component ────────────────────────────────────────────────────────────── */
 export const RiskMapScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [predictions, setPredictions] = useState<DistrictPrediction[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -612,6 +615,7 @@ export const RiskMapScreen: React.FC = () => {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: scrollPaddingBottom }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

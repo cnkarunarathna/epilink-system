@@ -35,10 +35,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 import { getTasks, getOptimizedRoute, updateTaskStatus } from "../../api/taskService";
+import { EmptyState, ShimmerPlaceholder } from "../../components/common";
 import { Task, TaskStatus, RouteResult, RouteLeg } from "../../types/task.types";
 import { useAuth } from "../../context/AuthContext";
 import { MainTabNavigationProp } from "../../navigation/types";
 import { colors, spacing, typography, borderRadius, shadows } from "../../theme";
+import { useToast } from "../../context/ToastContext";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -68,12 +71,73 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 1.5,
 };
 
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+const RouteScreenSkeleton: React.FC = () => (
+  <View style={skeletonStyles.container}>
+    {/* Map placeholder */}
+    <ShimmerPlaceholder height={240} borderRadiusValue={0} style={skeletonStyles.mapBlock} />
+    {/* Summary bar */}
+    <View style={skeletonStyles.summaryRow}>
+      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
+      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
+    </View>
+    {/* Stop cards */}
+    {[0, 1, 2, 3].map((i) => (
+      <View key={i} style={skeletonStyles.stopCard}>
+        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={16} />
+        <View style={skeletonStyles.stopInfo}>
+          <ShimmerPlaceholder width="60%" height={13} borderRadiusValue={6} />
+          <ShimmerPlaceholder width="40%" height={10} borderRadiusValue={6} style={skeletonStyles.gap} />
+        </View>
+        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={8} />
+      </View>
+    ))}
+  </View>
+);
+
+const skeletonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  mapBlock: {
+    width: "100%",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  stopCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  stopInfo: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  gap: {
+    marginTop: spacing.xs,
+  },
+});
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const RouteScreen: React.FC = () => {
   const navigation = useNavigation<MainTabNavigationProp>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const mapRef = useRef<MapView>(null);
 
   const [loading, setLoading] = useState(true);
@@ -120,6 +184,12 @@ export const RouteScreen: React.FC = () => {
       const result = await getOptimizedRoute(routableIds, origin);
       setRouteResult(result);
 
+      const stopCount = result.orderedTaskIds.length;
+      showToast({
+        message: `Route optimised for ${stopCount} stop${stopCount !== 1 ? "s" : ""}.`,
+        variant: "info",
+      });
+
       // Fit map to all task coordinates
       if (result.orderedTaskIds.length > 0) {
         const taskMap = new Map(active.map((t) => [t.id, t]));
@@ -139,6 +209,7 @@ export const RouteScreen: React.FC = () => {
       }
     } catch {
       setError("Failed to load route. Please try again.");
+      showToast({ message: "Failed to load route. Please try again.", variant: "error" });
     } finally {
       setLoading(false);
       setRouteLoading(false);
@@ -206,8 +277,9 @@ export const RouteScreen: React.FC = () => {
             t.id === task.id ? { ...t, status: TaskStatus.IN_PROGRESS } : t,
           ),
         );
+        showToast({ message: "Task marked as In Progress.", variant: "success" });
       } catch {
-        Alert.alert("Error", "Failed to update task status.");
+        showToast({ message: "Failed to update task status.", variant: "error" });
       } finally {
         setMarkingId(null);
       }
@@ -303,9 +375,8 @@ export const RouteScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered} edges={["top"]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Calculating your route…</Text>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <RouteScreenSkeleton />
       </SafeAreaView>
     );
   }
@@ -327,11 +398,12 @@ export const RouteScreen: React.FC = () => {
   if (tasksWithLocation.length < 2) {
     return (
       <SafeAreaView style={styles.centered} edges={["top"]}>
-        <MaterialCommunityIcons name="map-marker-off" size={48} color={colors.textSecondary} />
-        <Text style={styles.emptyTitle}>Not enough locations</Text>
-        <Text style={styles.emptySubtitle}>
-          You need at least 2 active tasks with GPS coordinates to generate a route.
-        </Text>
+        <EmptyState
+          icon="map-marker-path"
+          title="Not enough locations"
+          subtitle="You need at least 2 active tasks with GPS coordinates to generate a route."
+          action={{ label: "Refresh", onPress: loadRoute }}
+        />
       </SafeAreaView>
     );
   }
@@ -465,8 +537,15 @@ export const RouteScreen: React.FC = () => {
           data={orderedTasks}
           keyExtractor={(item) => item.id}
           renderItem={renderStopItem}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="routes"
+              title="No stops yet"
+              subtitle="Pull down to refresh or wait for route calculation."
+            />
+          }
           ListFooterComponent={
             routeResult?.tasksWithoutLocation.length
               ? (
@@ -520,21 +599,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
   },
-  emptyTitle: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    marginTop: spacing.sm,
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-
   // Map
   mapContainer: {
     flex: 1,

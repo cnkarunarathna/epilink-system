@@ -2,14 +2,17 @@
  * Task Card Component — Enhanced with animated entrance, gradient strip, press scale
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
+  Modal,
+  Pressable,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Task, TaskType, TaskPriority } from "../../types/task.types";
@@ -31,18 +34,24 @@ import {
   formatRelativeTime,
   isOverdue,
 } from "../../utils/dateFormatter";
+import { accessibleFontSize } from "../../utils/responsive";
 
 interface TaskCardProps {
   task: Task;
   onPress?: (task: Task) => void;
+  onMarkInProgress?: (task: Task) => void;
+  onViewOnMap?: (task: Task) => void;
   index?: number;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({
+const TaskCardInner: React.FC<TaskCardProps> = ({
   task,
   onPress,
+  onMarkInProgress,
+  onViewOnMap,
   index = 0,
 }) => {
+  const [menuVisible, setMenuVisible] = useState(false);
   const overdue = isOverdue(task.dueDate);
   const statusColor =
     colors.status[task.status as keyof typeof colors.status] ||
@@ -136,6 +145,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     }
   };
 
+  const handleLongPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setMenuVisible(true);
+  };
+
   return (
     <Animated.View
       style={{
@@ -143,8 +157,73 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
       }}
     >
+      {/* Long-press context menu */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+          <View style={styles.menuSheet}>
+            <View style={styles.menuHandle} />
+            <Text style={styles.menuTitle} numberOfLines={1}>{task.title}</Text>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => { setMenuVisible(false); onPress?.(task); }}
+            >
+              <View style={[styles.menuItemIcon, { backgroundColor: colors.primary + "15" }]}>
+                <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={colors.primary} />
+              </View>
+              <Text style={styles.menuItemText}>View Details</Text>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {task.status === "assigned" && onMarkInProgress ? (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => { setMenuVisible(false); onMarkInProgress(task); }}
+              >
+                <View style={[styles.menuItemIcon, { backgroundColor: colors.status.in_progress + "15" }]}>
+                  <MaterialCommunityIcons name="progress-clock" size={20} color={colors.status.in_progress} />
+                </View>
+                <Text style={styles.menuItemText}>Mark In Progress</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
+
+            {onViewOnMap ? (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => { setMenuVisible(false); onViewOnMap(task); }}
+              >
+                <View style={[styles.menuItemIcon, { backgroundColor: colors.primaryLight + "15" }]}>
+                  <MaterialCommunityIcons name="map-marker-outline" size={20} color={colors.primaryLight} />
+                </View>
+                <Text style={styles.menuItemText}>View on Map</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              activeOpacity={0.7}
+              onPress={() => setMenuVisible(false)}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       <TouchableOpacity
         onPress={() => onPress?.(task)}
+        onLongPress={handleLongPress}
+        delayLongPress={300}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         style={[styles.card, overdue && styles.cardOverdue]}
@@ -255,6 +334,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   );
 };
 
+// Only re-render when the task's own id or status changes — not when other tasks in the list update
+export const TaskCard = React.memo(TaskCardInner, (prev, next) =>
+  prev.task.id === next.task.id &&
+  prev.task.status === next.task.status &&
+  prev.index === next.index
+);
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
@@ -285,7 +371,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: typography.fontSize.base,
+    fontSize: accessibleFontSize(typography.fontSize.base),
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
     lineHeight: 22,
@@ -296,7 +382,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   statusText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: accessibleFontSize(typography.fontSize.xs),
     fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
     letterSpacing: 0.3,
@@ -365,5 +451,72 @@ const styles = StyleSheet.create({
   relativeTime: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
+  },
+  // ─── Long-press context menu ──────────────────────────────────────────────
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: borderRadius["2xl"],
+    borderTopRightRadius: borderRadius["2xl"],
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    ...shadows.lg,
+  },
+  menuHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: "center",
+    marginBottom: spacing.md,
+  },
+  menuTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+  },
+  menuItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text,
+  },
+  menuItemCancel: {
+    marginTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    justifyContent: "center",
+  },
+  menuCancelText: {
+    flex: 1,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textSecondary,
+    textAlign: "center",
   },
 });

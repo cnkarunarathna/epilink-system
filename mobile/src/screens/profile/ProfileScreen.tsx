@@ -14,7 +14,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -26,15 +26,84 @@ import {
   shadows,
   animation,
 } from "../../theme";
-import { AnimatedCounter } from "../../components/common";
+import { AnimatedCounter, ShimmerPlaceholder } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import { getTaskStats } from "../../api/taskService";
 import { TaskStats } from "../../types/task.types";
 import { API_CONFIG } from "../../utils/constants";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
+
+// ─── ProfileScreenSkeleton ────────────────────────────────────────────────────
+
+const ProfileScreenSkeleton: React.FC = () => (
+  <View style={profileSkeletonStyles.container}>
+    {/* Gradient header area */}
+    <ShimmerPlaceholder height={180} borderRadiusValue={0} style={profileSkeletonStyles.headerBlock} />
+
+    {/* Avatar circle placeholder — centred, overlaps the header bottom */}
+    <View style={profileSkeletonStyles.avatarWrap}>
+      <ShimmerPlaceholder width={88} height={88} borderRadiusValue={44} />
+    </View>
+
+    {/* Name + role labels */}
+    <View style={profileSkeletonStyles.labelGroup}>
+      <ShimmerPlaceholder width={160} height={18} borderRadiusValue={9} />
+      <ShimmerPlaceholder width={120} height={13} borderRadiusValue={7} style={{ marginTop: 8 }} />
+    </View>
+
+    {/* Stat row */}
+    <View style={profileSkeletonStyles.statsRow}>
+      <ShimmerPlaceholder width={72} height={52} borderRadiusValue={12} />
+      <ShimmerPlaceholder width={72} height={52} borderRadiusValue={12} />
+      <ShimmerPlaceholder width={72} height={52} borderRadiusValue={12} />
+    </View>
+
+    {/* Two info cards */}
+    <ShimmerPlaceholder height={72} borderRadiusValue={16} style={profileSkeletonStyles.card} />
+    <ShimmerPlaceholder height={72} borderRadiusValue={16} style={profileSkeletonStyles.card} />
+  </View>
+);
+
+const profileSkeletonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  headerBlock: {
+    marginBottom: 0,
+  },
+  avatarWrap: {
+    alignSelf: "center",
+    marginTop: -44,
+    marginBottom: spacing.md,
+  },
+  labelGroup: {
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+});
+
+// ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 export const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [stats, setStats] = useState<TaskStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Animations
@@ -47,12 +116,14 @@ export const ProfileScreen: React.FC = () => {
 
   const fetchStats = useCallback(async (refresh = false) => {
     if (refresh) setIsRefreshing(true);
+    else setIsLoading(true);
     try {
       const data = await getTaskStats();
       setStats(data);
     } catch {
       // silently handle
     } finally {
+      setIsLoading(false);
       if (refresh) setIsRefreshing(false);
     }
   }, []);
@@ -157,10 +228,18 @@ export const ProfileScreen: React.FC = () => {
     outputRange: ["0deg", "360deg"],
   });
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <ProfileScreenSkeleton />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

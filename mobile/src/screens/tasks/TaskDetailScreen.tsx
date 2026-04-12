@@ -26,6 +26,7 @@ import {
   animation,
 } from "../../theme";
 import { Button, Card, Loading, ErrorMessage } from "../../components/common";
+import { useToast } from "../../context/ToastContext";
 import { getTaskById, updateTaskStatus } from "../../api/taskService";
 import { getTaskEvidence } from "../../api/evidenceService";
 import {
@@ -85,6 +86,7 @@ export const TaskDetailScreen: React.FC = () => {
   const route = useRoute<TaskDetailRouteProp>();
   const navigation = useNavigation();
   const { taskId } = route.params;
+  const { showToast } = useToast();
 
   const [task, setTask] = useState<Task | null>(null);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
@@ -192,14 +194,23 @@ export const TaskDetailScreen: React.FC = () => {
     fetchTask(false);
   }, [fetchTask]);
 
+  const STATUS_TOAST_LABELS: Partial<Record<TaskStatus, string>> = {
+    [TaskStatus.IN_PROGRESS]: "Task started — good luck!",
+    [TaskStatus.SUBMITTED]: "Task submitted for review",
+  };
+
   const handleStatusChange = async (status: TaskStatus) => {
     if (!task) return;
     setActionLoading(true);
     try {
       const updated = await updateTaskStatus(task.id, { status });
       setTask(updated);
+      const label = STATUS_TOAST_LABELS[status];
+      if (label) showToast({ message: label, variant: "success" });
     } catch (err: any) {
-      setError(err?.message || "Failed to update task");
+      const msg = err?.message || "Failed to update task";
+      setError(msg);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setActionLoading(false);
     }
