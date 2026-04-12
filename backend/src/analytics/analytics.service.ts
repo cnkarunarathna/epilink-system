@@ -6,6 +6,10 @@ import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
 import axios from 'axios';
 import { COLOMBO_DS_WEIGHTS, classifyDsRisk } from './colombo-ds-weights';
+import {
+  buildServiceHeaders,
+  ValidatedServiceUser,
+} from '../common/service-headers.util';
 
 type DashboardSummary = {
   current_week: { year: number | null; week: number | null };
@@ -39,7 +43,13 @@ const SL_ADJACENCY: Record<string, string[]> = {
   Hambanthota: ['Matara', 'Ratnapura', 'Monaragala', 'Badulla'],
   Jaffna: ['Kilinochchi', 'Mannar'],
   Mannar: ['Jaffna', 'Vavuniya', 'Anuradhapura'],
-  Vavuniya: ['Mannar', 'Kilinochchi', 'Mullaitivu', 'Anuradhapura', 'Trincomalee'],
+  Vavuniya: [
+    'Mannar',
+    'Kilinochchi',
+    'Mullaitivu',
+    'Anuradhapura',
+    'Trincomalee',
+  ],
   Mullaitivu: ['Kilinochchi', 'Vavuniya', 'Trincomalee', 'Batticaloa'],
   Kilinochchi: ['Jaffna', 'Mannar', 'Vavuniya', 'Mullaitivu'],
   Batticaloa: ['Mullaitivu', 'Trincomalee', 'Ampara', 'Badulla'],
@@ -85,7 +95,14 @@ const SL_ADJACENCY: Record<string, string[]> = {
     'Hambanthota',
   ],
   Monaragala: ['Badulla', 'Ampara', 'Hambanthota', 'Ratnapura'],
-  Ratnapura: ['Kalutara', 'Galle', 'NuwaraEliya', 'Hambanthota', 'Monaragala', 'Kegalle'],
+  Ratnapura: [
+    'Kalutara',
+    'Galle',
+    'NuwaraEliya',
+    'Hambanthota',
+    'Monaragala',
+    'Kegalle',
+  ],
   Kegalle: ['Gampaha', 'Kandy', 'Ratnapura', 'Kurunegala'],
 };
 
@@ -123,7 +140,9 @@ export class AnalyticsService implements OnModuleInit {
           await fn();
           this.logger.log(`Cache warmed: analytics:${name}`);
         } catch (err) {
-          this.logger.warn(`Cache warm-up failed for analytics:${name}: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(
+            `Cache warm-up failed for analytics:${name}: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }),
     );
@@ -157,8 +176,14 @@ export class AnalyticsService implements OnModuleInit {
           week: row.week,
           latitude: Number(row.latitude),
           longitude: Number(row.longitude),
-          temperature: row.temperature_2m_mean !== null ? Number(row.temperature_2m_mean) : null,
-          precipitation: row.precipitation_sum !== null ? Number(row.precipitation_sum) : null,
+          temperature:
+            row.temperature_2m_mean !== null
+              ? Number(row.temperature_2m_mean)
+              : null,
+          precipitation:
+            row.precipitation_sum !== null
+              ? Number(row.precipitation_sum)
+              : null,
         }));
       },
     );
@@ -188,8 +213,12 @@ export class AnalyticsService implements OnModuleInit {
           year: r.year,
           week: r.week,
           cases: r.cases,
-          temperature: r.temperature_2m_mean !== null ? Number(r.temperature_2m_mean) : null,
-          precipitation: r.precipitation_sum !== null ? Number(r.precipitation_sum) : null,
+          temperature:
+            r.temperature_2m_mean !== null
+              ? Number(r.temperature_2m_mean)
+              : null,
+          precipitation:
+            r.precipitation_sum !== null ? Number(r.precipitation_sum) : null,
         }));
       },
     );
@@ -269,9 +298,13 @@ export class AnalyticsService implements OnModuleInit {
   async predictBulkFromML() {
     const features = await this.getDistrictFeaturesForBulk();
     const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-    const resp = await axios.post(`${mlUrl}/predict/bulk`, {
-      districts: features,
-    });
+    const resp = await axios.post(
+      `${mlUrl}/predict/bulk`,
+      {
+        districts: features,
+      },
+      { headers: buildServiceHeaders() },
+    );
 
     // Emit real-time update to connected clients
     this.eventsGateway.emitAnalyticsUpdated({
@@ -435,8 +468,12 @@ export class AnalyticsService implements OnModuleInit {
           week: row.week,
           district: row.district,
           cases: Number(row.cases) || 0,
-          temperature: row.temperature_2m_mean ? Number(row.temperature_2m_mean) : null,
-          precipitation: row.precipitation_sum ? Number(row.precipitation_sum) : null,
+          temperature: row.temperature_2m_mean
+            ? Number(row.temperature_2m_mean)
+            : null,
+          precipitation: row.precipitation_sum
+            ? Number(row.precipitation_sum)
+            : null,
         }));
       },
     );
@@ -475,8 +512,12 @@ export class AnalyticsService implements OnModuleInit {
           week: row.week,
           district: row.district,
           cases: Number(row.cases) || 0,
-          temperature: row.temperature_2m_mean ? Number(row.temperature_2m_mean) : null,
-          precipitation: row.precipitation_sum ? Number(row.precipitation_sum) : null,
+          temperature: row.temperature_2m_mean
+            ? Number(row.temperature_2m_mean)
+            : null,
+          precipitation: row.precipitation_sum
+            ? Number(row.precipitation_sum)
+            : null,
         }));
       },
     );
@@ -560,8 +601,12 @@ export class AnalyticsService implements OnModuleInit {
         `);
         return data.map((row: any) => ({
           district: row.district,
-          temp_correlation: row.temp_correlation ? Number(row.temp_correlation) : 0,
-          precip_correlation: row.precip_correlation ? Number(row.precip_correlation) : 0,
+          temp_correlation: row.temp_correlation
+            ? Number(row.temp_correlation)
+            : 0,
+          precip_correlation: row.precip_correlation
+            ? Number(row.precip_correlation)
+            : 0,
           avg_cases: Number(row.avg_cases) || 0,
           avg_temp: Number(row.avg_temp) || 0,
           avg_precip: Number(row.avg_precip) || 0,
@@ -786,7 +831,10 @@ export class AnalyticsService implements OnModuleInit {
     );
   }
 
-  async getExplainableInsight(districtName: string) {
+  async getExplainableInsight(
+    districtName: string,
+    user: ValidatedServiceUser,
+  ) {
     const manager = this.dataSource.manager;
 
     // Get the district entity
@@ -951,6 +999,7 @@ export class AnalyticsService implements OnModuleInit {
       const resp = await axios.post(
         `${explainUrl}/v1/insights/explain`,
         payload,
+        { headers: buildServiceHeaders(user) },
       );
       return resp.data;
     } catch (err: any) {
@@ -978,7 +1027,9 @@ export class AnalyticsService implements OnModuleInit {
             : `Current case count: ${currentCases}`,
         ],
         recommendations: ['Increase surveillance in high-incidence areas'],
-        caveats: ['AI explanation service unavailable — showing basic fallback'],
+        caveats: [
+          'AI explanation service unavailable — showing basic fallback',
+        ],
         references: [],
         document_references: [],
         implementation_phase: 'phase-1-fallback',
@@ -987,11 +1038,7 @@ export class AnalyticsService implements OnModuleInit {
         prediction_confidence: predConfidence,
         data_freshness_warning: false,
         trend_direction:
-          wowChange >= 10
-            ? 'rising'
-            : wowChange <= -10
-              ? 'falling'
-              : 'stable',
+          wowChange >= 10 ? 'rising' : wowChange <= -10 ? 'falling' : 'stable',
         spillover_risk: false,
         _fallback: true,
         _error: err.message,
@@ -999,7 +1046,11 @@ export class AnalyticsService implements OnModuleInit {
     }
   }
 
-  async askFollowUpQuestion(districtName: string, question: string) {
+  async askFollowUpQuestion(
+    districtName: string,
+    question: string,
+    user: ValidatedServiceUser,
+  ) {
     // Re-use getExplainableInsight logic but add user_question
     const manager = this.dataSource.manager;
     const district = await manager
@@ -1068,6 +1119,7 @@ export class AnalyticsService implements OnModuleInit {
       const resp = await axios.post(
         `${explainUrl}/v1/insights/explain`,
         payload,
+        { headers: buildServiceHeaders(user) },
       );
       return resp.data;
     } catch (err: any) {
@@ -1084,6 +1136,7 @@ export class AnalyticsService implements OnModuleInit {
     districtName: string,
     message: string,
     sessionId?: string,
+    user?: ValidatedServiceUser,
   ) {
     // Gather district signals for context
     const manager = this.dataSource.manager;
@@ -1141,12 +1194,18 @@ export class AnalyticsService implements OnModuleInit {
     try {
       // Enhancement 7: send only the new message + session_id.
       // Full history is managed server-side in the Python service via Redis.
-      const resp = await axios.post(`${explainUrl}/v1/insights/chat`, {
-        district: districtName,
-        message,
-        session_id: sessionId || undefined,
-        structured_signals: structuredSignals,
-      });
+      const resp = await axios.post(
+        `${explainUrl}/v1/insights/chat`,
+        {
+          district: districtName,
+          message,
+          session_id: sessionId || undefined,
+          structured_signals: structuredSignals,
+        },
+        {
+          headers: buildServiceHeaders(user),
+        },
+      );
       return resp.data;
     } catch (err: any) {
       return {
@@ -1168,6 +1227,7 @@ export class AnalyticsService implements OnModuleInit {
     try {
       const resp = await axios.get(
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/history`,
+        { headers: buildServiceHeaders() },
       );
       return resp.data;
     } catch {
@@ -1186,6 +1246,7 @@ export class AnalyticsService implements OnModuleInit {
     try {
       const resp = await axios.delete(
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}`,
+        { headers: buildServiceHeaders() },
       );
       return resp.data;
     } catch {
@@ -1199,13 +1260,14 @@ export class AnalyticsService implements OnModuleInit {
 
   // ── Enhancement 3: National Summary ────────────────────────────────
 
-  async getNationalSummary(week?: string) {
+  async getNationalSummary(week?: string, user?: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
       const params = week ? `?week=${encodeURIComponent(week)}` : '';
       const resp = await axios.get(
         `${explainUrl}/v1/insights/national-summary${params}`,
+        { headers: buildServiceHeaders(user) },
       );
       return resp.data;
     } catch (err: any) {
@@ -1227,14 +1289,17 @@ export class AnalyticsService implements OnModuleInit {
 
   // ── Enhancement 3: Batch Explain ───────────────────────────────────
 
-  async batchExplain(requests: any[]) {
+  async batchExplain(requests: any[], user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
       const resp = await axios.post(
         `${explainUrl}/v1/insights/batch-explain`,
         { requests },
-        { timeout: 120000 }, // 2-minute timeout for batch operations
+        {
+          headers: buildServiceHeaders(user),
+          timeout: 120000,
+        }, // 2-minute timeout for batch operations
       );
       return resp.data;
     } catch (err: any) {
@@ -1256,7 +1321,9 @@ export class AnalyticsService implements OnModuleInit {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
-      const resp = await axios.get(`${explainUrl}/v1/rag/status`);
+      const resp = await axios.get(`${explainUrl}/v1/rag/status`, {
+        headers: buildServiceHeaders(),
+      });
       return resp.data;
     } catch (err: any) {
       return {
@@ -1272,13 +1339,16 @@ export class AnalyticsService implements OnModuleInit {
     }
   }
 
-  async ingestRagDocuments(documents: any[]) {
+  async ingestRagDocuments(documents: any[], user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     const resp = await axios.post(
       `${explainUrl}/v1/rag/ingest`,
       { documents },
-      { timeout: 300000 }, // 5-minute timeout — embedding can be slow for large batches
+      {
+        headers: buildServiceHeaders(user),
+        timeout: 300000,
+      }, // 5-minute timeout — embedding can be slow for large batches
     );
     return resp.data;
   }
@@ -1287,7 +1357,9 @@ export class AnalyticsService implements OnModuleInit {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
-      const resp = await axios.get(`${explainUrl}/v1/rag/etl/status`);
+      const resp = await axios.get(`${explainUrl}/v1/rag/etl/status`, {
+        headers: buildServiceHeaders(),
+      });
       return resp.data;
     } catch {
       return {
@@ -1303,18 +1375,13 @@ export class AnalyticsService implements OnModuleInit {
     }
   }
 
-  async triggerEtlRun() {
+  async triggerEtlRun(user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
-    const serviceKey = process.env.EXPLAIN_BACKEND_SERVICE_KEY;
-    const headers: Record<string, string> = {};
-    if (serviceKey) {
-      headers['x-internal-api-key'] = serviceKey;
-    }
     const resp = await axios.post(
       `${explainUrl}/v1/rag/etl/run`,
       {},
-      { headers, timeout: 600000 },
+      { headers: buildServiceHeaders(user), timeout: 600000 },
     );
     return resp.data;
   }
@@ -1325,10 +1392,15 @@ export class AnalyticsService implements OnModuleInit {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
-      const resp = await axios.get(`${explainUrl}${path}`, { timeout: 30000 });
+      const resp = await axios.get(`${explainUrl}${path}`, {
+        headers: buildServiceHeaders(),
+        timeout: 30000,
+      });
       return resp.data;
     } catch (err: any) {
-      return { error: err.response?.data?.detail || 'Tool endpoint unavailable' };
+      return {
+        error: err.response?.data?.detail || 'Tool endpoint unavailable',
+      };
     }
   }
 
@@ -1340,9 +1412,7 @@ export class AnalyticsService implements OnModuleInit {
   }
 
   async getCrossDistrictSpillover(district: string) {
-    return this._toolGet(
-      `/v1/tools/spillover/${encodeURIComponent(district)}`,
-    );
+    return this._toolGet(`/v1/tools/spillover/${encodeURIComponent(district)}`);
   }
 
   async getInterventionHistory(district: string) {
@@ -1373,9 +1443,10 @@ export class AnalyticsService implements OnModuleInit {
    * weekly_forecasts table and the breakdown is computed in-memory.
    */
   async getColombosDsBreakdown(year?: number, week?: number) {
-    const cacheKey = year && week
-      ? `analytics:colombo_ds_breakdown:${year}:${week}`
-      : 'analytics:colombo_ds_breakdown:latest';
+    const cacheKey =
+      year && week
+        ? `analytics:colombo_ds_breakdown:${year}:${week}`
+        : 'analytics:colombo_ds_breakdown:latest';
 
     return this.cacheHelper.getOrRefresh(
       cacheKey,
@@ -1406,7 +1477,8 @@ export class AnalyticsService implements OnModuleInit {
         }
 
         // Fetch Colombo district prediction for the resolved week
-        const rows = await manager.query(`
+        const rows = await manager.query(
+          `
           SELECT wf.predicted_cases, wf.uncertainty_lower, wf.uncertainty_upper
           FROM weekly_forecasts wf
           JOIN districts d ON d.id = wf.district_id
@@ -1414,7 +1486,9 @@ export class AnalyticsService implements OnModuleInit {
             AND wf.year = $1
             AND wf.week = $2
           LIMIT 1
-        `, [targetYear, targetWeek]);
+        `,
+          [targetYear, targetWeek],
+        );
 
         if (rows.length === 0) {
           return {
@@ -1429,19 +1503,23 @@ export class AnalyticsService implements OnModuleInit {
         // where 1.0 = 120 cases). Reverse-normalize to get case counts,
         // falling back to ±30 % if the stored values look unreliable.
         const MAX_NORM = 120;
-        const rawLower = rows[0].uncertainty_lower != null
-          ? Number(rows[0].uncertainty_lower) * MAX_NORM
-          : null;
-        const rawUpper = rows[0].uncertainty_upper != null
-          ? Number(rows[0].uncertainty_upper) * MAX_NORM
-          : null;
+        const rawLower =
+          rows[0].uncertainty_lower != null
+            ? Number(rows[0].uncertainty_lower) * MAX_NORM
+            : null;
+        const rawUpper =
+          rows[0].uncertainty_upper != null
+            ? Number(rows[0].uncertainty_upper) * MAX_NORM
+            : null;
 
-        const ciLower = (rawLower !== null && rawLower < districtCases)
-          ? Math.max(0, rawLower)
-          : districtCases * 0.7;
-        const ciUpper = (rawUpper !== null && rawUpper > districtCases)
-          ? rawUpper
-          : districtCases * 1.3;
+        const ciLower =
+          rawLower !== null && rawLower < districtCases
+            ? Math.max(0, rawLower)
+            : districtCases * 0.7;
+        const ciUpper =
+          rawUpper !== null && rawUpper > districtCases
+            ? rawUpper
+            : districtCases * 1.3;
 
         // Apply DS weights
         const dsBreakdown = COLOMBO_DS_WEIGHTS.map((ds) => {
@@ -1453,7 +1531,7 @@ export class AnalyticsService implements OnModuleInit {
             confidence_interval: {
               lower: Math.round(Math.max(0, ciLower * ds.weight)),
               upper: Math.round(ciUpper * ds.weight),
-              confidence_level: 0.80,
+              confidence_level: 0.8,
             },
             risk_level: classifyDsRisk(dsCases),
           };
@@ -1479,7 +1557,8 @@ export class AnalyticsService implements OnModuleInit {
     return {
       district: 'Colombo',
       ds_division_count: COLOMBO_DS_WEIGHTS.length,
-      weight_formula: '0.5 × population_proportion + 0.3 × density_score + 0.2 × burden_index',
+      weight_formula:
+        '0.5 × population_proportion + 0.3 × density_score + 0.2 × burden_index',
       sources: [
         'Census of Population and Housing 2012, Department of Census and Statistics, Sri Lanka',
         'Administrative boundaries, Survey Department of Sri Lanka',

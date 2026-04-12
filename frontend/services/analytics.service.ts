@@ -1,15 +1,12 @@
 import axios from "axios";
-import { ACCESS_TOKEN_KEY } from "@/lib/tokenUtils";
+
+axios.defaults.withCredentials = true;
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_BASE = RAW_BASE.endsWith("/api") ? RAW_BASE : `${RAW_BASE}/api`;
 
 function getAuthHeaders() {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem(ACCESS_TOKEN_KEY)
-      : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return {};
 }
 
 export interface DistrictLatest {

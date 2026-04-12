@@ -1,9 +1,23 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../entities/user.entity';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { ValidatedServiceUser } from '../common/service-headers.util';
 
 @Controller('analytics')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
@@ -88,24 +102,37 @@ export class AnalyticsController {
   }
 
   @Get('explain/:district')
-  async explainInsight(@Param('district') district: string) {
-    return this.analyticsService.getExplainableInsight(district);
+  @Roles(UserRole.ADMIN)
+  async explainInsight(
+    @Param('district') district: string,
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.getExplainableInsight(district, user);
   }
 
   @Get('explain/:district/ask')
+  @Roles(UserRole.ADMIN)
   async askFollowUp(
     @Param('district') district: string,
     @Query('question') question: string,
+    @CurrentUser() user: ValidatedServiceUser,
   ) {
-    return this.analyticsService.askFollowUpQuestion(district, question);
+    return this.analyticsService.askFollowUpQuestion(district, question, user);
   }
 
   @Post('explain/:district/chat')
+  @Roles(UserRole.ADMIN)
   async chatWithAgent(
     @Param('district') district: string,
     @Body() body: { message: string; sessionId?: string },
+    @CurrentUser() user: ValidatedServiceUser,
   ) {
-    return this.analyticsService.chatWithAgent(district, body.message, body.sessionId);
+    return this.analyticsService.chatWithAgent(
+      district,
+      body.message,
+      body.sessionId,
+      user,
+    );
   }
 
   // ── Enhancement 7: session history and management ─────────────────
@@ -123,13 +150,21 @@ export class AnalyticsController {
   // ── Enhancement 3: National Summary & Batch Explain ───────────────
 
   @Get('national-summary')
-  async nationalSummary(@Query('week') week?: string) {
-    return this.analyticsService.getNationalSummary(week);
+  @Roles(UserRole.ADMIN)
+  async nationalSummary(
+    @Query('week') week?: string,
+    @CurrentUser() user?: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.getNationalSummary(week, user);
   }
 
   @Post('batch-explain')
-  async batchExplain(@Body() body: { requests: any[] }) {
-    return this.analyticsService.batchExplain(body.requests ?? []);
+  @Roles(UserRole.ADMIN)
+  async batchExplain(
+    @Body() body: { requests: any[] },
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.batchExplain(body.requests ?? [], user);
   }
 
   // ── Enhancement 2: RAG Corpus Management ──────────────────────────
@@ -140,8 +175,12 @@ export class AnalyticsController {
   }
 
   @Post('rag/ingest')
-  async ragIngest(@Body() body: { documents: any[] }) {
-    return this.analyticsService.ingestRagDocuments(body.documents ?? []);
+  @Roles(UserRole.ADMIN)
+  async ragIngest(
+    @Body() body: { documents: any[] },
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.ingestRagDocuments(body.documents ?? [], user);
   }
 
   @Get('rag/etl/status')
@@ -150,8 +189,9 @@ export class AnalyticsController {
   }
 
   @Post('rag/etl/run')
-  async etlRun() {
-    return this.analyticsService.triggerEtlRun();
+  @Roles(UserRole.ADMIN)
+  async etlRun(@CurrentUser() user: ValidatedServiceUser) {
+    return this.analyticsService.triggerEtlRun(user);
   }
 
   // ── Enhancement 4: Direct tool endpoints ──────────────────────────

@@ -10,9 +10,7 @@ import {
   Notification,
 } from "@/lib/types";
 import {
-  ACCESS_TOKEN_KEY,
   USER_STORAGE_KEY,
-  isTokenExpired,
   clearAuthStorage,
   dispatchLogoutEvent,
 } from "@/lib/tokenUtils";
@@ -26,23 +24,11 @@ async function fetchApi<T>(
   options?: RequestInit,
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-
-    // Check token expiry before making request
-    if (token && isTokenExpired(token)) {
-      clearAuthStorage();
-      dispatchLogoutEvent();
-      return {
-        success: false,
-        error: "Session expired. Please login again.",
-      };
-    }
-
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
         ...options?.headers,
       },
     });
@@ -83,17 +69,14 @@ export const authService = {
   async login(
     email: string,
     password: string,
-  ): Promise<ApiResponse<{ user: User; token: string }>> {
-    const response = await fetchApi<{ user: User; token: string }>(
-      "/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      },
-    );
+  ): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetchApi<{ user: User }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
 
     if (response.success && response.data) {
-      localStorage.setItem(ACCESS_TOKEN_KEY, response.data.token);
+      clearAuthStorage();
       localStorage.setItem(
         USER_STORAGE_KEY,
         JSON.stringify(response.data.user),
@@ -104,7 +87,12 @@ export const authService = {
   },
 
   async logout(): Promise<void> {
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
     clearAuthStorage();
+    dispatchLogoutEvent();
   },
 
   getCurrentUser(): User | null {
@@ -191,12 +179,9 @@ export const taskService = {
     formData.append("file", file);
     if (notes) formData.append("notes", notes);
 
-    const token = localStorage.getItem("auth_token");
     const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/evidence`, {
       method: "POST",
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      credentials: "include",
       body: formData,
     });
 
@@ -285,11 +270,8 @@ export const reportService = {
 
   async downloadReportPdf(reportId: string): Promise<Blob | null> {
     try {
-      const token = localStorage.getItem("auth_token");
       const response = await fetch(`${API_BASE_URL}/reports/${reportId}/pdf`, {
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
+        credentials: "include",
       });
 
       if (!response.ok) return null;

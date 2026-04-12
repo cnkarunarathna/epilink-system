@@ -9,12 +9,9 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ACCESS_TOKEN_KEY,
   USER_STORAGE_KEY,
   AUTH_LOGOUT_EVENT,
-  isTokenExpired,
   clearAuthStorage,
-  getStoredToken,
 } from "@/lib/tokenUtils";
 
 export type UserRole = "admin" | "supervisor" | "phi" | "viewer";
@@ -31,7 +28,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -43,26 +40,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   // Logout function - clear storage and redirect
-  const logout = useCallback(() => {
-    clearAuthStorage();
-    setUser(null);
-    router.push("/login");
+  const logout = useCallback(async () => {
+    try {
+      await fetch(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
+        }/auth/logout`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      clearAuthStorage();
+      setUser(null);
+      router.push("/login");
+    }
   }, [router]);
 
   // Validate session by calling the /auth/me endpoint
   const validateSession = useCallback(async (): Promise<boolean> => {
-    const token = getStoredToken();
-
-    if (!token) {
-      return false;
-    }
-
-    // Check if token is expired client-side first
-    if (isTokenExpired(token)) {
-      clearAuthStorage();
-      return false;
-    }
-
     try {
       // Validate token with backend
       const response = await fetch(
@@ -70,9 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
         }/auth/me`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         },
       );
 
@@ -142,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({ email, password }),
         },
       );
@@ -153,8 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
 
-      // Store token and user data using consistent keys
-      localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
+      // Keep only the user object in local storage; the JWT stays in the cookie.
+      clearAuthStorage();
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
       setUser(data.user);
 

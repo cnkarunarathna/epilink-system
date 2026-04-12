@@ -1,5 +1,7 @@
 import axios from "axios";
 
+axios.defaults.withCredentials = true;
+
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_BASE = RAW_BASE.endsWith("/api") ? RAW_BASE : `${RAW_BASE}/api`;
 
@@ -138,7 +140,6 @@ export interface UpdateTaskDto {
 
 // API functions
 export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
-  const token = localStorage.getItem("accessToken");
   const params = new URLSearchParams();
   if (filters?.districtId)
     params.append("districtId", filters.districtId.toString());
@@ -149,23 +150,21 @@ export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
     params.append("assignedPhiId", filters.assignedPhiId);
 
   const res = await axios.get(`${API_BASE}/tasks?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
 
 export async function fetchTask(id: string): Promise<Task> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.get(`${API_BASE}/tasks/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
 
 export async function createTask(data: CreateTaskDto): Promise<Task> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(`${API_BASE}/tasks`, data, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
@@ -174,9 +173,8 @@ export async function updateTask(
   id: string,
   data: UpdateTaskDto,
 ): Promise<Task> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(`${API_BASE}/tasks/${id}`, data, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
@@ -187,37 +185,33 @@ export async function updateTaskStatus(
   rejectionReason?: string,
   force?: boolean,
 ): Promise<Task> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/status`,
     { status, rejectionReason, force },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
 
 export async function assignTask(id: string, phiId: string): Promise<Task> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/${id}/assign`,
     { assignedPhiId: phiId },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const token = localStorage.getItem("accessToken");
   await axios.delete(`${API_BASE}/tasks/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
 }
 
 export async function fetchTaskStats(districtId?: number): Promise<TaskStats> {
-  const token = localStorage.getItem("accessToken");
   const params = districtId ? `?districtId=${districtId}` : "";
   const res = await axios.get(`${API_BASE}/tasks/stats${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
@@ -225,19 +219,17 @@ export async function fetchTaskStats(districtId?: number): Promise<TaskStats> {
 export async function fetchPhisByDistrict(
   districtName: string,
 ): Promise<{ id: string; name: string; email: string; isActive: boolean }[]> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.get(
     `${API_BASE}/tasks/phis/${encodeURIComponent(districtName)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
 
 // Evidence API
 export async function fetchTaskEvidence(taskId: string): Promise<Evidence[]> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.get(`${API_BASE}/tasks/${taskId}/evidence`, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
@@ -251,9 +243,8 @@ export async function addEvidence(
     longitude?: number;
   },
 ): Promise<Evidence> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(`${API_BASE}/tasks/${taskId}/evidence`, data, {
-    headers: { Authorization: `Bearer ${token}` },
+    withCredentials: true,
   });
   return res.data;
 }
@@ -262,17 +253,13 @@ export async function uploadEvidenceFile(
   file: File,
   onUploadProgress?: (percent: number) => void,
 ): Promise<{ url: string; key: string }> {
-  const token = localStorage.getItem("accessToken");
   const formData = new FormData();
   formData.append("file", file);
   const res = await axios.post<{ url: string; key: string }>(
     `${API_BASE}/upload/evidence`,
     formData,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "multipart/form-data",
-      },
+      withCredentials: true,
       onUploadProgress: onUploadProgress
         ? (e) => {
             const percent = e.total
@@ -291,11 +278,10 @@ export async function verifyEvidence(
   approved: boolean,
   rejectionReason?: string,
 ): Promise<Evidence> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.patch(
     `${API_BASE}/tasks/evidence/${evidenceId}/verify`,
     { approved, rejectionReason },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
@@ -347,11 +333,10 @@ export async function getOptimizedRoute(
   taskIds: string[],
   origin?: { lat: number; lng: number },
 ): Promise<RouteResult> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(
     `${API_BASE}/tasks/route`,
     { taskIds, originLat: origin?.lat, originLng: origin?.lng },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
@@ -359,11 +344,10 @@ export async function getOptimizedRoute(
 export async function saveRouteOrder(
   orders: { taskId: string; order: number }[],
 ): Promise<void> {
-  const token = localStorage.getItem("accessToken");
   await axios.patch(
     `${API_BASE}/tasks/route-order`,
     { orders },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
 }
 
@@ -387,11 +371,10 @@ export interface GeocodingResult {
 export async function geocodeAddress(
   address: string,
 ): Promise<GeocodingResult | null> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(
     `${API_BASE}/tasks/geocode`,
     { address },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
@@ -400,11 +383,10 @@ export async function reverseGeocode(
   latitude: number,
   longitude: number,
 ): Promise<GeocodingResult | null> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(
     `${API_BASE}/tasks/reverse-geocode`,
     { latitude, longitude },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }
@@ -413,11 +395,10 @@ export async function searchAddresses(
   query: string,
   limit: number = 5,
 ): Promise<GeocodingResult[]> {
-  const token = localStorage.getItem("accessToken");
   const res = await axios.post(
     `${API_BASE}/tasks/search-addresses`,
     { query, limit },
-    { headers: { Authorization: `Bearer ${token}` } },
+    { withCredentials: true },
   );
   return res.data;
 }

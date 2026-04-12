@@ -54,6 +54,9 @@ const SUGGESTIONS = [
   "When should I go to the hospital?",
 ];
 
+const CHATBOT_API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+
 const CONFIDENCE_CONFIG: Record<
   "high" | "medium" | "low",
   { label: string; className: string }
@@ -119,7 +122,7 @@ function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
     <span
       className={cn(
         "inline-block text-[10px] font-medium px-2 py-0.5 rounded-full",
-        cfg.className
+        cfg.className,
       )}
     >
       {cfg.label}
@@ -185,11 +188,7 @@ function CopyButton({ content }: { content: string }) {
   );
 }
 
-function SuggestionChips({
-  onSelect,
-}: {
-  onSelect: (text: string) => void;
-}) {
+function SuggestionChips({ onSelect }: { onSelect: (text: string) => void }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pb-3">
       {SUGGESTIONS.map((s) => (
@@ -211,7 +210,7 @@ function StatusDot({ online }: { online: boolean | null }) {
     <span
       className={cn(
         "h-2 w-2 rounded-full shrink-0",
-        online ? "bg-green-400" : "bg-amber-400"
+        online ? "bg-green-400" : "bg-amber-400",
       )}
       title={online ? "Online" : "Connecting…"}
     />
@@ -253,13 +252,16 @@ function ChatMessageBubble({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={cn("flex gap-2 group", isUser ? "flex-row-reverse" : "flex-row")}
+      className={cn(
+        "flex gap-2 group",
+        isUser ? "flex-row-reverse" : "flex-row",
+      )}
     >
       {/* Avatar */}
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-0.5",
-          isUser ? "bg-primary" : "bg-muted"
+          isUser ? "bg-primary" : "bg-muted",
         )}
       >
         {isUser ? (
@@ -270,19 +272,23 @@ function ChatMessageBubble({
       </div>
 
       {/* Bubble + metadata */}
-      <div className={cn("flex flex-col gap-1 max-w-[80%]", isUser && "items-end")}>
+      <div
+        className={cn("flex flex-col gap-1 max-w-[80%]", isUser && "items-end")}
+      >
         <div
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm",
             isUser
               ? "bg-primary text-primary-foreground"
               : message.isError
-              ? "bg-destructive/10 text-destructive border border-destructive/20"
-              : "bg-muted text-foreground"
+                ? "bg-destructive/10 text-destructive border border-destructive/20"
+                : "bg-muted text-foreground",
           )}
         >
           {isUser ? (
-            <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            <p className="leading-relaxed whitespace-pre-wrap">
+              {message.content}
+            </p>
           ) : (
             <MarkdownContent content={message.content} />
           )}
@@ -366,7 +372,7 @@ export function ChatbotWidget() {
 
   useEffect(() => {
     const check = () =>
-      fetch("/api/chatbot/health")
+      fetch(`${CHATBOT_API_BASE_URL}/chatbot/health`)
         .then((r) => setOnline(r.ok))
         .catch(() => setOnline(false));
     check();
@@ -390,7 +396,9 @@ export function ChatbotWidget() {
 
     if (!sessionIdRef.current) {
       try {
-        const res = await fetch("/api/chatbot/session", { method: "POST" });
+        const res = await fetch(`${CHATBOT_API_BASE_URL}/chatbot/session`, {
+          method: "POST",
+        });
         if (res.ok) {
           const data = await res.json();
           sessionIdRef.current = data.session_id ?? null;
@@ -403,74 +411,77 @@ export function ChatbotWidget() {
 
   // ── Send message ──────────────────────────────────────────────────────────
 
-  const sendMessage = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || isTyping) return;
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isTyping) return;
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: trimmed,
-      timestamp: new Date(),
-    };
-
-    lastUserMessageRef.current = userMessage;
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsTyping(true);
-    setUserScrolledUp(false);
-
-    try {
-      const response = await fetch("/api/chatbot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          session_id: sessionIdRef.current,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail?.message ?? data?.error ?? "Request failed"
-        );
-      }
-
-      // Persist session_id from response (echoed back on every turn)
-      if (data.session_id && !sessionIdRef.current) {
-        sessionIdRef.current = data.session_id;
-      }
-
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.response,
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: trimmed,
         timestamp: new Date(),
-        sources: data.sources ?? [],
-        confidence: data.confidence ?? undefined,
-        note: data.note ?? undefined,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error("Chat API error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
+      lastUserMessageRef.current = userMessage;
+      setMessages((prev) => [...prev, userMessage]);
+      setInput("");
+      setIsTyping(true);
+      setUserScrolledUp(false);
+
+      try {
+        const response = await fetch(`${CHATBOT_API_BASE_URL}/chatbot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: trimmed,
+            session_id: sessionIdRef.current,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.detail?.message ?? data?.error ?? "Request failed",
+          );
+        }
+
+        // Persist session_id from response (echoed back on every turn)
+        if (data.session_id && !sessionIdRef.current) {
+          sessionIdRef.current = data.session_id;
+        }
+
+        const assistantMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content:
-            "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+          content: data.response,
           timestamp: new Date(),
-          isError: true,
-        },
-      ]);
-    } finally {
-      setIsTyping(false);
-    }
-  }, [isTyping]);
+          sources: data.sources ?? [],
+          confidence: data.confidence ?? undefined,
+          note: data.note ?? undefined,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      } catch (error) {
+        console.error("Chat API error:", error);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content:
+              "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+            timestamp: new Date(),
+            isError: true,
+          },
+        ]);
+      } finally {
+        setIsTyping(false);
+      }
+    },
+    [isTyping],
+  );
 
   const handleSend = () => sendMessage(input);
 
@@ -531,7 +542,7 @@ export function ChatbotWidget() {
               // Mobile: full screen
               "inset-0",
               // Desktop: fixed bottom-right panel
-              "sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[400px]"
+              "sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[400px]",
             )}
           >
             <div
@@ -540,7 +551,7 @@ export function ChatbotWidget() {
                 // Mobile: full height, no rounded corners
                 "h-full rounded-none",
                 // Desktop: fixed height, rounded corners
-                "sm:h-[580px] sm:max-h-[calc(100vh-3rem)] sm:rounded-2xl"
+                "sm:h-[580px] sm:max-h-[calc(100vh-3rem)] sm:rounded-2xl",
               )}
             >
               {/* Header */}

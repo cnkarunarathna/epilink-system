@@ -6,7 +6,7 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -39,14 +39,32 @@ export class EventsGateway
     private readonly configService: ConfigService,
   ) {}
 
+  private extractCookieToken(cookieHeader?: string): string | null {
+    if (!cookieHeader) {
+      return null;
+    }
+
+    const cookiePair = cookieHeader
+      .split(';')
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith('access_token='));
+
+    if (!cookiePair) {
+      return null;
+    }
+
+    return cookiePair.substring('access_token='.length) || null;
+  }
+
   afterInit() {
     this.logger.log('WebSocket Gateway initialized');
   }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
-      // Extract token from handshake auth or query
+      // Extract token from cookie, handshake auth, or authorization header
       const token =
+        this.extractCookieToken(client.handshake.headers?.cookie) ||
         client.handshake.auth?.token ||
         client.handshake.headers?.authorization?.replace('Bearer ', '');
 
@@ -58,9 +76,7 @@ export class EventsGateway
 
       // Verify JWT token
       const payload = await this.jwtService.verifyAsync(token, {
-        secret:
-          this.configService.get<string>('JWT_SECRET') ||
-          'epilink-super-secret-key-change-in-production',
+        secret: this.configService.getOrThrow<string>('JWT_SECRET'),
       });
 
       // Attach user info to socket

@@ -1,14 +1,10 @@
 import axios from "axios";
-import {
-  ACCESS_TOKEN_KEY,
-  isTokenExpired,
-  dispatchLogoutEvent,
-  clearAuthStorage,
-} from "./tokenUtils";
+import { dispatchLogoutEvent, clearAuthStorage } from "./tokenUtils";
 
 // Create axios instance with default config
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api",
+  withCredentials: true,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
@@ -17,26 +13,8 @@ const api = axios.create({
 
 // Request interceptor
 api.interceptors.request.use(
-  (config) => {
-    // Add auth token from localStorage
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-      if (token) {
-        // Check if token is expired before making request
-        if (isTokenExpired(token)) {
-          // Token expired, clear storage and trigger logout
-          clearAuthStorage();
-          dispatchLogoutEvent();
-          return Promise.reject(new Error("Token expired"));
-        }
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
+  (config) => config,
+  (error) => Promise.reject(error),
 );
 
 // Response interceptor

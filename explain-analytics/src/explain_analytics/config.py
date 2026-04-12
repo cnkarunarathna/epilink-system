@@ -25,7 +25,6 @@ class Settings(BaseSettings):
 
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"
-    backend_service_key: str | None = None
 
     redis_url: str | None = None
     session_ttl_seconds: int = 7200
