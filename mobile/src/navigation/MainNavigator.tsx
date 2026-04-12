@@ -32,6 +32,7 @@ import { TaskMapScreen } from "../screens/tasks/TaskMapScreen";
 import { RiskMapScreen } from "../screens/risk/RiskMapScreen";
 import { RouteScreen } from "../screens/tasks/RouteScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
+import { NotificationsScreen } from "../screens/notifications/NotificationsScreen";
 import { colors, spacing, borderRadius, typography, animation } from "../theme";
 
 // ─── Tab config ──────────────────────────────────────────────────────────────
@@ -235,6 +236,12 @@ export const MainNavigator: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
+        options={{ tabBarButton: () => null }}
+      />
+      {/* Notifications — hidden from bar, navigated via Home screen bell */}
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
         options={{ tabBarButton: () => null }}
       />
     </Tab.Navigator>

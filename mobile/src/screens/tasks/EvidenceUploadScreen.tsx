@@ -14,7 +14,6 @@ import {
   Image,
   Platform,
   Animated,
-  Alert,
 } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
@@ -33,6 +32,7 @@ import {
 } from "../../theme";
 import { Button, Card, Loading } from "../../components/common";
 import { uploadEvidenceFile } from "../../api/evidenceService";
+import { useToast } from "../../context/ToastContext";
 
 type EvidenceUploadRouteProp = RouteProp<TaskStackParamList, "EvidenceUpload">;
 
@@ -40,6 +40,7 @@ export const EvidenceUploadScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<EvidenceUploadRouteProp>();
   const { taskId } = route.params;
+  const { showToast } = useToast();
 
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
@@ -59,6 +60,17 @@ export const EvidenceUploadScreen: React.FC = () => {
   // Entrance animation
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(24)).current;
+
+  // Animated progress bar — interpolates 0→100 to 0%→100% width
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: uploadProgress,
+      duration: 200,
+      useNativeDriver: false, // width animation requires JS driver
+    }).start();
+  }, [uploadProgress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     Animated.parallel([
@@ -100,10 +112,10 @@ export const EvidenceUploadScreen: React.FC = () => {
   const requestCameraPermission = async (): Promise<boolean> => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Camera Permission Required",
-        "Please allow camera access in your device settings to take photos.",
-      );
+      showToast({
+        message: "Camera access required. Enable it in device settings.",
+        variant: "warning",
+      });
       return false;
     }
     return true;
@@ -113,10 +125,10 @@ export const EvidenceUploadScreen: React.FC = () => {
     const { status } =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Photo Library Permission Required",
-        "Please allow photo library access in your device settings.",
-      );
+      showToast({
+        message: "Photo library access required. Enable it in device settings.",
+        variant: "warning",
+      });
       return false;
     }
     return true;
@@ -162,7 +174,7 @@ export const EvidenceUploadScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!selectedImage) {
-      Alert.alert("No Photo", "Please take or select a photo first.");
+      showToast({ message: "Please take or select a photo first.", variant: "warning" });
       return;
     }
 
@@ -179,12 +191,13 @@ export const EvidenceUploadScreen: React.FC = () => {
         setUploadProgress,
       );
 
+      showToast({ message: "Evidence uploaded successfully.", variant: "success" });
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert(
-        "Upload Failed",
-        err?.message || "Failed to submit evidence. Please try again.",
-      );
+      showToast({
+        message: err?.message || "Upload failed. Please try again.",
+        variant: "error",
+      });
     } finally {
       setUploading(false);
     }
@@ -342,7 +355,12 @@ export const EvidenceUploadScreen: React.FC = () => {
               <Animated.View
                 style={[
                   styles.progressFill,
-                  { width: `${uploadProgress}%` as any },
+                  {
+                    width: progressAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ["0%", "100%"],
+                    }),
+                  },
                 ]}
               />
             </View>

@@ -85,10 +85,8 @@ const FilterChip: React.FC<{
   );
 };
 
-export const TaskFilters: React.FC<TaskFiltersProps> = ({
-  value,
-  onChange,
-}) => {
+// Re-renders only when the active filter or the change handler change
+export const TaskFilters = React.memo<TaskFiltersProps>(({ value, onChange }) => {
   return (
     <ScrollView
       horizontal
@@ -105,7 +103,7 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({
       ))}
     </ScrollView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

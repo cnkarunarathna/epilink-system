@@ -10,6 +10,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native";
 import { AuthProvider } from "./src/context/AuthContext";
+import { ToastProvider } from "./src/context/ToastContext";
+import { ToastContainer } from "./src/components/common/Toast";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 
 export default function App() {
@@ -17,12 +19,15 @@ export default function App() {
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
         <AuthProvider>
-          <StatusBar
-            style="dark"
-            backgroundColor="#ffffff"
-            translucent={false}
-          />
-          <RootNavigator />
+          <ToastProvider>
+            <StatusBar
+              style="dark"
+              backgroundColor="#ffffff"
+              translucent={false}
+            />
+            <RootNavigator />
+            <ToastContainer />
+          </ToastProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
