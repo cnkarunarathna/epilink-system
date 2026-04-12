@@ -1,311 +1,267 @@
 # Microservice Authentication — Implementation Plan
 
-## Architecture Overview
+---
+
+## Actual Call Graph (Current State)
 
 ```
 Browser
-  │  httpOnly cookie: access_token (JWT)
+  ├── /api/chatbot/*  →  Next.js API route (server-side proxy)  →  chatbot:8002
+  └── /api/*          →  NestJS backend:3001
+                              ├── ml-model:8000          (no auth)
+                              ├── route-optimizer:8001   (no auth)
+                              └── explain-analytics:8010 (partial auth)
+```
+
+Key observation: **the browser never calls Python services directly.** The chatbot is already
+proxied server-side through Next.js API routes. The only direct browser target is NestJS backend.
+This means NestJS is already the natural gateway — the architecture just needs to be tightened.
+
+---
+
+## Approach Options
+
+| Option | What | No service keys? | No 3rd-party tools? | Local dev friendly? |
+|---|---|---|---|---|
+| **A** | Per-service keys on Python services | No | Yes | Yes |
+| **B** | Traefik as edge gateway | Yes (edge only) | No | No (Docker-only) |
+| **C** | NestJS as the gateway (custom) | **Yes** | **Yes** | **Yes** |
+
+**Option C is the right fit for this system.** It uses what you already have, works
+identically in local dev (npm scripts) and production (Docker), and requires zero new
+infrastructure or service key management.
+
+---
+
+## Option C — NestJS as the Custom Gateway (Recommended)
+
+### Core idea
+
+The NestJS backend is already the sole entry point for authenticated requests. The gap is that:
+
+1. Python services have no way to know who is calling them or who the user is
+2. The chatbot proxy lives in Next.js instead of NestJS — splitting the trust boundary
+3. Python ports are open in local dev with no protection
+
+The fix: **NestJS owns all proxy responsibilities and forwards verified user context as plain
+headers. Python services do their own lightweight RBAC on those headers — no shared secrets,
+no third-party tools.**
+
+### Target Architecture
+
+```
+Browser
+  │  Authorization: Bearer <JWT>  (or httpOnly cookie — see Step 2)
   ▼
-NestJS Backend (:3001)          ← sole JWT validator + RBAC enforcer
+NestJS Backend (:3001)       ← validates JWT, sole entry point for all service calls
   │
   │  Headers on every outbound call:
-  │    x-internal-service-key: <per-service secret>
   │    x-user-id: <id>
   │    x-user-role: admin | supervisor | viewer
   │    x-user-district: <district>
-  │    x-request-id: <trace UUID>
+  │    x-request-id: <uuid>
   │
-  ├──→ ML Service (:8000)           validates x-internal-service-key
-  ├──→ Route Optimizer (:8001)      validates x-internal-service-key
-  ├──→ Explain Analytics (:8010)    validates x-internal-service-key + x-user-role
-  └──→ Chatbot (:8004)              validates x-internal-service-key
+  ├──→ ml-model:8000             reads x-user-role if it needs to gate by role
+  ├──→ route-optimizer:8001      reads x-user-role if it needs to gate by role
+  ├──→ explain-analytics:8010    enforces x-user-role === "admin"
+  └──→ chatbot:8002              (proxied from NestJS, moved from Next.js)
+
+Next.js Frontend (:3000)
+  └── /api/chatbot/*  →  removed — NestJS handles this now
 ```
 
-**Core principle:** The NestJS backend is the only service that validates user JWTs. Every service
-behind it communicates via internal service keys. User claims are forwarded as plain headers
-(not as JWT) so Python services can enforce their own RBAC without needing the JWT secret.
+### Why this works without service keys
+
+In this model, Python services trust the `x-user-role` / `x-user-id` headers because:
+
+- **Local dev:** Trust-by-convention. All calls go through NestJS. The ports are open, but
+  you and your team are the only users. Acceptable for development.
+- **Production (Docker):** Python services have **no `ports:` mapping** in docker-compose.
+  They are unreachable from outside the Docker network. Only NestJS can call them.
+  The headers are trusted because only NestJS can inject them.
+
+The Docker network IS the security enforcement in production. The headers carry user context,
+not authentication proof.
 
 ---
 
-## Current State Audit
+## Implementation Steps
 
-| Boundary | Auth | Gap |
-|---|---|---|
-| Browser → NestJS | JWT in `localStorage` | XSS can steal token |
-| NestJS → ML Service | None | Fully open |
-| NestJS → Route Optimizer | None | Fully open |
-| NestJS → Explain Analytics | `x-internal-api-key` (RAG/ETL only) | Insight endpoints unprotected |
-| NestJS → Chatbot | None | Fully open |
-| Python services CORS | `allow_origins=["*"]` | Unnecessary browser surface |
-| JWT secret | Hardcoded fallback | Predictable in dev/staging |
+### Step 1 — Move chatbot proxy from Next.js to NestJS (~2 hours)
 
----
+Currently the chatbot proxy lives in three Next.js API routes:
+- `frontend/app/api/chatbot/route.ts`
+- `frontend/app/api/chatbot/session/route.ts`
+- `frontend/app/api/chatbot/health/route.ts`
 
-## Phase 1 — Close Open Service Endpoints (P0, ~1 day)
+Move these into the NestJS backend so all service calls are routed through a single JWT-validated
+entry point.
 
-**Goal:** Ensure no Python microservice accepts unauthenticated requests.  
-**Scope:** ML Service, Route Optimizer, Chatbot. No frontend changes.
-
-### 1.1 — Add per-service keys to environment config
-
-Add the following to your `.env` and `docker-compose.yml`:
-
-```env
-# .env
-ML_SERVICE_KEY=ml-svc-<generate-32-char-random>
-ROUTE_OPTIMIZER_KEY=route-svc-<generate-32-char-random>
-EXPLAIN_ANALYTICS_KEY=explain-svc-<generate-32-char-random>
-CHATBOT_KEY=chatbot-svc-<generate-32-char-random>
-```
-
-```yaml
-# docker-compose.yml additions
-ml-model:
-  environment:
-    SERVICE_KEY: ${ML_SERVICE_KEY}
-
-route-optimizer:
-  environment:
-    SERVICE_KEY: ${ROUTE_OPTIMIZER_KEY}
-
-explain-analytics:
-  environment:
-    SERVICE_KEY: ${EXPLAIN_ANALYTICS_KEY}   # replaces EXPLAIN_BACKEND_SERVICE_KEY
-
-chatbot-service:
-  environment:
-    SERVICE_KEY: ${CHATBOT_KEY}
-```
-
-### 1.2 — Create shared auth dependency for Python services
-
-Create this file in each Python microservice (or a shared internal package):
-
-```python
-# shared/auth.py  (copy into ml-model/, route-optimizer/, chatbot-service/, explain-analytics/src/)
-import os
-import hmac
-from fastapi import Header, HTTPException
-
-_SERVICE_KEY = os.getenv("SERVICE_KEY", "")
-
-async def require_internal_key(x_internal_service_key: str = Header(...)):
-    """Validates that the caller is the authorised NestJS backend."""
-    if not _SERVICE_KEY:
-        raise RuntimeError("SERVICE_KEY env var is not set — refusing to start unprotected.")
-    if not hmac.compare_digest(_SERVICE_KEY, x_internal_service_key):
-        raise HTTPException(status_code=403, detail="Forbidden")
-```
-
-> Using `hmac.compare_digest` prevents timing-based attacks compared to `==`.
-
-### 1.3 — Apply the dependency globally in each FastAPI app
-
-```python
-# ml-model/app.py
-from shared.auth import require_internal_key
-from fastapi import FastAPI, Depends
-
-app = FastAPI(dependencies=[Depends(require_internal_key)])
-```
-
-```python
-# route-optimizer/app.py  — same pattern
-app = FastAPI(dependencies=[Depends(require_internal_key)])
-```
-
-```python
-# chatbot-service/main.py  — same pattern
-# Remove the existing optional X-Admin-Key approach for admin endpoints;
-# replace with the service key + x-user-role pattern (Phase 3).
-app = FastAPI(dependencies=[Depends(require_internal_key)])
-```
-
-```python
-# explain-analytics/src/explain_analytics/main.py
-# Apply globally — this replaces the per-endpoint x-internal-api-key checks.
-app = FastAPI(dependencies=[Depends(require_internal_key)])
-```
-
-### 1.4 — Update NestJS to send the correct key per service
-
-Update `backend/src/analytics/analytics.service.ts` and any other service callers:
+**1a. Create a chatbot proxy module in NestJS**
 
 ```typescript
-// backend/src/analytics/analytics.service.ts
-private mlHeaders(): Record<string, string> {
-  return { 'x-internal-service-key': process.env.ML_SERVICE_KEY };
-}
+// backend/src/chatbot/chatbot.module.ts
+import { Module } from '@nestjs/common';
+import { ChatbotController } from './chatbot.controller';
+import { ChatbotService } from './chatbot.service';
 
-private explainHeaders(): Record<string, string> {
-  return { 'x-internal-service-key': process.env.EXPLAIN_ANALYTICS_KEY };
-}
+@Module({
+  controllers: [ChatbotController],
+  providers: [ChatbotService],
+})
+export class ChatbotModule {}
 ```
 
 ```typescript
-// backend/src/tasks/route.service.ts
-private routeHeaders(): Record<string, string> {
-  return { 'x-internal-service-key': process.env.ROUTE_OPTIMIZER_KEY };
-}
-```
-
-Pass these headers into every `axios.post` / `fetch` call replacing the previous ad-hoc header logic.
-
-### 1.5 — Health check exemption
-
-Health check endpoints should be reachable by Docker without a service key (for orchestration liveness probes):
-
-```python
-# Place the health route BEFORE the global dependency is applied, or exclude it:
-app = FastAPI()
-
-@app.get("/health")  # no auth — registered first
-async def health(): return {"status": "ok"}
-
-# Then add the auth dependency to the main router
-api_router = APIRouter(dependencies=[Depends(require_internal_key)])
-app.include_router(api_router)
-```
-
-### Phase 1 Verification Checklist
-
-- [ ] `curl http://localhost:8000/predict` → `403 Forbidden`
-- [ ] `curl http://localhost:8001/optimize` → `403 Forbidden`
-- [ ] `curl http://localhost:8010/v1/insights/explain` → `403 Forbidden`
-- [ ] `curl http://localhost:8000/health` → `200 OK` (no key needed)
-- [ ] NestJS analytics endpoint still works end-to-end with a valid user JWT
-
----
-
-## Phase 2 — Move JWT to httpOnly Cookie (P1, ~0.5 day)
-
-**Goal:** Eliminate XSS-based JWT theft from `localStorage`.  
-**Scope:** NestJS auth endpoints + Next.js frontend API client.
-
-### 2.1 — NestJS: set cookie on login, clear on logout
-
-```typescript
-// backend/src/auth/auth.controller.ts
-import { Response } from 'express';
-
-@Post('login')
-async login(
-  @Body() dto: LoginDto,
-  @Res({ passthrough: true }) res: Response,
-) {
-  const result = await this.authService.login(dto);
-  res.cookie('access_token', result.accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 24 * 60 * 60 * 1000, // 24h in ms
-    path: '/',
-  });
-  // Return user info but NOT the token
-  return { user: result.user };
-}
-
-@Post('logout')
-logout(@Res({ passthrough: true }) res: Response) {
-  res.clearCookie('access_token', { path: '/' });
-  return { message: 'Logged out' };
-}
-```
-
-### 2.2 — NestJS: extract JWT from cookie instead of Authorization header
-
-```typescript
-// backend/src/auth/strategies/jwt.strategy.ts
-import { ExtractJwt } from 'passport-jwt';
-import { Request } from 'express';
-
-JwtFromRequest: ExtractJwt.fromExtractors([
-  (req: Request) => req?.cookies?.access_token ?? null,
-]),
-```
-
-Enable cookie parsing in `backend/src/main.ts`:
-
-```typescript
-import * as cookieParser from 'cookie-parser';
-app.use(cookieParser());
-```
-
-Install the package: `npm install cookie-parser @types/cookie-parser`
-
-### 2.3 — NestJS: enable credentials CORS
-
-```typescript
-// backend/src/main.ts
-app.enableCors({
-  origin: process.env.NEXT_FRONTEND_URL,
-  credentials: true,   // required for cookies
-});
-```
-
-### 2.4 — Frontend: remove token from localStorage, enable credentials
-
-```typescript
-// frontend/lib/api.ts
+// backend/src/chatbot/chatbot.service.ts
+import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
-  withCredentials: true,  // send the httpOnly cookie automatically
-});
+@Injectable()
+export class ChatbotService {
+  private readonly url = process.env.CHATBOT_SERVICE_URL || 'http://localhost:8002';
 
-// Remove the request interceptor that injects Authorization header
-// Remove all localStorage.getItem('accessToken') reads
-// The 401 response interceptor stays — redirect to login on session expiry
+  async createSession() {
+    const res = await axios.post(`${this.url}/session`);
+    return res.data;
+  }
+
+  async chat(sessionId: string, message: string) {
+    const res = await axios.post(`${this.url}/chat`, { session_id: sessionId, message });
+    return res.data;
+  }
+
+  async health() {
+    const res = await axios.get(`${this.url}/health`);
+    return res.data;
+  }
+}
 ```
 
-Remove all `localStorage.setItem` / `localStorage.getItem` calls for the token across the frontend.
+```typescript
+// backend/src/chatbot/chatbot.controller.ts
+import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ChatbotService } from './chatbot.service';
 
-### Phase 2 Verification Checklist
+// Public routes (no auth) — chatbot is public-facing
+@Controller('chatbot')
+export class ChatbotController {
+  constructor(private readonly chatbot: ChatbotService) {}
 
-- [ ] After login, browser DevTools → Application → Cookies shows `access_token` with `HttpOnly` flag
-- [ ] `access_token` does NOT appear in localStorage
-- [ ] Authenticated API calls succeed (cookie is sent automatically)
-- [ ] On logout, the cookie is cleared and subsequent calls return `401`
-- [ ] XSS test: `document.cookie` does not reveal `access_token`
+  @Get('health')
+  health() { return this.chatbot.health(); }
+
+  @Post('session')
+  session() { return this.chatbot.createSession(); }
+
+  @Post()
+  chat(@Body() body: { session_id: string; message: string }) {
+    return this.chatbot.chat(body.session_id, body.message);
+  }
+}
+```
+
+**1b. Register in AppModule**
+
+```typescript
+// backend/src/app.module.ts
+import { ChatbotModule } from './chatbot/chatbot.module';
+
+@Module({
+  imports: [
+    // ...existing modules
+    ChatbotModule,
+  ],
+})
+```
+
+**1c. Update frontend to call NestJS instead of its own API routes**
+
+```typescript
+// frontend/components/chatbot/ChatbotWidget.tsx
+// BEFORE: fetch("/api/chatbot/health")
+// AFTER:
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+fetch(`${API}/chatbot/health`)
+fetch(`${API}/chatbot/session`, { method: 'POST' })
+fetch(`${API}/chatbot`, { method: 'POST', body: ... })
+```
+
+**1d. Delete the Next.js proxy routes** (they're now redundant)
+
+```
+frontend/app/api/chatbot/route.ts         ← delete
+frontend/app/api/chatbot/session/route.ts ← delete
+frontend/app/api/chatbot/health/route.ts  ← delete
+```
+
+**1e. Remove CHATBOT_SERVICE_URL from frontend env**
+
+This env var no longer belongs to the frontend — move it to the backend:
+
+```env
+# backend/.env
+CHATBOT_SERVICE_URL=http://localhost:8002
+```
+
+```env
+# frontend/.env — remove this line
+# CHATBOT_SERVICE_URL=http://localhost:8002  ← delete
+```
+
+#### Step 1 Verification
+
+- [ ] `GET /api/chatbot/health` through NestJS returns `200`
+- [ ] Chatbot widget in browser still works end-to-end
+- [ ] Next.js no longer has any direct reference to `CHATBOT_SERVICE_URL`
+- [ ] `frontend/app/api/chatbot/` directory deleted
 
 ---
 
-## Phase 3 — Forward User Claims to Microservices (P1, ~1 day)
+### Step 2 — Forward user context headers from NestJS to all Python services (~3 hours)
 
-**Goal:** Enable Python microservices to enforce their own RBAC (e.g., explain-analytics only
-accepts admin calls for insight queries) without needing the JWT secret.  
-**Scope:** NestJS service callers + Python service route guards.
+NestJS should tell every Python service who triggered the request. This requires no shared secrets
+— it's just metadata. Python services use it for RBAC and audit logging.
 
-### 3.1 — NestJS: build a shared outbound header builder
+**2a. Create a shared header builder utility**
 
 ```typescript
 // backend/src/common/service-headers.util.ts
 import { v4 as uuidv4 } from 'uuid';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
-export function buildServiceHeaders(
-  serviceKey: string,
-  user?: JwtPayload,
-): Record<string, string> {
+export function buildServiceHeaders(user?: JwtPayload): Record<string, string> {
   const headers: Record<string, string> = {
-    'x-internal-service-key': serviceKey,
     'x-request-id': uuidv4(),
+    'content-type': 'application/json',
   };
   if (user) {
-    headers['x-user-id'] = user.sub;
-    headers['x-user-role'] = user.role;
+    headers['x-user-id']       = user.sub;
+    headers['x-user-role']     = user.role;
     headers['x-user-district'] = user.district ?? '';
   }
   return headers;
 }
 ```
 
-Install uuid if not present: `npm install uuid @types/uuid`
+Install uuid: `npm install uuid @types/uuid` in the backend.
 
-### 3.2 — Pass user context through NestJS service methods
+**2b. Pass user through NestJS service method calls**
 
-Controller calls must pass the authenticated user down into service methods:
+Controllers must pass `req.user` down to service methods. Add the `@CurrentUser()` decorator
+if not already present:
+
+```typescript
+// backend/src/auth/decorators/current-user.decorator.ts
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const CurrentUser = createParamDecorator(
+  (_, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().user,
+);
+```
+
+Update analytics controller as an example:
 
 ```typescript
 // backend/src/analytics/analytics.controller.ts
@@ -317,228 +273,304 @@ async getExplainInsights(@CurrentUser() user: JwtPayload) {
 }
 ```
 
+**2c. Use the header builder in every outbound service call**
+
 ```typescript
 // backend/src/analytics/analytics.service.ts
 import { buildServiceHeaders } from '../common/service-headers.util';
 
 async getInsights(user: JwtPayload) {
-  const headers = buildServiceHeaders(process.env.EXPLAIN_ANALYTICS_KEY, user);
-  const response = await axios.post(
+  const { data } = await axios.post(
     `${this.explainUrl}/v1/insights/explain`,
     payload,
-    { headers },
+    { headers: buildServiceHeaders(user) },
   );
-  return response.data;
+  return data;
+}
+
+async predictBulk(features: unknown) {
+  // ML service doesn't need user context for predictions — pass no user
+  const { data } = await axios.post(
+    `${this.mlUrl}/predict/bulk`,
+    { districts: features },
+    { headers: buildServiceHeaders() },  // still sends x-request-id for tracing
+  );
+  return data;
 }
 ```
 
-### 3.3 — Python services: add role guard dependency
+Apply the same pattern in `route.service.ts` and any other file that calls Python services.
+
+#### Step 2 Verification
+
+- [ ] Python service logs show `x-request-id` on every inbound request
+- [ ] `x-user-role` is present on calls that originated from authenticated endpoints
+- [ ] Unauthenticated calls (health checks, public endpoints) send only `x-request-id`
+
+---
+
+### Step 3 — Add role checks in Python services (~2 hours)
+
+Python services now receive `x-user-role` from NestJS. They can enforce their own RBAC
+without any shared secret. The header is trusted because in production, only NestJS can reach them.
+
+**3a. Create a shared auth helper**
+
+Create this file once and copy it into each Python service that needs RBAC:
 
 ```python
-# shared/auth.py — extend the existing file
-from fastapi import Header, HTTPException, Depends
+# shared/context.py  (copy to each service that needs it)
+from fastapi import Header, HTTPException
+from typing import Optional
 
-async def require_admin_role(x_user_role: str = Header(...)):
+async def require_admin(x_user_role: Optional[str] = Header(default=None)):
+    """Enforces admin role. Safe because only NestJS (post-JWT-validation) can reach us."""
     if x_user_role != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
 
-async def require_supervisor_or_admin(x_user_role: str = Header(...)):
+async def require_supervisor_or_admin(x_user_role: Optional[str] = Header(default=None)):
     if x_user_role not in ("admin", "supervisor"):
         raise HTTPException(status_code=403, detail="Insufficient role")
+
+async def get_request_context(
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+    x_user_district: Optional[str] = Header(default=None),
+    x_request_id: Optional[str] = Header(default=None),
+):
+    """Extracts forwarded user context for use in route handlers."""
+    return {
+        "user_id": x_user_id,
+        "role": x_user_role,
+        "district": x_user_district,
+        "request_id": x_request_id,
+    }
 ```
 
-Apply on explain-analytics insight routes:
+**3b. Apply to explain-analytics insight endpoints**
 
 ```python
-# explain-analytics — protect insight + chat endpoints
-@router.post(
-  "/v1/insights/explain",
-  dependencies=[Depends(require_internal_key), Depends(require_admin_role)],
-)
-async def explain_insights(...): ...
+# explain-analytics/src/explain_analytics/main.py
+from shared.context import require_admin, get_request_context
 
-@router.post(
-  "/v1/insights/chat",
-  dependencies=[Depends(require_internal_key), Depends(require_admin_role)],
-)
+@router.post("/v1/insights/explain", dependencies=[Depends(require_admin)])
+async def explain_insights(
+    payload: InsightRequest,
+    ctx: dict = Depends(get_request_context),
+):
+    logger.info(f"Insight request by user={ctx['user_id']} request={ctx['request_id']}")
+    ...
+
+@router.post("/v1/insights/chat", dependencies=[Depends(require_admin)])
 async def insights_chat(...): ...
 ```
 
-### 3.4 — Add `@CurrentUser()` decorator to NestJS if not present
+**3c. No changes needed for ML service or route optimizer**
+
+These services don't need RBAC — NestJS already gates access to their endpoints with
+`@Roles()` guards before the call ever reaches them. They can log `x-request-id` for tracing
+but don't need to enforce anything.
+
+#### Step 3 Verification
+
+- [ ] Direct `curl` to explain-analytics insight endpoint with `x-user-role: supervisor` → `403`
+- [ ] Direct `curl` with `x-user-role: admin` → `200` (only works because port is open in local dev)
+- [ ] Admin user calling through NestJS → `200`
+- [ ] Supervisor user calling through NestJS → NestJS `@Roles('admin')` guard blocks at `:3001`
+
+---
+
+### Step 4 — Move JWT to httpOnly cookie (~2 hours)
+
+**Current:** JWT stored in `localStorage` → vulnerable to XSS.
+
+**4a. NestJS: set and clear cookie**
 
 ```typescript
-// backend/src/auth/decorators/current-user.decorator.ts
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+// backend/src/auth/auth.controller.ts
+import { Response } from 'express';
 
-export const CurrentUser = createParamDecorator(
-  (_, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().user,
-);
+@Post('login')
+async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  const result = await this.authService.login(dto);
+  res.cookie('access_token', result.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+  return { user: result.user };  // do not return the token
+}
+
+@Post('logout')
+logout(@Res({ passthrough: true }) res: Response) {
+  res.clearCookie('access_token', { path: '/' });
+  return { message: 'Logged out' };
+}
 ```
 
-### Phase 3 Verification Checklist
+**4b. NestJS: read JWT from cookie**
 
-- [ ] Admin user calling explain-analytics insight endpoint → `200 OK`
-- [ ] Supervisor user calling explain-analytics insight endpoint → `403 Forbidden`
-- [ ] All Python service logs show `x-request-id` header for distributed tracing
-- [ ] Removing `x-user-role` from a direct curl call → `422 Unprocessable Entity`
+```typescript
+// backend/src/auth/strategies/jwt.strategy.ts
+import { ExtractJwt } from 'passport-jwt';
+import { Request } from 'express';
+
+JwtFromRequest: ExtractJwt.fromExtractors([
+  (req: Request) => req?.cookies?.access_token ?? null,
+]),
+```
+
+Enable cookie parsing:
+
+```typescript
+// backend/src/main.ts
+import * as cookieParser from 'cookie-parser';
+app.use(cookieParser());
+app.enableCors({
+  origin: process.env.NEXT_FRONTEND_URL,
+  credentials: true,  // required for cross-origin cookie
+});
+```
+
+Install: `npm install cookie-parser @types/cookie-parser`
+
+**4c. Frontend: remove localStorage, enable credentials**
+
+```typescript
+// frontend/lib/api.ts
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  withCredentials: true,  // browser sends httpOnly cookie automatically
+});
+
+// Remove: the request interceptor that injects Authorization header
+// Remove: all localStorage.getItem / localStorage.setItem for the token
+```
+
+#### Step 4 Verification
+
+- [ ] After login, `access_token` appears in browser cookies with `HttpOnly` flag
+- [ ] `document.cookie` does NOT expose `access_token`
+- [ ] Authenticated API calls succeed without manually attaching a token
+- [ ] On logout, the cookie is cleared and subsequent calls return `401`
 
 ---
 
-## Phase 4 — Lock Down CORS on Python Services (P2, ~0.5 day)
+### Step 5 — Remove exposed Python ports in Docker (~30 min)
 
-**Goal:** Python services should only accept calls from the NestJS backend container,
-not from browsers or other network actors.  
-**Scope:** All four Python microservices.
-
-### 4.1 — Restrict origins to the backend hostname
-
-```python
-# Each Python service main.py — replace allow_origins=["*"]
-import os
-from fastapi.middleware.cors import CORSMiddleware
-
-ALLOWED_ORIGINS = [
-    os.getenv("ALLOWED_ORIGIN", "http://backend:3001"),
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,      # no cookies cross-service
-    allow_methods=["GET", "POST"],
-    allow_headers=["x-internal-service-key", "x-user-id", "x-user-role",
-                   "x-user-district", "x-request-id", "content-type"],
-)
-```
-
-Add to each service's `docker-compose.yml`:
+This is the production enforcement step. In Docker, removing `ports:` makes Python services
+completely unreachable from outside the internal network — no auth code needed.
 
 ```yaml
+# docker-compose.yml — remove port mappings from all Python services
+
 ml-model:
-  environment:
-    ALLOWED_ORIGIN: http://backend:3001
+  # ports:            ← remove entirely
+  #  - "8000:8000"
+
+route-optimizer:
+  # ports:            ← remove entirely
+  #  - "8001:8001"
+
+explain-analytics:
+  # ports:            ← remove entirely
+  #  - "8010:8010"
+
+chatbot-service:
+  # ports:            ← remove entirely
+  #  - "8002:8000"
 ```
 
-### Phase 4 Verification Checklist
+Keep ports on `backend` (:3001) and `frontend` (:3000) — those need to be reachable.
 
-- [ ] Direct browser `fetch('http://localhost:8000/predict')` → CORS blocked
-- [ ] NestJS → ML Service call still works (server-to-server, no CORS check)
+For local dev using npm scripts, the Python services still run on open ports — that's acceptable
+since local dev is developer-only. The enforcement is at the Docker level for demo/production.
+
+#### Step 5 Verification
+
+- [ ] `curl http://localhost:8000/predict` fails to connect after Docker rebuild
+- [ ] All functionality still works through the NestJS backend and frontend
 
 ---
 
-## Phase 5 — Harden Secrets and Add Request Signing (P2/P3, ~1 day)
-
-**Goal:** Eliminate hardcoded fallback secrets; add HMAC signing for destructive operations.  
-**Scope:** NestJS + explain-analytics ETL/RAG management endpoints.
-
-### 5.1 — Remove hardcoded secret fallbacks
+### Step 6 — Remove hardcoded secret fallbacks (~1 hour)
 
 ```typescript
 // backend/src/auth/strategies/jwt.strategy.ts
 // BEFORE:
 secretOrKey: configService.get('JWT_SECRET') || 'epilink-super-secret-key-change-in-production',
 
-// AFTER:
-secretOrKey: configService.getOrThrow('JWT_SECRET'),  // throws at startup if missing
+// AFTER (throws at startup if missing — fail fast):
+secretOrKey: configService.getOrThrow('JWT_SECRET'),
 ```
 
-Do the same for `INTERNAL_SERVICE_KEY` and all new `*_SERVICE_KEY` values. Add startup validation:
+Add startup validation:
 
 ```typescript
 // backend/src/main.ts
-const requiredEnvVars = [
-  'JWT_SECRET', 'ML_SERVICE_KEY', 'EXPLAIN_ANALYTICS_KEY',
-  'ROUTE_OPTIMIZER_KEY', 'CHATBOT_KEY',
-];
-for (const key of requiredEnvVars) {
+const required = ['JWT_SECRET', 'CHATBOT_SERVICE_URL', 'ML_SERVICE_URL',
+                  'ROUTE_OPTIMIZER_URL', 'EXPLAIN_ANALYTICS_URL'];
+for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
 }
 ```
 
-### 5.2 — HMAC signing for destructive ETL/RAG operations (optional hardening)
+Also remove the hardcoded `JWT_SECRET` from `docker-compose.yml` — it should only come from `.env`:
 
-For `POST /v1/rag/seed` and `POST /v1/rag/etl/run`, add request body signing:
-
-```typescript
-// backend/src/common/service-headers.util.ts
-import { createHmac } from 'crypto';
-
-export function signRequestBody(body: string, secret: string): string {
-  return createHmac('sha256', secret).update(body).digest('hex');
-}
-
-// Usage in analytics.service.ts
-const body = JSON.stringify(payload);
-const headers = {
-  ...buildServiceHeaders(process.env.EXPLAIN_ANALYTICS_KEY, user),
-  'x-signature': signRequestBody(body, process.env.EXPLAIN_ANALYTICS_KEY),
-};
-await axios.post(`${this.explainUrl}/v1/rag/etl/run`, body, { headers });
+```yaml
+# docker-compose.yml
+backend:
+  environment:
+    # JWT_SECRET: epilink-dev-jwt-secret   ← remove this line, use env_file only
 ```
 
-```python
-# explain-analytics/src/explain_analytics/main.py
-import hmac, hashlib
-from fastapi import Request, HTTPException
-
-async def verify_signature(request: Request, x_signature: str = Header(...)):
-    body = await request.body()
-    expected = hmac.new(
-        _SERVICE_KEY.encode(), body, hashlib.sha256
-    ).hexdigest()
-    if not hmac.compare_digest(expected, x_signature):
-        raise HTTPException(status_code=403, detail="Invalid request signature")
-
-@router.post("/v1/rag/etl/run", dependencies=[
-    Depends(require_internal_key),
-    Depends(require_admin_role),
-    Depends(verify_signature),
-])
-async def run_etl(...): ...
+```env
+# backend/.env
+JWT_SECRET=<generate a proper random secret>
 ```
 
-### 5.3 — Add JWT token rotation (refresh tokens)
+#### Step 6 Verification
 
-The current 24-hour JWT is long-lived. Add a short-lived access token + long-lived refresh token:
-
-```typescript
-// backend/src/auth/auth.service.ts
-generateTokens(payload: JwtPayload) {
-  return {
-    accessToken: this.jwtService.sign(payload, { expiresIn: '15m' }),
-    refreshToken: this.jwtService.sign(
-      { sub: payload.sub },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: '7d' },
-    ),
-  };
-}
-```
-
-- Set `access_token` cookie with `maxAge: 15 * 60 * 1000`
-- Set `refresh_token` cookie with `maxAge: 7 * 24 * 60 * 60 * 1000` and `path: /api/auth/refresh`
-- Add `POST /api/auth/refresh` endpoint that validates the refresh token and issues a new access token
-
-### Phase 5 Verification Checklist
-
-- [ ] Starting NestJS without `JWT_SECRET` throws at boot, not at runtime
-- [ ] Starting any Python service without `SERVICE_KEY` throws at boot
-- [ ] ETL endpoint rejects requests with a tampered body
-- [ ] Access token expires after 15 min; refresh endpoint issues a new one
+- [ ] Starting NestJS without `JWT_SECRET` in env fails at boot with a clear error
+- [ ] `JWT_SECRET` does not appear as a literal value in `docker-compose.yml`
 
 ---
 
-## Summary Table
+## Summary
 
-| Phase | What | Files Changed | Effort |
+| Step | What changes | Files touched | Effort |
 |---|---|---|---|
-| **1** | Service key auth on all Python services | All `app.py` / `main.py`, NestJS service files, `.env`, `docker-compose.yml` | ~1 day |
-| **2** | Move JWT to httpOnly cookie | `auth.controller.ts`, `jwt.strategy.ts`, `main.ts`, `frontend/lib/api.ts` | ~0.5 day |
-| **3** | Forward user claims, Python RBAC | `analytics.service.ts`, `route.service.ts`, Python `shared/auth.py` | ~1 day |
-| **4** | Lock CORS on Python services | All Python `main.py`, `docker-compose.yml` | ~0.5 day |
-| **5** | Remove hardcoded secrets, HMAC signing, refresh tokens | `jwt.strategy.ts`, `main.ts`, `auth.service.ts`, explain-analytics `main.py` | ~1 day |
+| **1** | Move chatbot proxy from Next.js to NestJS | New `backend/src/chatbot/`, delete `frontend/app/api/chatbot/`, update widget | ~2 hours |
+| **2** | Forward user context headers to all Python services | `service-headers.util.ts`, `analytics.service.ts`, `route.service.ts` | ~3 hours |
+| **3** | Role checks in Python services using forwarded headers | `shared/context.py`, `explain-analytics/main.py` | ~2 hours |
+| **4** | Move JWT to httpOnly cookie | `auth.controller.ts`, `jwt.strategy.ts`, `main.ts`, `frontend/lib/api.ts` | ~2 hours |
+| **5** | Remove Python port mappings from docker-compose | `docker-compose.yml` | ~30 min |
+| **6** | Remove hardcoded secret fallbacks | `jwt.strategy.ts`, `main.ts`, `docker-compose.yml`, `.env` | ~1 hour |
 
-**Total estimated effort: ~4 days**
+**Total: ~1 day.** Steps 1–3 can be done in any order. Steps 4 and 6 are independent.
+Step 5 is a Docker-only change, safe to do last.
 
-Phases 1 and 2 are independent and can be done in parallel by two developers.
-Phases 3 and 4 depend on Phase 1 being complete.
-Phase 5 can be done any time after Phase 1.
+---
+
+## Security Model by Environment
+
+| Threat | Local dev | Production (Docker) |
+|---|---|---|
+| Browser calling Python services directly | Python ports open — trust by convention | Python ports removed — blocked at network level |
+| Forged `x-user-role` header to Python services | Possible (port open) | Impossible (only NestJS can reach Python) |
+| JWT stolen via XSS | Mitigated by Step 4 (httpOnly cookie) | Mitigated by Step 4 |
+| Unauthenticated call to NestJS | Blocked by `JwtAuthGuard` | Blocked by `JwtAuthGuard` |
+| Supervisor accessing admin explain-analytics endpoint | Blocked at NestJS `@Roles('admin')` | Blocked at NestJS + Python `require_admin` |
+| Hardcoded secret used accidentally | Blocked at startup by Step 6 | Blocked at startup by Step 6 |
+
+---
+
+## What Was Considered and Why Not Chosen
+
+| Option | Why not chosen for this system |
+|---|---|
+| Per-service keys (Option A) | Adds secret management overhead with no real benefit once Docker network isolation is in place |
+| Traefik / third-party gateway (Option B) | Docker-only — doesn't work with npm script local dev; adds operational overhead for a problem already solved by the existing NestJS backend |
+| Separate NestJS or Express gateway app | Creates two NestJS apps to maintain; the existing backend IS already the gateway conceptually |
