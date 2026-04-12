@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { RouteResult, RouteLeg } from './dto/route-tasks.dto';
+import { buildServiceHeaders } from '../common/service-headers.util';
 
 interface TaskCoord {
   id: string;
@@ -32,13 +33,20 @@ interface OsrmRouteResponse {
   }>;
 }
 
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -110,7 +118,9 @@ export class RouteService {
     // Return original order if nothing is routable
     if (coords.length <= 1) {
       return {
-        orderedTaskIds: taskIds.filter((id) => !tasksWithoutLocation.includes(id)),
+        orderedTaskIds: taskIds.filter(
+          (id) => !tasksWithoutLocation.includes(id),
+        ),
         legs: [],
         totalDistanceMeters: null,
         totalDurationSecs: null,
@@ -135,10 +145,15 @@ export class RouteService {
       const orderedTaskIds = sortedCoords.map((c) => c.id);
 
       try {
-        const routeCoords = hasOrigin ? [coords[0], ...sortedCoords] : sortedCoords;
+        const routeCoords = hasOrigin
+          ? [coords[0], ...sortedCoords]
+          : sortedCoords;
         const { legs, polyline } = await this.fetchOsrmRoute(routeCoords);
         const total = legs.reduce(
-          (acc, l) => ({ dist: acc.dist + l.distanceMeters, dur: acc.dur + l.durationSecs }),
+          (acc, l) => ({
+            dist: acc.dist + l.distanceMeters,
+            dur: acc.dur + l.durationSecs,
+          }),
           { dist: 0, dur: 0 },
         );
         return {
@@ -175,7 +190,9 @@ export class RouteService {
       durationMatrix = await this.fetchOsrmTable(coords);
       osrmAvailable = true;
     } catch (err) {
-      this.logger.warn(`OSRM /table unavailable, falling back to Haversine: ${err.message}`);
+      this.logger.warn(
+        `OSRM /table unavailable, falling back to Haversine: ${err.message}`,
+      );
       durationMatrix = buildHaversineMatrix(coords);
     }
 
@@ -184,7 +201,9 @@ export class RouteService {
     try {
       orderedIndices = await this.fetchOptimizedOrder(durationMatrix);
     } catch (err) {
-      this.logger.warn(`route-optimizer unavailable, returning original order: ${err.message}`);
+      this.logger.warn(
+        `route-optimizer unavailable, returning original order: ${err.message}`,
+      );
       // Return tasks in original order (skip origin index if present)
       const startIdx = hasOrigin ? 1 : 0;
       return {
@@ -210,9 +229,17 @@ export class RouteService {
     // 4. Fetch road polyline + per-leg data from OSRM /route (ordered coords)
     //    Fall back gracefully if OSRM unavailable
     if (!osrmAvailable) {
-      const legs = this.buildLegsFromMatrix(orderedIndices, durationMatrix, hasOrigin, coords);
+      const legs = this.buildLegsFromMatrix(
+        orderedIndices,
+        durationMatrix,
+        hasOrigin,
+        coords,
+      );
       const total = legs.reduce(
-        (acc, l) => ({ dist: acc.dist + l.distanceMeters, dur: acc.dur + l.durationSecs }),
+        (acc, l) => ({
+          dist: acc.dist + l.distanceMeters,
+          dur: acc.dur + l.durationSecs,
+        }),
         { dist: 0, dur: 0 },
       );
       return {
@@ -233,7 +260,10 @@ export class RouteService {
         : orderedCoords;
       const { legs, polyline } = await this.fetchOsrmRoute(routeCoords);
       const total = legs.reduce(
-        (acc, l) => ({ dist: acc.dist + l.distanceMeters, dur: acc.dur + l.durationSecs }),
+        (acc, l) => ({
+          dist: acc.dist + l.distanceMeters,
+          dur: acc.dur + l.durationSecs,
+        }),
         { dist: 0, dur: 0 },
       );
       return {
@@ -247,10 +277,20 @@ export class RouteService {
         usedSavedOrder: false,
       };
     } catch (err) {
-      this.logger.warn(`OSRM /route unavailable, returning order without polyline: ${err.message}`);
-      const legs = this.buildLegsFromMatrix(orderedIndices, durationMatrix, hasOrigin, coords);
+      this.logger.warn(
+        `OSRM /route unavailable, returning order without polyline: ${err.message}`,
+      );
+      const legs = this.buildLegsFromMatrix(
+        orderedIndices,
+        durationMatrix,
+        hasOrigin,
+        coords,
+      );
       const total = legs.reduce(
-        (acc, l) => ({ dist: acc.dist + l.distanceMeters, dur: acc.dur + l.durationSecs }),
+        (acc, l) => ({
+          dist: acc.dist + l.distanceMeters,
+          dur: acc.dur + l.durationSecs,
+        }),
         { dist: 0, dur: 0 },
       );
       return {
@@ -284,10 +324,12 @@ export class RouteService {
     return data.durations.map((row) => row.map((v) => Math.round(v)));
   }
 
-  private async fetchOptimizedOrder(durationMatrix: number[][]): Promise<number[]> {
+  private async fetchOptimizedOrder(
+    durationMatrix: number[][],
+  ): Promise<number[]> {
     const response = await fetch(`${this.optimizerUrl}/optimize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildServiceHeaders(),
       body: JSON.stringify({ duration_matrix: durationMatrix }),
       signal: AbortSignal.timeout(5000),
     });
@@ -347,10 +389,14 @@ export class RouteService {
       const from = fullOrder[i];
       const to = fullOrder[i + 1];
       const durationSecs = durationMatrix[from][to];
-      const distanceMeters = Math.round(haversineMeters(
-        coords[from].lat, coords[from].lng,
-        coords[to].lat, coords[to].lng,
-      ));
+      const distanceMeters = Math.round(
+        haversineMeters(
+          coords[from].lat,
+          coords[from].lng,
+          coords[to].lat,
+          coords[to].lng,
+        ),
+      );
       legs.push({ distanceMeters, durationSecs });
     }
     return legs;
