@@ -10,6 +10,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
 import { StorageModule } from './storage/storage.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 import { CacheHelperModule } from './cache/cache-helper.module';
 import databaseConfig from './config/database.config';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -47,6 +48,7 @@ import * as redisStore from 'cache-manager-redis-store';
     EventsModule,
     TasksModule,
     StorageModule,
+    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
