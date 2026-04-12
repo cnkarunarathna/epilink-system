@@ -34,8 +34,6 @@ services:
     restart: unless-stopped
     env_file:
       - ./ml-model/.env
-    ports:
-      - "8000:8000"
 
   explain-analytics:
     build:
@@ -56,8 +54,6 @@ services:
     depends_on:
       - qdrant
       - redis
-    ports:
-      - "8010:8010"
 
   chatbot-service:
     build:
@@ -78,8 +74,6 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
-    ports:
-      - "8002:8000"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -93,10 +87,14 @@ services:
       dockerfile: Dockerfile
     container_name: epilink-route-optimizer
     restart: unless-stopped
-    ports:
-      - "8001:8001"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

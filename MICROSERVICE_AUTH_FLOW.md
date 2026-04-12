@@ -727,8 +727,8 @@ since local dev is developer-only. The enforcement is at the Docker level for de
 
 #### Step 5 Verification
 
-- [ ] `curl http://localhost:8000/predict` fails to connect after Docker rebuild
-- [ ] All functionality still works through the NestJS backend and frontend
+- [x] `curl http://localhost:8000/predict` fails to connect after Docker rebuild
+- [x] All functionality still works through the NestJS backend and frontend
 
 ---
 
