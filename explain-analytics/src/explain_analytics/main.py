@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import logging
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
 from explain_analytics.config import settings
 from explain_analytics.models import (
@@ -34,6 +35,10 @@ from explain_analytics.services.tools import (
     get_model_performance_metrics,
     get_seasonal_pattern,
 )
+from explain_analytics.shared.context import get_request_context, require_admin
+
+
+logger = logging.getLogger(__name__)
 
 insight_service = ExplainabilityService()
 session_service = SessionService(
@@ -42,7 +47,9 @@ session_service = SessionService(
     summarize_after_turns=settings.session_summarize_after_turns,
 )
 rag_service = RAGService()
-agent_service = AgenticInsightService(session_service=session_service, rag_service=rag_service)
+agent_service = AgenticInsightService(
+    session_service=session_service, rag_service=rag_service
+)
 national_service = NationalSummaryService()
 etl_service = ETLService(rag_service=rag_service)
 knowledge_seeder = KnowledgeSeeder(rag_service=rag_service)
@@ -93,19 +100,50 @@ def health() -> dict[str, object]:
     }
 
 
-@app.post("/v1/insights/explain", response_model=ExplainInsightResponse)
-def explain(payload: ExplainInsightRequest) -> ExplainInsightResponse:
+@app.post(
+    "/v1/insights/explain",
+    response_model=ExplainInsightResponse,
+    dependencies=[Depends(require_admin)],
+)
+def explain(
+    payload: ExplainInsightRequest,
+    ctx: dict[str, object] = Depends(get_request_context),
+) -> ExplainInsightResponse:
+    logger.info(
+        "insight explain request user=%s role=%s request_id=%s district=%s",
+        ctx.get("user_id"),
+        ctx.get("role"),
+        ctx.get("request_id"),
+        payload.district,
+    )
     return insight_service.generate_insight(payload, rag_service=rag_service)
 
 
-@app.post("/v1/insights/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest) -> ChatResponse:
+@app.post(
+    "/v1/insights/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_admin)],
+)
+def chat(
+    payload: ChatRequest,
+    ctx: dict[str, object] = Depends(get_request_context),
+) -> ChatResponse:
     """Send a new message to the agentic chat session.
 
     Enhancement 7: only the new `message` string + optional `session_id` are
     required.  Full history is managed server-side in Redis.
     """
-    signals = payload.structured_signals.model_dump() if payload.structured_signals else None
+    logger.info(
+        "insight chat request user=%s role=%s request_id=%s district=%s session=%s",
+        ctx.get("user_id"),
+        ctx.get("role"),
+        ctx.get("request_id"),
+        payload.district,
+        payload.session_id or "",
+    )
+    signals = (
+        payload.structured_signals.model_dump() if payload.structured_signals else None
+    )
     result = agent_service.chat(
         district=payload.district,
         new_message=payload.message,
@@ -117,8 +155,14 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
 # ── Enhancement 7: session history and management endpoints ──────────
 
-@app.get("/v1/insights/chat/{session_id}/history", response_model=ChatSessionHistoryResponse)
-def get_chat_history(session_id: str) -> ChatSessionHistoryResponse:
+
+@app.get(
+    "/v1/insights/chat/{session_id}/history", response_model=ChatSessionHistoryResponse
+)
+def get_chat_history(
+    session_id: str,
+    _: None = Depends(require_admin),
+) -> ChatSessionHistoryResponse:
     """Retrieve all stored messages for a chat session.
 
     Returns the full message history as it is currently stored in Redis.
@@ -126,10 +170,7 @@ def get_chat_history(session_id: str) -> ChatSessionHistoryResponse:
     Redis is not configured.
     """
     messages_raw = session_service.get_messages(session_id)
-    messages = [
-        ChatMessage(role=m["role"], content=m["content"])
-        for m in messages_raw
-    ]
+    messages = [ChatMessage(role=m["role"], content=m["content"]) for m in messages_raw]
     turn_count = len(messages) // 2
     return ChatSessionHistoryResponse(
         session_id=session_id,
@@ -140,7 +181,10 @@ def get_chat_history(session_id: str) -> ChatSessionHistoryResponse:
 
 
 @app.delete("/v1/insights/chat/{session_id}", status_code=200)
-def delete_chat_session(session_id: str) -> dict[str, object]:
+def delete_chat_session(
+    session_id: str,
+    _: None = Depends(require_admin),
+) -> dict[str, object]:
     """Explicitly end a chat session and remove its history from Redis."""
     deleted = session_service.delete_session(session_id)
     return {
@@ -156,8 +200,12 @@ def delete_chat_session(session_id: str) -> dict[str, object]:
 
 # ── Batch and national endpoints (Enhancement 3) ─────────────────
 
+
 @app.post("/v1/insights/batch-explain", response_model=BatchExplainResponse)
-def batch_explain(payload: BatchExplainRequest) -> BatchExplainResponse:
+def batch_explain(
+    payload: BatchExplainRequest,
+    _: None = Depends(require_admin),
+) -> BatchExplainResponse:
     """Generate individual insights for a list of districts in one call.
 
     Processes each request through the full insight pipeline (rule-based + Gemini + RAG).
@@ -177,9 +225,7 @@ def batch_explain(payload: BatchExplainRequest) -> BatchExplainResponse:
             or req.structured_signals.model_risk_score >= 0.85
         )
         if is_urgent and not result.summary.startswith("URGENT:"):
-            result = result.model_copy(
-                update={"summary": f"URGENT: {result.summary}"}
-            )
+            result = result.model_copy(update={"summary": f"URGENT: {result.summary}"})
             urgent_districts.append(result.district)
 
         by_risk[result.risk_level] = by_risk.get(result.risk_level, 0) + 1
@@ -205,6 +251,7 @@ def national_summary(
         default=None,
         description="ISO week override, e.g. '2026-W13'. Defaults to current week.",
     ),
+    _: None = Depends(require_admin),
 ) -> NationalSummaryResponse:
     """Generate an executive 3-paragraph situation report for all Sri Lanka districts.
 
@@ -223,7 +270,9 @@ import json as _json
 @app.get("/v1/tools/seasonal-pattern/{district}")
 def tool_seasonal_pattern(
     district: str,
-    years: int = Query(default=3, ge=1, le=10, description="Number of past years to overlay"),
+    years: int = Query(
+        default=3, ge=1, le=10, description="Number of past years to overlay"
+    ),
 ) -> dict:
     """Week-by-week multi-year seasonal pattern for a district."""
     return _json.loads(get_seasonal_pattern(district, years))
@@ -255,6 +304,7 @@ def tool_demographic_hotspots(district: str) -> dict:
 
 # ── RAG corpus management (Phase 2) ───────────────────────────────
 
+
 @app.get("/v1/rag/status")
 def rag_status() -> dict[str, object]:
     """Report RAG readiness and corpus size."""
@@ -271,19 +321,22 @@ def rag_status() -> dict[str, object]:
 
 
 @app.post("/v1/rag/ingest", response_model=RagIngestResponse)
-def rag_ingest(payload: RagIngestRequest) -> RagIngestResponse:
+def rag_ingest(
+    payload: RagIngestRequest,
+    _: None = Depends(require_admin),
+) -> RagIngestResponse:
     """Embed and upsert MoH documents into the Qdrant corpus."""
     if not settings.qdrant_url:
         raise HTTPException(
             status_code=503,
             detail="EXPLAIN_QDRANT_URL is not configured. "
-                   "Set it in .env and restart the service before ingesting documents.",
+            "Set it in .env and restart the service before ingesting documents.",
         )
     if not settings.gemini_api_key:
         raise HTTPException(
             status_code=503,
             detail="EXPLAIN_GEMINI_API_KEY is not configured. "
-                   "Embeddings require the Gemini API.",
+            "Embeddings require the Gemini API.",
         )
     try:
         count = rag_service.ingest(payload.documents)
@@ -307,6 +360,7 @@ def rag_seed(
         ),
     ),
     x_internal_api_key: str | None = Header(default=None),
+    _: None = Depends(require_admin),
 ) -> RagSeedResponse:
     """Seed the Qdrant corpus with the built-in dengue knowledge base (25 documents).
 
@@ -317,8 +371,13 @@ def rag_seed(
     Skips seeding silently when the corpus already contains documents (use
     force=true to re-seed).
     """
-    if settings.backend_service_key and x_internal_api_key != settings.backend_service_key:
-        raise HTTPException(status_code=403, detail="Invalid or missing x-internal-api-key.")
+    if (
+        settings.backend_service_key
+        and x_internal_api_key != settings.backend_service_key
+    ):
+        raise HTTPException(
+            status_code=403, detail="Invalid or missing x-internal-api-key."
+        )
     if not settings.qdrant_url:
         raise HTTPException(
             status_code=503,
@@ -342,13 +401,19 @@ def rag_etl_status() -> dict[str, object]:
 @app.post("/v1/rag/etl/run")
 def rag_etl_run(
     x_internal_api_key: str | None = Header(default=None),
+    _: None = Depends(require_admin),
 ) -> dict[str, object]:
     """Manually trigger the surveillance ETL job.
 
     Protected by x-internal-api-key when EXPLAIN_BACKEND_SERVICE_KEY is set.
     """
-    if settings.backend_service_key and x_internal_api_key != settings.backend_service_key:
-        raise HTTPException(status_code=403, detail="Invalid or missing x-internal-api-key.")
+    if (
+        settings.backend_service_key
+        and x_internal_api_key != settings.backend_service_key
+    ):
+        raise HTTPException(
+            status_code=403, detail="Invalid or missing x-internal-api-key."
+        )
     if not rag_service.is_ready:
         raise HTTPException(
             status_code=503,
