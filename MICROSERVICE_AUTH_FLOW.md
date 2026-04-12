@@ -2,6 +2,59 @@
 
 ---
 
+## Plan Validation Findings
+
+The following issues were found by reading the actual source files before implementation.
+Each has been corrected in the steps below. Do not skip this section.
+
+### Issue 1 — User object shape: `id` not `sub`
+
+The JWT strategy's `validate()` in [backend/src/auth/strategies/jwt.strategy.ts](backend/src/auth/strategies/jwt.strategy.ts)
+returns `{ id, email, role, district }`. The raw `JwtPayload` interface uses `sub`, but the
+object attached to `req.user` after validation has `id`. The original plan used `user.sub` in
+`buildServiceHeaders` — **corrected below to use `user.id`**.
+
+### Issue 2 — Analytics controller has no `@Roles()` guards on explain endpoints
+
+[backend/src/analytics/analytics.controller.ts](backend/src/analytics/analytics.controller.ts)
+uses `@UseGuards(JwtAuthGuard)` at the class level but no `@Roles()` on any individual
+endpoint. Any authenticated user (supervisor, viewer) can currently call `/api/analytics/explain/*`.
+**The plan must add `@Roles('admin')` to explain and RAG endpoints — corrected in Step 2.**
+
+### Issue 3 — Two frontend API clients, not one
+
+There are two separate API clients that both inject bearer tokens from `localStorage`:
+- [frontend/lib/api.ts](frontend/lib/api.ts) — axios instance (used by most services)
+- [frontend/services/api/index.ts](frontend/services/api/index.ts) — raw `fetch` wrapper (used by older service layer)
+
+Both must be updated in Step 4. The original plan only mentioned `api.ts`.
+
+### Issue 4 — `JwtModule.register()` cannot use `ConfigService`
+
+[backend/src/auth/auth.module.ts](backend/src/auth/auth.module.ts) uses `JwtModule.register()`
+with a hardcoded secret fallback. `ConfigService.getOrThrow()` requires `JwtModule.registerAsync()`.
+**Step 6 must also change the module registration — corrected below.**
+
+### Issue 5 — Stale `x-internal-api-key` bypass in `JwtAuthGuard`
+
+[backend/src/auth/guards/jwt-auth.guard.ts](backend/src/auth/guards/jwt-auth.guard.ts) has a
+bypass that skips JWT validation if `x-internal-api-key` matches `INTERNAL_SERVICE_KEY`.
+Since we are eliminating service keys, this bypass must be removed as part of cleanup.
+**Added to Step 6.**
+
+### Issue 6 — `CORS credentials: true` already set in `main.ts`
+
+[backend/src/main.ts](backend/src/main.ts) already has `credentials: true`. Step 4 does not
+need to add it — only the cookie extraction change and `cookieParser` middleware are new.
+
+### Issue 7 — Wrong token key in `services/api/index.ts`
+
+`uploadEvidence` and `downloadReportPdf` in [frontend/services/api/index.ts](frontend/services/api/index.ts)
+read `localStorage.getItem("auth_token")` — a different key from `ACCESS_TOKEN_KEY` (`"accessToken"`).
+This is a pre-existing bug. Step 4 removes all localStorage token reads, which fixes it as a side effect.
+
+---
+
 ## Actual Call Graph (Current State)
 
 ```
@@ -226,18 +279,28 @@ NestJS should tell every Python service who triggered the request. This requires
 
 **2a. Create a shared header builder utility**
 
+> **Validation fix (Issue 1):** `req.user` after JWT validation has shape `{ id, email, role, district }`,
+> NOT `{ sub, ... }`. The utility uses `user.id`, not `user.sub`.
+
 ```typescript
 // backend/src/common/service-headers.util.ts
 import { v4 as uuidv4 } from 'uuid';
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
-export function buildServiceHeaders(user?: JwtPayload): Record<string, string> {
+// Matches the shape returned by JwtStrategy.validate(), NOT the raw JwtPayload interface
+interface ValidatedUser {
+  id: string;
+  email: string;
+  role: string;
+  district?: string;
+}
+
+export function buildServiceHeaders(user?: ValidatedUser): Record<string, string> {
   const headers: Record<string, string> = {
     'x-request-id': uuidv4(),
     'content-type': 'application/json',
   };
   if (user) {
-    headers['x-user-id']       = user.sub;
+    headers['x-user-id']       = user.id;          // ← id, not sub
     headers['x-user-role']     = user.role;
     headers['x-user-district'] = user.district ?? '';
   }
@@ -247,10 +310,13 @@ export function buildServiceHeaders(user?: JwtPayload): Record<string, string> {
 
 Install uuid: `npm install uuid @types/uuid` in the backend.
 
-**2b. Pass user through NestJS service method calls**
+**2b. Add `@CurrentUser()` decorator and `@Roles()` guards to analytics controller**
 
-Controllers must pass `req.user` down to service methods. Add the `@CurrentUser()` decorator
-if not already present:
+> **Validation fix (Issue 2):** `analytics.controller.ts` has `@UseGuards(JwtAuthGuard)` at
+> the class level but no `@Roles()` on any endpoint. Any authenticated user can call explain
+> endpoints. Add `@Roles('admin')` to every endpoint that proxies to explain-analytics.
+
+First, add the `@CurrentUser()` decorator (it doesn't exist yet — only `roles.decorator.ts` exists):
 
 ```typescript
 // backend/src/auth/decorators/current-user.decorator.ts
@@ -261,51 +327,137 @@ export const CurrentUser = createParamDecorator(
 );
 ```
 
-Update analytics controller as an example:
+Then update the analytics controller for all explain-analytics-calling endpoints:
 
 ```typescript
-// backend/src/analytics/analytics.controller.ts
-@Get('explain')
-@UseGuards(JwtAuthGuard)
-@Roles('admin')
-async getExplainInsights(@CurrentUser() user: JwtPayload) {
-  return this.analyticsService.getInsights(user);
+// backend/src/analytics/analytics.controller.ts  — relevant endpoints only
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+
+// Add RolesGuard at the class level alongside JwtAuthGuard
+@Controller('analytics')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class AnalyticsController {
+
+  // Explain endpoints — admin only
+  @Get('explain/:district')
+  @Roles('admin')
+  async explainInsight(
+    @Param('district') district: string,
+    @CurrentUser() user: ValidatedUser,
+  ) {
+    return this.analyticsService.getExplainableInsight(district, user);
+  }
+
+  @Get('explain/:district/ask')
+  @Roles('admin')
+  async askFollowUp(
+    @Param('district') district: string,
+    @Query('question') question: string,
+    @CurrentUser() user: ValidatedUser,
+  ) {
+    return this.analyticsService.askFollowUpQuestion(district, question, user);
+  }
+
+  @Post('explain/:district/chat')
+  @Roles('admin')
+  async chatWithAgent(
+    @Param('district') district: string,
+    @Body() body: { message: string; sessionId?: string },
+    @CurrentUser() user: ValidatedUser,
+  ) {
+    return this.analyticsService.chatWithAgent(district, body.message, body.sessionId, user);
+  }
+
+  @Get('national-summary')
+  @Roles('admin')
+  async nationalSummary(@Query('week') week?: string, @CurrentUser() user?: ValidatedUser) {
+    return this.analyticsService.getNationalSummary(week, user);
+  }
+
+  @Post('batch-explain')
+  @Roles('admin')
+  async batchExplain(@Body() body: { requests: any[] }, @CurrentUser() user: ValidatedUser) {
+    return this.analyticsService.batchExplain(body.requests ?? [], user);
+  }
+
+  // RAG management — admin only (these trigger ETL/seed operations)
+  @Post('rag/ingest')
+  @Roles('admin')
+  async ragIngest(@Body() body: { documents: any[] }, @CurrentUser() user: ValidatedUser) {
+    return this.analyticsService.ingestRagDocuments(body.documents ?? [], user);
+  }
+
+  @Post('rag/etl/run')
+  @Roles('admin')
+  async etlRun(@CurrentUser() user: ValidatedUser) {
+    return this.analyticsService.triggerEtlRun(user);
+  }
+
+  // All other endpoints (latest, timeseries, summary, etc.) stay as-is — no @Roles needed
 }
 ```
 
-**2c. Use the header builder in every outbound service call**
+**2c. Update analytics service method signatures and add headers to every outbound call**
+
+> **Scope note:** `analytics.service.ts` calls explain-analytics in 10+ separate methods,
+> each with its own inline `const explainUrl = process.env.EXPLAIN_ANALYTICS_URL || ...`.
+> Every one of these must receive a `user` parameter and pass `buildServiceHeaders(user)`.
+> The extract below shows the pattern — apply it to all methods.
 
 ```typescript
 // backend/src/analytics/analytics.service.ts
 import { buildServiceHeaders } from '../common/service-headers.util';
 
-async getInsights(user: JwtPayload) {
-  const { data } = await axios.post(
-    `${this.explainUrl}/v1/insights/explain`,
+// Add user parameter to every method that calls explain-analytics
+async getExplainableInsight(districtName: string, user: ValidatedUser) {
+  // ...existing payload build code stays unchanged...
+  const explainUrl = process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+  const resp = await axios.post(
+    `${explainUrl}/v1/insights/explain`,
     payload,
-    { headers: buildServiceHeaders(user) },
+    { headers: buildServiceHeaders(user) },   // ← add this
   );
-  return data;
+  return resp.data;
 }
 
-async predictBulk(features: unknown) {
-  // ML service doesn't need user context for predictions — pass no user
-  const { data } = await axios.post(
-    `${this.mlUrl}/predict/bulk`,
+// Methods that don't involve a user action (bulk predict, cache warming)
+// still send x-request-id for tracing — pass no user
+async predictBulkFromML() {
+  const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+  const resp = await axios.post(
+    `${mlUrl}/predict/bulk`,
     { districts: features },
-    { headers: buildServiceHeaders() },  // still sends x-request-id for tracing
+    { headers: buildServiceHeaders() },       // ← no user, still gets x-request-id
   );
-  return data;
+  return resp.data;
 }
 ```
 
-Apply the same pattern in `route.service.ts` and any other file that calls Python services.
+For `route.service.ts`, the route optimizer call uses `fetch()` — headers work the same way:
+
+```typescript
+// backend/src/tasks/route.service.ts
+import { buildServiceHeaders } from '../common/service-headers.util';
+
+private async fetchOptimizedOrder(durationMatrix: number[][]): Promise<number[]> {
+  const response = await fetch(`${this.optimizerUrl}/optimize`, {
+    method: 'POST',
+    headers: buildServiceHeaders(),           // ← add this, replaces manual Content-Type
+    body: JSON.stringify({ duration_matrix: durationMatrix }),
+    signal: AbortSignal.timeout(5000),
+  });
+  // ...rest unchanged
+}
+```
 
 #### Step 2 Verification
 
+- [ ] Supervisor calling `GET /api/analytics/explain/Colombo` → `403 Forbidden` from NestJS `RolesGuard`
+- [ ] Admin calling the same endpoint → `200 OK`
 - [ ] Python service logs show `x-request-id` on every inbound request
-- [ ] `x-user-role` is present on calls that originated from authenticated endpoints
-- [ ] Unauthenticated calls (health checks, public endpoints) send only `x-request-id`
+- [ ] `x-user-role: admin` is present in explain-analytics server logs for admin-originated calls
 
 ---
 
@@ -414,47 +566,107 @@ logout(@Res({ passthrough: true }) res: Response) {
 
 ```typescript
 // backend/src/auth/strategies/jwt.strategy.ts
-import { ExtractJwt } from 'passport-jwt';
+import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 
-JwtFromRequest: ExtractJwt.fromExtractors([
-  (req: Request) => req?.cookies?.access_token ?? null,
-]),
+super({
+  jwtFromRequest: ExtractJwt.fromExtractors([
+    (req: Request) => req?.cookies?.access_token ?? null,
+  ]),
+  ignoreExpiration: false,
+  secretOrKey: process.env.JWT_SECRET,  // Step 6 hardens this further
+  passReqToCallback: false,
+});
 ```
 
-Enable cookie parsing:
+Enable cookie parsing in `main.ts` — `credentials: true` is already set, only `cookieParser` is new:
 
 ```typescript
-// backend/src/main.ts
+// backend/src/main.ts  — add before app.listen()
 import * as cookieParser from 'cookie-parser';
 app.use(cookieParser());
-app.enableCors({
-  origin: process.env.NEXT_FRONTEND_URL,
-  credentials: true,  // required for cross-origin cookie
-});
 ```
 
 Install: `npm install cookie-parser @types/cookie-parser`
 
-**4c. Frontend: remove localStorage, enable credentials**
+**4c. Frontend — two clients to update (Issue 3 fix)**
+
+There are two separate API clients that both inject bearer tokens. Update both.
+
+**Client 1 — [frontend/lib/api.ts](frontend/lib/api.ts) (axios):**
 
 ```typescript
-// frontend/lib/api.ts
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
-  withCredentials: true,  // browser sends httpOnly cookie automatically
+  withCredentials: true,   // browser sends httpOnly cookie automatically
+  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Remove: the request interceptor that injects Authorization header
-// Remove: all localStorage.getItem / localStorage.setItem for the token
+// Remove the entire request interceptor that reads localStorage and injects Authorization header.
+// Keep the response interceptor for 401 handling — it still calls clearAuthStorage()
+// and dispatchLogoutEvent(), which clears the user object from localStorage (not the token).
 ```
+
+**Client 2 — [frontend/services/api/index.ts](frontend/services/api/index.ts) (raw fetch):**
+
+```typescript
+// fetchApi() — remove ALL localStorage token reads and Authorization header injection:
+// REMOVE: const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+// REMOVE: if (token && isTokenExpired(token)) { ... }
+// REMOVE: Authorization: `Bearer ${token}`
+
+async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    credentials: 'include',   // send the httpOnly cookie
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+  // rest unchanged
+}
+
+// authService.login() — stop storing the token; only store the user object:
+async login(email: string, password: string) {
+  const response = await fetchApi<{ user: User }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  if (response.success && response.data) {
+    // The token is now in the httpOnly cookie set by NestJS
+    // Only store the user object for display purposes
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.data.user));
+  }
+  return response;
+}
+
+// authService.logout() — call server logout to clear cookie, then clear local state:
+async logout() {
+  await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+  clearAuthStorage();  // clears user object from localStorage
+}
+
+// uploadEvidence and downloadReportPdf — replace localStorage.getItem("auth_token") with credentials:
+// REMOVE: const token = localStorage.getItem("auth_token");
+// REMOVE: Authorization header
+// ADD: credentials: 'include' to the fetch options
+```
+
+**4d. Remove `tokenUtils.ts` expiry check from interceptors**
+
+The client-side token expiry check in `api.ts` and `index.ts` (`isTokenExpired()`) can no
+longer read the httpOnly cookie. Remove it — let the server's `401` response handle expiry
+instead. The response interceptor's `401` handler already does this correctly.
 
 #### Step 4 Verification
 
-- [ ] After login, `access_token` appears in browser cookies with `HttpOnly` flag
+- [ ] After login, `access_token` appears in browser DevTools → Application → Cookies with `HttpOnly` flag
 - [ ] `document.cookie` does NOT expose `access_token`
-- [ ] Authenticated API calls succeed without manually attaching a token
-- [ ] On logout, the cookie is cleared and subsequent calls return `401`
+- [ ] Authenticated API calls in both axios and raw-fetch paths succeed without Authorization header
+- [ ] On logout, the cookie is cleared server-side and subsequent calls return `401`
+- [ ] `uploadEvidence` and `downloadReportPdf` still work (now use `credentials: 'include'`)
 
 ---
 
@@ -495,62 +707,123 @@ since local dev is developer-only. The enforcement is at the Docker level for de
 
 ---
 
-### Step 6 — Remove hardcoded secret fallbacks (~1 hour)
+### Step 6 — Remove hardcoded secret fallbacks and cleanup (~1 hour)
+
+**6a. Change `JwtModule.register()` to `JwtModule.registerAsync()` (Issue 4 fix)**
+
+`JwtModule.register()` evaluates at module load time before env vars may be available via
+`ConfigService`. Switch to `registerAsync()` to inject `ConfigService` properly:
+
+```typescript
+// backend/src/auth/auth.module.ts
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+JwtModule.registerAsync({
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    secret: config.getOrThrow<string>('JWT_SECRET'),  // throws at startup if missing
+    signOptions: { expiresIn: '24h' },
+  }),
+}),
+```
+
+Also update `jwt.strategy.ts` to inject `ConfigService`:
 
 ```typescript
 // backend/src/auth/strategies/jwt.strategy.ts
-// BEFORE:
-secretOrKey: configService.get('JWT_SECRET') || 'epilink-super-secret-key-change-in-production',
+import { ConfigService } from '@nestjs/config';
 
-// AFTER (throws at startup if missing — fail fast):
-secretOrKey: configService.getOrThrow('JWT_SECRET'),
+constructor(private authService: AuthService, private config: ConfigService) {
+  super({
+    jwtFromRequest: ExtractJwt.fromExtractors([
+      (req: Request) => req?.cookies?.access_token ?? null,
+    ]),
+    ignoreExpiration: false,
+    secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
+  });
+}
 ```
 
-Add startup validation:
+**6b. Remove the `x-internal-api-key` bypass from `JwtAuthGuard` (Issue 5 fix)**
+
+Since service keys are no longer part of the design, remove the bypass entirely:
 
 ```typescript
-// backend/src/main.ts
-const required = ['JWT_SECRET', 'CHATBOT_SERVICE_URL', 'ML_SERVICE_URL',
-                  'ROUTE_OPTIMIZER_URL', 'EXPLAIN_ANALYTICS_URL'];
+// backend/src/auth/guards/jwt-auth.guard.ts
+import { Injectable, ExecutionContext } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  canActivate(context: ExecutionContext) {
+    // Removed: x-internal-api-key bypass — no longer needed
+    return super.canActivate(context);
+  }
+}
+```
+
+**6c. Add startup validation in `main.ts`**
+
+```typescript
+// backend/src/main.ts  — add before NestFactory.create()
+const required = [
+  'JWT_SECRET', 'CHATBOT_SERVICE_URL', 'ML_SERVICE_URL',
+  'ROUTE_OPTIMIZER_URL', 'EXPLAIN_ANALYTICS_URL',
+];
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
 }
 ```
 
-Also remove the hardcoded `JWT_SECRET` from `docker-compose.yml` — it should only come from `.env`:
+**6d. Remove hardcoded `JWT_SECRET` from `docker-compose.yml`**
 
 ```yaml
-# docker-compose.yml
+# docker-compose.yml — backend service environment block
 backend:
   environment:
-    # JWT_SECRET: epilink-dev-jwt-secret   ← remove this line, use env_file only
+    NODE_ENV: production
+    PORT: 3001
+    # JWT_SECRET: epilink-dev-jwt-secret   ← REMOVE this line
+    # Let it come from env_file: ./backend/.env only
 ```
 
 ```env
-# backend/.env
-JWT_SECRET=<generate a proper random secret>
+# backend/.env — replace the dev value with a proper random secret
+JWT_SECRET=<generate with: openssl rand -hex 32>
+```
+
+**6e. Remove `INTERNAL_SERVICE_KEY` from `docker-compose.yml`**
+
+This env var powered the old bypass that is now removed:
+
+```yaml
+# docker-compose.yml — backend environment block
+# INTERNAL_SERVICE_KEY: epilink-internal-svc-9f3a2c8b4e1d7f6a  ← remove
 ```
 
 #### Step 6 Verification
 
-- [ ] Starting NestJS without `JWT_SECRET` in env fails at boot with a clear error
+- [ ] Starting NestJS without `JWT_SECRET` set → process exits at startup with a clear error
 - [ ] `JWT_SECRET` does not appear as a literal value in `docker-compose.yml`
+- [ ] `curl -H "x-internal-api-key: anything" /api/analytics/districts/latest` → `401` (bypass removed)
+- [ ] Normal authenticated request with valid cookie → still works
 
 ---
 
 ## Summary
 
-| Step | What changes | Files touched | Effort |
+| Step | What changes | Key files touched | Effort |
 |---|---|---|---|
-| **1** | Move chatbot proxy from Next.js to NestJS | New `backend/src/chatbot/`, delete `frontend/app/api/chatbot/`, update widget | ~2 hours |
-| **2** | Forward user context headers to all Python services | `service-headers.util.ts`, `analytics.service.ts`, `route.service.ts` | ~3 hours |
-| **3** | Role checks in Python services using forwarded headers | `shared/context.py`, `explain-analytics/main.py` | ~2 hours |
-| **4** | Move JWT to httpOnly cookie | `auth.controller.ts`, `jwt.strategy.ts`, `main.ts`, `frontend/lib/api.ts` | ~2 hours |
+| **1** | Move chatbot proxy: Next.js → NestJS | New `backend/src/chatbot/`, delete `frontend/app/api/chatbot/`, update `ChatbotWidget.tsx` | ~2 hours |
+| **2** | `@Roles('admin')` on explain endpoints; `buildServiceHeaders` forwarded to all Python calls | `analytics.controller.ts`, `analytics.service.ts`, `route.service.ts`, new `common/service-headers.util.ts`, new `auth/decorators/current-user.decorator.ts` | ~4 hours |
+| **3** | Role checks in Python services on forwarded headers | New `shared/context.py`, `explain-analytics/main.py` | ~2 hours |
+| **4** | Move JWT to httpOnly cookie; update both frontend API clients | `auth.controller.ts`, `jwt.strategy.ts`, `main.ts`, `frontend/lib/api.ts`, `frontend/services/api/index.ts` | ~2.5 hours |
 | **5** | Remove Python port mappings from docker-compose | `docker-compose.yml` | ~30 min |
-| **6** | Remove hardcoded secret fallbacks | `jwt.strategy.ts`, `main.ts`, `docker-compose.yml`, `.env` | ~1 hour |
+| **6** | `JwtModule.registerAsync()`, remove `x-internal-api-key` bypass, startup validation | `auth.module.ts`, `jwt.strategy.ts`, `jwt-auth.guard.ts`, `main.ts`, `docker-compose.yml`, `backend/.env` | ~1.5 hours |
 
-**Total: ~1 day.** Steps 1–3 can be done in any order. Steps 4 and 6 are independent.
-Step 5 is a Docker-only change, safe to do last.
+**Total: ~1.5 days.** Steps 1 and 4 are fully independent. Steps 2 and 3 are paired (3 needs 2 first).
+Step 5 is Docker-only, do last. Step 6 is independent of all others.
 
 ---
 
