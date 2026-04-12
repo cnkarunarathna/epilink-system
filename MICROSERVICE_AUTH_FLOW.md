@@ -687,11 +687,11 @@ instead. The response interceptor's `401` handler already does this correctly.
 
 #### Step 4 Verification
 
-- [ ] After login, `access_token` appears in browser DevTools → Application → Cookies with `HttpOnly` flag
-- [ ] `document.cookie` does NOT expose `access_token`
-- [ ] Authenticated API calls in both axios and raw-fetch paths succeed without Authorization header
-- [ ] On logout, the cookie is cleared server-side and subsequent calls return `401`
-- [ ] `uploadEvidence` and `downloadReportPdf` still work (now use `credentials: 'include'`)
+- [x] After login, `access_token` appears in browser DevTools → Application → Cookies with `HttpOnly` flag
+- [x] `document.cookie` does NOT expose `access_token`
+- [x] Authenticated API calls in both axios and raw-fetch paths succeed without Authorization header
+- [x] On logout, the cookie is cleared server-side and subsequent calls return `401`
+- [x] `uploadEvidence` and `downloadReportPdf` still work (now use `credentials: 'include'`)
 
 ---
 
