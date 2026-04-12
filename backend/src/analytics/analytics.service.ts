@@ -1378,15 +1378,10 @@ export class AnalyticsService implements OnModuleInit {
   async triggerEtlRun(user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
-    const serviceKey = process.env.EXPLAIN_BACKEND_SERVICE_KEY;
-    const headers: Record<string, string> = buildServiceHeaders(user);
-    if (serviceKey) {
-      headers['x-internal-api-key'] = serviceKey;
-    }
     const resp = await axios.post(
       `${explainUrl}/v1/rag/etl/run`,
       {},
-      { headers, timeout: 600000 },
+      { headers: buildServiceHeaders(user), timeout: 600000 },
     );
     return resp.data;
   }

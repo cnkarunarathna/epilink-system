@@ -832,10 +832,10 @@ This env var powered the old bypass that is now removed:
 
 #### Step 6 Verification
 
-- [ ] Starting NestJS without `JWT_SECRET` set → process exits at startup with a clear error
-- [ ] `JWT_SECRET` does not appear as a literal value in `docker-compose.yml`
-- [ ] `curl -H "x-internal-api-key: anything" /api/analytics/districts/latest` → `401` (bypass removed)
-- [ ] Normal authenticated request with valid cookie → still works
+- [x] Starting NestJS without `JWT_SECRET` set → process exits at startup with a clear error
+- [x] `JWT_SECRET` does not appear as a literal value in `docker-compose.yml`
+- [x] `curl -H "x-internal-api-key: anything" /api/analytics/districts/latest` → `401` (bypass removed)
+- [x] Normal authenticated request with valid cookie → still works
 
 ---
 

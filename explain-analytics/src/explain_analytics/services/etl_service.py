@@ -65,7 +65,9 @@ class ETLService:
             self._last_run_records = upserted
             self._last_run_status = "success"
             self._last_run_error = None
-            print(f"[ETLService] Upserted {upserted} district-week documents into Qdrant.")
+            print(
+                f"[ETLService] Upserted {upserted} district-week documents into Qdrant."
+            )
             return {"upserted": upserted, "status": "success"}
         except Exception as exc:
             self._last_run_at = datetime.now(timezone.utc).isoformat()
@@ -94,13 +96,8 @@ class ETLService:
     # ── Data fetching ───────────────────────────────────────────────
 
     def _fetch_district_data(self) -> list[dict]:
-        headers: dict[str, str] = {}
-        if settings.backend_service_key:
-            headers["x-internal-api-key"] = settings.backend_service_key
-
         compare_resp = httpx.get(
             f"{settings.backend_api_url}/analytics/historical/districts/compare",
-            headers=headers,
             timeout=_TIMEOUT,
         )
         compare_resp.raise_for_status()
@@ -112,7 +109,6 @@ class ETLService:
         try:
             latest_resp = httpx.get(
                 f"{settings.backend_api_url}/analytics/districts/latest",
-                headers=headers,
                 timeout=_TIMEOUT,
             )
             if latest_resp.status_code == 200:
@@ -125,9 +121,7 @@ class ETLService:
 
     # ── Data transformation ─────────────────────────────────────────
 
-    def _merge(
-        self, compare_rows: list[dict], weather: dict[str, dict]
-    ) -> list[dict]:
+    def _merge(self, compare_rows: list[dict], weather: dict[str, dict]) -> list[dict]:
         district_rows: dict[str, list[dict]] = defaultdict(list)
         for row in compare_rows:
             district_rows[row.get("district", "Unknown")].append(row)
@@ -147,15 +141,17 @@ class ETLService:
                     wow = round(((cases - prev) / prev) * 100, 1)
 
             w = weather.get(district, {})
-            merged.append({
-                "district": district,
-                "cases": cases,
-                "week": week,
-                "year": year,
-                "wow_pct": wow,
-                "temperature": w.get("temperature"),
-                "precipitation": w.get("precipitation"),
-            })
+            merged.append(
+                {
+                    "district": district,
+                    "cases": cases,
+                    "week": week,
+                    "year": year,
+                    "wow_pct": wow,
+                    "temperature": w.get("temperature"),
+                    "precipitation": w.get("precipitation"),
+                }
+            )
         return merged
 
     def _transform(self, rows: list[dict]) -> list[RagIngestDocument]:
@@ -177,7 +173,9 @@ class ETLService:
             )
             temp_str = f"{temp:.1f}°C" if temp is not None else "temp unavailable"
             precip_str = (
-                f"{precip:.0f}mm precipitation" if precip is not None else "precip unavailable"
+                f"{precip:.0f}mm precipitation"
+                if precip is not None
+                else "precip unavailable"
             )
 
             content = (

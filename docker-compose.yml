@@ -126,7 +126,6 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ZytgpWDhcFeosIzeheccQsRj4Sq1BOqx
-      JWT_SECRET: epilink-dev-jwt-secret
       ML_SERVICE_URL: http://ml-model:8000
       EXPLAIN_ANALYTICS_URL: http://explain-analytics:8010
       ROUTE_OPTIMIZER_URL: http://route-optimizer:8001

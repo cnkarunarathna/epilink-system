@@ -359,7 +359,6 @@ def rag_seed(
             "prevent true duplicates in Qdrant."
         ),
     ),
-    x_internal_api_key: str | None = Header(default=None),
     _: None = Depends(require_admin),
 ) -> RagSeedResponse:
     """Seed the Qdrant corpus with the built-in dengue knowledge base (25 documents).
@@ -367,17 +366,9 @@ def rag_seed(
     Covers WHO/MoH clinical guidelines, vector control protocols, Sri Lanka
     epidemiology, outbreak response, dengue biology, and treatment protocols.
 
-    Protected by x-internal-api-key when EXPLAIN_BACKEND_SERVICE_KEY is set.
     Skips seeding silently when the corpus already contains documents (use
     force=true to re-seed).
     """
-    if (
-        settings.backend_service_key
-        and x_internal_api_key != settings.backend_service_key
-    ):
-        raise HTTPException(
-            status_code=403, detail="Invalid or missing x-internal-api-key."
-        )
     if not settings.qdrant_url:
         raise HTTPException(
             status_code=503,
@@ -400,20 +391,9 @@ def rag_etl_status() -> dict[str, object]:
 
 @app.post("/v1/rag/etl/run")
 def rag_etl_run(
-    x_internal_api_key: str | None = Header(default=None),
     _: None = Depends(require_admin),
 ) -> dict[str, object]:
-    """Manually trigger the surveillance ETL job.
-
-    Protected by x-internal-api-key when EXPLAIN_BACKEND_SERVICE_KEY is set.
-    """
-    if (
-        settings.backend_service_key
-        and x_internal_api_key != settings.backend_service_key
-    ):
-        raise HTTPException(
-            status_code=403, detail="Invalid or missing x-internal-api-key."
-        )
+    """Manually trigger the surveillance ETL job."""
     if not rag_service.is_ready:
         raise HTTPException(
             status_code=503,

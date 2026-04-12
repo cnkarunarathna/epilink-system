@@ -1,8 +1,25 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import cookieParser from 'cookie-parser';
+import * as dotenv from 'dotenv';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { SeedService } from './seed/seed.service';
+
+dotenv.config();
+
+const requiredEnvVars = [
+  'JWT_SECRET',
+  'CHATBOT_SERVICE_URL',
+  'ML_SERVICE_URL',
+  'ROUTE_OPTIMIZER_URL',
+  'EXPLAIN_ANALYTICS_URL',
+];
+
+for (const key of requiredEnvVars) {
+  if (!process.env[key]) {
+    throw new Error(`Missing required env var: ${key}`);
+  }
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
