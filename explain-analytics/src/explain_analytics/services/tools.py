@@ -12,12 +12,21 @@ import httpx
 from explain_analytics.config import settings
 
 _TIMEOUT = 15
+_PUBLIC_ANALYTICS_PREFIX = "/public/analytics"
+
+
+def _to_public_analytics_path(path: str) -> str:
+    """Map internal analytics paths to public analytics routes."""
+    if path.startswith("/analytics/"):
+        return f"{_PUBLIC_ANALYTICS_PREFIX}{path[len('/analytics') :]}"
+    return path
 
 
 def _api_get(path: str, params: dict | None = None) -> dict | list | None:
     """Helper: GET from the NestJS backend, return parsed JSON or None."""
     try:
-        url = f"{settings.backend_api_url}{path}"
+        public_path = _to_public_analytics_path(path)
+        url = f"{settings.backend_api_url}{public_path}"
         resp = httpx.get(url, params=params, timeout=_TIMEOUT)
         resp.raise_for_status()
         return resp.json()

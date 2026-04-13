@@ -139,7 +139,10 @@ class NationalSummaryService:
     def _fetch_all_districts(self) -> list[dict]:
         """Fetch all-district comparison data from the NestJS backend."""
         try:
-            url = f"{settings.backend_api_url}/analytics/historical/districts/compare"
+            url = (
+                f"{settings.backend_api_url}"
+                "/public/analytics/historical/districts/compare"
+            )
             resp = httpx.get(url, timeout=_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()

@@ -97,7 +97,7 @@ class ETLService:
 
     def _fetch_district_data(self) -> list[dict]:
         compare_resp = httpx.get(
-            f"{settings.backend_api_url}/analytics/historical/districts/compare",
+            f"{settings.backend_api_url}/public/analytics/historical/districts/compare",
             timeout=_TIMEOUT,
         )
         compare_resp.raise_for_status()
@@ -108,7 +108,7 @@ class ETLService:
         weather_by_district: dict[str, dict] = {}
         try:
             latest_resp = httpx.get(
-                f"{settings.backend_api_url}/analytics/districts/latest",
+                f"{settings.backend_api_url}/public/analytics/districts/latest",
                 timeout=_TIMEOUT,
             )
             if latest_resp.status_code == 200:
