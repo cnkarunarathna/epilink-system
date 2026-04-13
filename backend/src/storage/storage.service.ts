@@ -74,6 +74,30 @@ export class StorageService {
   }
 
   /**
+   * Upload a generated PDF report to S3 under the reports/ prefix.
+   * Returns the S3 object key and a 7-day pre-signed download URL.
+   */
+  async uploadReportPdf(
+    buffer: Buffer,
+    filename: string,
+  ): Promise<{ key: string; signedUrl: string }> {
+    const key = `reports/${filename}`;
+
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: 'application/pdf',
+        ContentDisposition: `attachment; filename="${filename}"`,
+      }),
+    );
+
+    const signedUrl = await this.getSignedUrl(key);
+    return { key, signedUrl };
+  }
+
+  /**
    * Generate a pre-signed GET URL for an S3 object key.
    * Also handles legacy records where the full S3 URL was stored instead of
    * just the key — it extracts the key automatically.
