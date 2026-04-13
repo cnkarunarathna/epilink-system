@@ -13,6 +13,7 @@ const requiredEnvVars = [
   'ML_SERVICE_URL',
   'ROUTE_OPTIMIZER_URL',
   'EXPLAIN_ANALYTICS_URL',
+  'NEXT_FRONTEND_URL',
 ];
 
 for (const key of requiredEnvVars) {

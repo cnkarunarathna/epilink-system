@@ -138,13 +138,21 @@ export class AnalyticsController {
   // ── Enhancement 7: session history and management ─────────────────
 
   @Get('chat/:sessionId/history')
-  async getChatHistory(@Param('sessionId') sessionId: string) {
-    return this.analyticsService.getChatHistory(sessionId);
+  @Roles(UserRole.ADMIN)
+  async getChatHistory(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.getChatHistory(sessionId, user);
   }
 
   @Delete('chat/:sessionId')
-  async deleteChatSession(@Param('sessionId') sessionId: string) {
-    return this.analyticsService.deleteChatSession(sessionId);
+  @Roles(UserRole.ADMIN)
+  async deleteChatSession(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.deleteChatSession(sessionId, user);
   }
 
   // ── Enhancement 3: National Summary & Batch Explain ───────────────

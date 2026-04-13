@@ -839,6 +839,115 @@ This env var powered the old bypass that is now removed:
 
 ---
 
+## Implementation Status (Post-Audit)
+
+All six steps are implemented. Two gaps were found during the post-implementation audit.
+
+| Step | Status | Notes |
+| ---- | ------ | ----- |
+| **1** — Chatbot proxy moved to NestJS | ✅ Done | `backend/src/chatbot/` exists; `frontend/app/api/chatbot/` deleted |
+| **2** — Role guards + service headers | ⚠️ Gap | explain/rag/national/batch endpoints guarded; chat session endpoints are not (see Gap 1) |
+| **3** — Python service role checks | ✅ Done | `explain-analytics/shared/context.py` + `require_admin` on all insight endpoints |
+| **4** — httpOnly cookie JWT | ✅ Done | Both frontend clients use `credentials: include`; no localStorage token reads |
+| **5** — Docker port cleanup | ✅ Done | ml-model, explain-analytics, chatbot-service, route-optimizer have no `ports:` |
+| **6** — Startup validation + JwtModule.registerAsync | ⚠️ Gap | `JWT_SECRET` validation works; `NEXT_FRONTEND_URL` missing from env (see Gap 2) |
+
+---
+
+## Remaining Gaps
+
+### Gap 1 — Chat session endpoints missing role guard and user context (broken)
+
+**Files:** [backend/src/analytics/analytics.controller.ts](backend/src/analytics/analytics.controller.ts) lines 140–148, [backend/src/analytics/analytics.service.ts](backend/src/analytics/analytics.service.ts) lines 1224–1252
+
+**Problem — three issues stacked:**
+
+1. The controller has no `@Roles()` on `getChatHistory` and `deleteChatSession` — any authenticated user can call them.
+2. The service calls `buildServiceHeaders()` with no user — `x-user-role` is never forwarded to explain-analytics.
+3. The explain-analytics Python service has `require_admin` on the `/v1/insights/chat/{sessionId}/history` and `/v1/insights/chat/{sessionId}` endpoints.
+
+Result: these endpoints are broken for **all users** — the backend allows the request but explain-analytics always returns `403` because it receives no `x-user-role` header.
+
+**Fix — controller:**
+
+```typescript
+// backend/src/analytics/analytics.controller.ts
+
+@Get('chat/:sessionId/history')
+@Roles(UserRole.ADMIN)                              // add this
+async getChatHistory(
+  @Param('sessionId') sessionId: string,
+  @CurrentUser() user: ValidatedServiceUser,        // add this
+) {
+  return this.analyticsService.getChatHistory(sessionId, user);
+}
+
+@Delete('chat/:sessionId')
+@Roles(UserRole.ADMIN)                              // add this
+async deleteChatSession(
+  @Param('sessionId') sessionId: string,
+  @CurrentUser() user: ValidatedServiceUser,        // add this
+) {
+  return this.analyticsService.deleteChatSession(sessionId, user);
+}
+```
+
+**Fix — service:**
+
+```typescript
+// backend/src/analytics/analytics.service.ts
+
+async getChatHistory(sessionId: string, user: ValidatedServiceUser) {
+  // ...
+  { headers: buildServiceHeaders(user) },           // pass user
+}
+
+async deleteChatSession(sessionId: string, user: ValidatedServiceUser) {
+  // ...
+  { headers: buildServiceHeaders(user) },           // pass user
+}
+```
+
+**Verification:**
+- [ ] Non-admin calling `GET /api/analytics/chat/:id/history` → `403` from NestJS `RolesGuard`
+- [ ] Admin calling the same → `200` from explain-analytics
+- [ ] `x-user-role: admin` present in explain-analytics logs for these requests
+
+---
+
+### Gap 2 — `NEXT_FRONTEND_URL` missing from `backend/.env`
+
+**File:** [backend/src/main.ts](backend/src/main.ts) line 45, [backend/.env](backend/.env)
+
+**Problem:** `main.ts` uses `process.env.NEXT_FRONTEND_URL` as the CORS `origin` in production. The `.env` file defines `FRONTEND_URL` but not `NEXT_FRONTEND_URL`. In production (`NODE_ENV=production`), CORS `origin` resolves to `undefined`, silently blocking all cross-origin requests from the frontend.
+
+**Fix:**
+
+Add to `backend/.env`:
+
+```env
+NEXT_FRONTEND_URL=http://localhost:3000
+```
+
+Add to the startup validation list in `backend/src/main.ts`:
+
+```typescript
+const requiredEnvVars = [
+  'JWT_SECRET',
+  'CHATBOT_SERVICE_URL',
+  'ML_SERVICE_URL',
+  'ROUTE_OPTIMIZER_URL',
+  'EXPLAIN_ANALYTICS_URL',
+  'NEXT_FRONTEND_URL',   // add this
+];
+```
+
+**Verification:**
+- [ ] Starting backend in production without `NEXT_FRONTEND_URL` → process exits with a clear error
+- [ ] Frontend requests succeed with correct CORS headers in production
+
+---
+
 ## Summary
 
 | Step  | What changes                                                                                | Key files touched                                                                                                                                            | Effort     |
