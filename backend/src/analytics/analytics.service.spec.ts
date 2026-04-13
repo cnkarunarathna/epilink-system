@@ -3,6 +3,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AnalyticsService } from './analytics.service';
 import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
 import axios from 'axios';
 
 // Mock axios
@@ -34,6 +35,12 @@ describe('AnalyticsService', () => {
     getConnectedClients: jest.fn().mockReturnValue(0),
   };
 
+  const mockCacheHelper = {
+    getOrRefresh: jest.fn(
+      (_: string, __: number, factory: () => Promise<unknown>) => factory(),
+    ),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -47,6 +54,10 @@ describe('AnalyticsService', () => {
         {
           provide: EventsGateway,
           useValue: mockEventsGateway,
+        },
+        {
+          provide: CacheHelperService,
+          useValue: mockCacheHelper,
         },
       ],
     }).compile();
@@ -211,6 +222,12 @@ describe('AnalyticsService', () => {
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.stringContaining('/predict/bulk'),
         expect.any(Object),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'content-type': 'application/json',
+            'x-request-id': expect.any(String),
+          }),
+        }),
       );
       expect(mockEventsGateway.emitAnalyticsUpdated).toHaveBeenCalledWith({
         type: 'predictions',
@@ -331,6 +348,13 @@ describe('AnalyticsService', () => {
   });
 
   describe('getExplainableInsight', () => {
+    const mockUser = {
+      id: 'user-1',
+      email: 'admin@epilink.com',
+      role: 'admin',
+      district: 'Colombo',
+    };
+
     it('should return error for non-existent district', async () => {
       mockManager.getRepository.mockReturnValue({
         findOne: jest.fn().mockResolvedValue(null),
@@ -338,6 +362,7 @@ describe('AnalyticsService', () => {
 
       const result = await analyticsService.getExplainableInsight(
         'NonExistent',
+        mockUser,
       );
 
       expect(result).toHaveProperty('error', 'District not found');
@@ -381,7 +406,10 @@ describe('AnalyticsService', () => {
       };
       mockedAxios.post.mockResolvedValue(mockResponse);
 
-      const result = await analyticsService.getExplainableInsight('Colombo');
+      const result = await analyticsService.getExplainableInsight(
+        'Colombo',
+        mockUser,
+      );
 
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.stringContaining('/v1/insights/explain'),
@@ -389,6 +417,12 @@ describe('AnalyticsService', () => {
           district: 'Colombo',
           structured_signals: expect.objectContaining({
             recent_case_count: 100,
+          }),
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'x-user-id': mockUser.id,
+            'x-user-role': mockUser.role,
           }),
         }),
       );
@@ -416,7 +450,10 @@ describe('AnalyticsService', () => {
         new Error('connect ECONNREFUSED 127.0.0.1:8010'),
       );
 
-      const result = await analyticsService.getExplainableInsight('Gampaha');
+      const result = await analyticsService.getExplainableInsight(
+        'Gampaha',
+        mockUser,
+      );
 
       expect(result).toHaveProperty('district', 'Gampaha');
       expect(result).toHaveProperty('_fallback', true);

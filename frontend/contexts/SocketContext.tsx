@@ -28,7 +28,7 @@ const SOCKET_URL =
   "http://localhost:3001";
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
@@ -40,15 +40,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
 
-    const token = localStorage.getItem("accessToken");
-    if (!token) {
-      return null;
-    }
-
     setConnectionStatus("connecting");
 
     const newSocket = io(`${SOCKET_URL}/events`, {
-      auth: { token },
+      withCredentials: true,
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: maxReconnectAttempts,

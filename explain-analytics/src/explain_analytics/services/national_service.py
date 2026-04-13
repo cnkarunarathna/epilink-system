@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 import httpx
 
 from explain_analytics.config import settings
-from explain_analytics.models import DistrictHighlight, NationalSummaryResponse, TrendDirection
+from explain_analytics.models import (
+    DistrictHighlight,
+    NationalSummaryResponse,
+    TrendDirection,
+)
 
 _TIMEOUT = 15
 
@@ -104,10 +108,14 @@ class NationalSummaryService:
         urgent = [h.district for h in highlights if h.is_urgent]
         total_cases = sum(h.recent_case_count for h in highlights)
 
-        report = self._generate_rule_based_report(highlights, week, by_risk, total_cases)
+        report = self._generate_rule_based_report(
+            highlights, week, by_risk, total_cases
+        )
         phase = "national-rule-based"
         try:
-            llm_report = self._generate_with_gemini(highlights, week, by_risk, total_cases)
+            llm_report = self._generate_with_gemini(
+                highlights, week, by_risk, total_cases
+            )
             if llm_report:
                 report = llm_report
                 phase = "national-gemini"
@@ -132,10 +140,7 @@ class NationalSummaryService:
         """Fetch all-district comparison data from the NestJS backend."""
         try:
             url = f"{settings.backend_api_url}/analytics/historical/districts/compare"
-            headers = {}
-            if settings.backend_service_key:
-                headers["x-internal-api-key"] = settings.backend_service_key
-            resp = httpx.get(url, headers=headers, timeout=_TIMEOUT)
+            resp = httpx.get(url, timeout=_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             return data if isinstance(data, list) else []
@@ -219,7 +224,8 @@ class NationalSummaryService:
             for h in priority:
                 wow_str = (
                     f", {'+' if (h.wow_pct or 0) >= 0 else ''}{h.wow_pct:.1f}% WoW"
-                    if h.wow_pct is not None else ""
+                    if h.wow_pct is not None
+                    else ""
                 )
                 lines.append(
                     f"{h.district}: {h.recent_case_count} cases "

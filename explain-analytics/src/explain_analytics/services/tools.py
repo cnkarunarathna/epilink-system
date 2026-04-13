@@ -14,17 +14,11 @@ from explain_analytics.config import settings
 _TIMEOUT = 15
 
 
-def _internal_headers() -> dict:
-    if settings.backend_service_key:
-        return {"x-internal-api-key": settings.backend_service_key}
-    return {}
-
-
 def _api_get(path: str, params: dict | None = None) -> dict | list | None:
     """Helper: GET from the NestJS backend, return parsed JSON or None."""
     try:
         url = f"{settings.backend_api_url}{path}"
-        resp = httpx.get(url, params=params, headers=_internal_headers(), timeout=_TIMEOUT)
+        resp = httpx.get(url, params=params, timeout=_TIMEOUT)
         resp.raise_for_status()
         return resp.json()
     except Exception:
@@ -90,24 +84,28 @@ def compare_districts(districts: str) -> str:
         risk = (
             "critical"
             if latest_cases >= 100
-            else "high"
-            if latest_cases >= 50
-            else "moderate"
-            if latest_cases >= 25
-            else "low"
+            else (
+                "high"
+                if latest_cases >= 50
+                else "moderate" if latest_cases >= 25 else "low"
+            )
         )
 
-        summaries.append({
-            "district": dist_name,
-            "current_cases": latest_cases,
-            "prev_week_cases": (d_rows[-2].get("cases", 0) or 0) if len(d_rows) >= 2 else None,
-            "wow_change_pct": wow,
-            "avg_4week_cases": avg_4w,
-            "case_trajectory": trajectory_str,
-            "temperature_c": latest.get("temperature"),
-            "precipitation_mm": latest.get("precipitation"),
-            "risk_level": risk,
-        })
+        summaries.append(
+            {
+                "district": dist_name,
+                "current_cases": latest_cases,
+                "prev_week_cases": (
+                    (d_rows[-2].get("cases", 0) or 0) if len(d_rows) >= 2 else None
+                ),
+                "wow_change_pct": wow,
+                "avg_4week_cases": avg_4w,
+                "case_trajectory": trajectory_str,
+                "temperature_c": latest.get("temperature"),
+                "precipitation_mm": latest.get("precipitation"),
+                "risk_level": risk,
+            }
+        )
 
     # Rank by current cases descending
     summaries.sort(key=lambda r: r.get("current_cases") or 0, reverse=True)
@@ -132,7 +130,11 @@ def compare_districts(districts: str) -> str:
         analysis = f"{s['district']}: {s['current_cases']} cases this week (risk: {s['risk_level']})."
 
     return json.dumps(
-        {"comparison": summaries, "analysis": analysis, "districts_analyzed": len(summaries)},
+        {
+            "comparison": summaries,
+            "analysis": analysis,
+            "districts_analyzed": len(summaries),
+        },
         indent=2,
         ensure_ascii=False,
     )
@@ -170,14 +172,16 @@ def year_over_year(district: str) -> str:
         wow_change: float | None = None
         if prev_cases is not None and prev_cases > 0:
             wow_change = round(((cases - prev_cases) / prev_cases) * 100, 1)
-        enriched.append({
-            "year": row.get("year"),
-            "week": row.get("week"),
-            "cases": cases,
-            "wow_change_pct": wow_change,
-            "temperature_c": row.get("temperature"),
-            "precipitation_mm": row.get("precipitation"),
-        })
+        enriched.append(
+            {
+                "year": row.get("year"),
+                "week": row.get("week"),
+                "cases": cases,
+                "wow_change_pct": wow_change,
+                "temperature_c": row.get("temperature"),
+                "precipitation_mm": row.get("precipitation"),
+            }
+        )
 
     # Peak detection
     all_cases = [r["cases"] for r in enriched]
@@ -211,7 +215,11 @@ def year_over_year(district: str) -> str:
         f"({'+' if period_change >= 0 else ''}{period_change}%, trend: {direction}). "
         f"Peak this period: {peak_cases} cases"
         + (f" in Week {peak_entry['week']}/{peak_entry['year']}" if peak_entry else "")
-        + (f". Momentum: {'+' if (momentum_pct or 0) >= 0 else ''}{momentum_pct}% (recent 2w vs first 2w)" if momentum_pct is not None else "")
+        + (
+            f". Momentum: {'+' if (momentum_pct or 0) >= 0 else ''}{momentum_pct}% (recent 2w vs first 2w)"
+            if momentum_pct is not None
+            else ""
+        )
         + "."
     )
 
@@ -255,27 +263,29 @@ def get_weather_correlation() -> str:
         precip_corr = row.get("precip_correlation", 0) or 0.0
 
         temp_strength = (
-            "strong" if abs(temp_corr) > 0.7
-            else "moderate" if abs(temp_corr) > 0.4
-            else "weak"
+            "strong"
+            if abs(temp_corr) > 0.7
+            else "moderate" if abs(temp_corr) > 0.4 else "weak"
         )
         precip_strength = (
-            "strong" if abs(precip_corr) > 0.7
-            else "moderate" if abs(precip_corr) > 0.4
-            else "weak"
+            "strong"
+            if abs(precip_corr) > 0.7
+            else "moderate" if abs(precip_corr) > 0.4 else "weak"
         )
 
-        results.append({
-            "district": row.get("district", "Unknown"),
-            "temp_correlation": round(temp_corr, 3),
-            "temp_strength": temp_strength,
-            "precip_correlation": round(precip_corr, 3),
-            "precip_strength": precip_strength,
-            "avg_cases": round(row.get("avg_cases", 0) or 0, 1),
-            "avg_temp_c": round(row.get("avg_temp", 0) or 0, 1),
-            "avg_precip_mm": round(row.get("avg_precip", 0) or 0, 1),
-            "data_points": row.get("data_points", 0),
-        })
+        results.append(
+            {
+                "district": row.get("district", "Unknown"),
+                "temp_correlation": round(temp_corr, 3),
+                "temp_strength": temp_strength,
+                "precip_correlation": round(precip_corr, 3),
+                "precip_strength": precip_strength,
+                "avg_cases": round(row.get("avg_cases", 0) or 0, 1),
+                "avg_temp_c": round(row.get("avg_temp", 0) or 0, 1),
+                "avg_precip_mm": round(row.get("avg_precip", 0) or 0, 1),
+                "data_points": row.get("data_points", 0),
+            }
+        )
 
     # Sort by strongest correlation (max of temp or precip abs value)
     results.sort(
@@ -313,7 +323,8 @@ def get_weather_correlation() -> str:
     return json.dumps(
         {
             "correlations": results,
-            "insights": insights or ["No significant weather-dengue correlations detected"],
+            "insights": insights
+            or ["No significant weather-dengue correlations detected"],
             "summary": (
                 f"Analyzed {len(results)} districts. "
                 f"{len(strong_temp)} with strong temperature correlation, "
@@ -340,7 +351,9 @@ def get_outbreak_alerts() -> str:
 
     rows = data if isinstance(data, list) else [data]
     if not rows:
-        return json.dumps({"info": "No outbreak alerts — all districts within normal range."})
+        return json.dumps(
+            {"info": "No outbreak alerts — all districts within normal range."}
+        )
 
     _severity_order = {"critical": 0, "high": 1, "moderate": 2, "low": 3}
 
@@ -350,18 +363,22 @@ def get_outbreak_alerts() -> str:
         avg = row.get("avg_cases", 0) or 0.0
         ratio = round(current / avg, 1) if avg > 0 else None
 
-        alerts.append({
-            "district": row.get("district", "Unknown"),
-            "alert_level": row.get("alert_level", "Normal"),
-            "severity": row.get("severity", "moderate"),
-            "current_cases": current,
-            "avg_4week_cases": round(avg, 1),
-            "ratio_to_4week_avg": ratio,
-            "description": row.get("description", ""),
-        })
+        alerts.append(
+            {
+                "district": row.get("district", "Unknown"),
+                "alert_level": row.get("alert_level", "Normal"),
+                "severity": row.get("severity", "moderate"),
+                "current_cases": current,
+                "avg_4week_cases": round(avg, 1),
+                "ratio_to_4week_avg": ratio,
+                "description": row.get("description", ""),
+            }
+        )
 
     # Sort by severity then by cases
-    alerts.sort(key=lambda a: (_severity_order.get(a["severity"], 3), -a["current_cases"]))
+    alerts.sort(
+        key=lambda a: (_severity_order.get(a["severity"], 3), -a["current_cases"])
+    )
 
     outbreak_districts = [a for a in alerts if a["alert_level"] == "Outbreak Alert"]
     warning_districts = [a for a in alerts if a["alert_level"] == "Warning"]
@@ -423,14 +440,16 @@ def get_growth_rate(weeks: int = 4) -> str:
         growth = row.get("avg_growth_rate", 0) or 0.0
         current = row.get("current_cases", 0) or 0
         prev = row.get("prev_cases", 0) or 0
-        rates.append({
-            "district": row.get("district", "Unknown"),
-            "avg_growth_rate_pct": round(growth, 1),
-            "trend": row.get("trend", "stable"),
-            "current_cases": current,
-            "prev_cases": prev,
-            "absolute_change": current - prev,
-        })
+        rates.append(
+            {
+                "district": row.get("district", "Unknown"),
+                "avg_growth_rate_pct": round(growth, 1),
+                "trend": row.get("trend", "stable"),
+                "current_cases": current,
+                "prev_cases": prev,
+                "absolute_change": current - prev,
+            }
+        )
 
     # Sort fastest-growing first
     rates.sort(key=lambda r: r.get("avg_growth_rate_pct") or 0, reverse=True)
@@ -451,7 +470,9 @@ def get_growth_rate(weeks: int = 4) -> str:
             others = ", ".join(r["district"] for r in accelerating[1:4])
             analysis_parts.append(f"Also accelerating: {others}")
     if decelerating:
-        best_declining = min(decelerating, key=lambda r: r.get("avg_growth_rate_pct") or 0)
+        best_declining = min(
+            decelerating, key=lambda r: r.get("avg_growth_rate_pct") or 0
+        )
         analysis_parts.append(
             f"Fastest declining: {best_declining['district']} at "
             f"{best_declining['avg_growth_rate_pct']}% "
@@ -511,14 +532,16 @@ def get_district_details(district: str) -> str:
         wow: float | None = None
         if prev is not None and prev > 0:
             wow = round(((cases - prev) / prev) * 100, 1)
-        enriched.append({
-            "year": row.get("year"),
-            "week": row.get("week"),
-            "cases": cases,
-            "wow_change_pct": wow,
-            "temperature_c": row.get("temperature"),
-            "precipitation_mm": row.get("precipitation"),
-        })
+        enriched.append(
+            {
+                "year": row.get("year"),
+                "week": row.get("week"),
+                "cases": cases,
+                "wow_change_pct": wow,
+                "temperature_c": row.get("temperature"),
+                "precipitation_mm": row.get("precipitation"),
+            }
+        )
 
     # Stats
     case_vals = [r["cases"] for r in enriched]
@@ -538,10 +561,13 @@ def get_district_details(district: str) -> str:
 
     latest_wow = enriched[-1].get("wow_change_pct") if enriched else None
     risk = (
-        "critical" if latest_cases >= 100
-        else "high" if latest_cases >= 50
-        else "moderate" if latest_cases >= 25
-        else "low"
+        "critical"
+        if latest_cases >= 100
+        else (
+            "high"
+            if latest_cases >= 50
+            else "moderate" if latest_cases >= 25 else "low"
+        )
     )
 
     wow_str = (
@@ -580,115 +606,205 @@ def get_district_details(district: str) -> str:
 # ── Sri Lanka district adjacency map ────────────────────────────────
 # Each key lists districts that share a land border.
 _ADJACENCY: dict[str, list[str]] = {
-    "Colombo":      ["Gampaha", "Kalutara"],
-    "Gampaha":      ["Colombo", "Kalutara", "Kandy", "Kegalle", "Kurunegala"],
-    "Kalutara":     ["Colombo", "Gampaha", "Ratnapura", "Galle"],
-    "Kandy":        ["Gampaha", "Kegalle", "Matale", "Nuwara Eliya", "Badulla", "Kurunegala"],
-    "Matale":       ["Kandy", "Kurunegala", "Anuradhapura", "Polonnaruwa", "Dambulla"],
+    "Colombo": ["Gampaha", "Kalutara"],
+    "Gampaha": ["Colombo", "Kalutara", "Kandy", "Kegalle", "Kurunegala"],
+    "Kalutara": ["Colombo", "Gampaha", "Ratnapura", "Galle"],
+    "Kandy": ["Gampaha", "Kegalle", "Matale", "Nuwara Eliya", "Badulla", "Kurunegala"],
+    "Matale": ["Kandy", "Kurunegala", "Anuradhapura", "Polonnaruwa", "Dambulla"],
     "Nuwara Eliya": ["Kandy", "Badulla", "Ratnapura", "Galle", "Matara"],
-    "Galle":        ["Kalutara", "Ratnapura", "Matara", "Nuwara Eliya"],
-    "Matara":       ["Galle", "Hambantota", "Nuwara Eliya"],
-    "Hambantota":   ["Matara", "Ratnapura", "Monaragala", "Badulla"],
-    "Jaffna":       ["Kilinochchi", "Mannar"],
-    "Mannar":       ["Jaffna", "Vavuniya", "Anuradhapura"],
-    "Vavuniya":     ["Mannar", "Kilinochchi", "Mullaitivu", "Anuradhapura", "Trincomalee"],
-    "Mullaitivu":   ["Kilinochchi", "Vavuniya", "Trincomalee", "Batticaloa"],
-    "Kilinochchi":  ["Jaffna", "Mannar", "Vavuniya", "Mullaitivu"],
-    "Batticaloa":   ["Mullaitivu", "Trincomalee", "Ampara", "Badulla"],
-    "Ampara":       ["Batticaloa", "Monaragala", "Badulla", "Polonnaruwa"],
-    "Trincomalee":  ["Vavuniya", "Mullaitivu", "Batticaloa", "Polonnaruwa", "Anuradhapura"],
-    "Kurunegala":   ["Gampaha", "Kandy", "Matale", "Anuradhapura", "Puttalam", "Kegalle"],
-    "Puttalam":     ["Kurunegala", "Anuradhapura", "Mannar"],
-    "Anuradhapura": ["Mannar", "Vavuniya", "Trincomalee", "Polonnaruwa", "Matale", "Kurunegala", "Puttalam"],
-    "Polonnaruwa":  ["Trincomalee", "Batticaloa", "Ampara", "Anuradhapura", "Matale"],
-    "Badulla":      ["Kandy", "Nuwara Eliya", "Monaragala", "Ampara", "Batticaloa", "Hambantota"],
-    "Monaragala":   ["Badulla", "Ampara", "Hambantota", "Ratnapura"],
-    "Ratnapura":    ["Kalutara", "Galle", "Nuwara Eliya", "Hambantota", "Monaragala", "Kegalle"],
-    "Kegalle":      ["Gampaha", "Kandy", "Ratnapura", "Kurunegala"],
+    "Galle": ["Kalutara", "Ratnapura", "Matara", "Nuwara Eliya"],
+    "Matara": ["Galle", "Hambantota", "Nuwara Eliya"],
+    "Hambantota": ["Matara", "Ratnapura", "Monaragala", "Badulla"],
+    "Jaffna": ["Kilinochchi", "Mannar"],
+    "Mannar": ["Jaffna", "Vavuniya", "Anuradhapura"],
+    "Vavuniya": ["Mannar", "Kilinochchi", "Mullaitivu", "Anuradhapura", "Trincomalee"],
+    "Mullaitivu": ["Kilinochchi", "Vavuniya", "Trincomalee", "Batticaloa"],
+    "Kilinochchi": ["Jaffna", "Mannar", "Vavuniya", "Mullaitivu"],
+    "Batticaloa": ["Mullaitivu", "Trincomalee", "Ampara", "Badulla"],
+    "Ampara": ["Batticaloa", "Monaragala", "Badulla", "Polonnaruwa"],
+    "Trincomalee": [
+        "Vavuniya",
+        "Mullaitivu",
+        "Batticaloa",
+        "Polonnaruwa",
+        "Anuradhapura",
+    ],
+    "Kurunegala": ["Gampaha", "Kandy", "Matale", "Anuradhapura", "Puttalam", "Kegalle"],
+    "Puttalam": ["Kurunegala", "Anuradhapura", "Mannar"],
+    "Anuradhapura": [
+        "Mannar",
+        "Vavuniya",
+        "Trincomalee",
+        "Polonnaruwa",
+        "Matale",
+        "Kurunegala",
+        "Puttalam",
+    ],
+    "Polonnaruwa": ["Trincomalee", "Batticaloa", "Ampara", "Anuradhapura", "Matale"],
+    "Badulla": [
+        "Kandy",
+        "Nuwara Eliya",
+        "Monaragala",
+        "Ampara",
+        "Batticaloa",
+        "Hambantota",
+    ],
+    "Monaragala": ["Badulla", "Ampara", "Hambantota", "Ratnapura"],
+    "Ratnapura": [
+        "Kalutara",
+        "Galle",
+        "Nuwara Eliya",
+        "Hambantota",
+        "Monaragala",
+        "Kegalle",
+    ],
+    "Kegalle": ["Gampaha", "Kandy", "Ratnapura", "Kurunegala"],
 }
 
 # ── MOH divisional secretariat / zone breakdown per district ────────
 # Lists the main administrative zones with a typical urban/rural/coastal
 # risk classification.  Used by get_demographic_hotspots().
 _DISTRICT_ZONES: dict[str, list[dict]] = {
-    "Colombo":      [{"zone": "Colombo City", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Dehiwala-Mt.Lavinia", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Sri Jayawardenepura Kotte", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Moratuwa", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Kesbewa", "type": "peri-urban", "relative_risk": "moderate"}],
-    "Gampaha":      [{"zone": "Negombo", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Wattala", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Gampaha Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Katana", "type": "peri-urban", "relative_risk": "moderate"},
-                     {"zone": "Minuwangoda", "type": "rural", "relative_risk": "low"}],
-    "Kalutara":     [{"zone": "Kalutara Town", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Panadura", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Horana", "type": "rural", "relative_risk": "moderate"},
-                     {"zone": "Agalawatta", "type": "rural", "relative_risk": "low"}],
-    "Kandy":        [{"zone": "Kandy City", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Peradeniya", "type": "peri-urban", "relative_risk": "moderate"},
-                     {"zone": "Katugastota", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Kundasale", "type": "rural", "relative_risk": "low"}],
-    "Ratnapura":    [{"zone": "Ratnapura Town", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Embilipitiya", "type": "rural", "relative_risk": "moderate"},
-                     {"zone": "Balangoda", "type": "rural", "relative_risk": "low"}],
-    "Galle":        [{"zone": "Galle City", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Hikkaduwa", "type": "coastal-tourism", "relative_risk": "moderate"},
-                     {"zone": "Ambalangoda", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Balapitiya", "type": "rural", "relative_risk": "low"}],
-    "Matara":       [{"zone": "Matara City", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Weligama", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Deniyaya", "type": "rural", "relative_risk": "low"}],
-    "Hambantota":   [{"zone": "Hambantota Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Tangalle", "type": "coastal", "relative_risk": "moderate"},
-                     {"zone": "Tissamaharama", "type": "rural", "relative_risk": "low"}],
-    "Kurunegala":   [{"zone": "Kurunegala Town", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Kuliyapitiya", "type": "peri-urban", "relative_risk": "moderate"},
-                     {"zone": "Nikaweratiya", "type": "rural", "relative_risk": "low"}],
-    "Anuradhapura": [{"zone": "Anuradhapura City", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Medawachchiya", "type": "rural", "relative_risk": "low"},
-                     {"zone": "Kekirawa", "type": "rural", "relative_risk": "low"}],
-    "Polonnaruwa":  [{"zone": "Polonnaruwa Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Kaduruwela", "type": "peri-urban", "relative_risk": "moderate"},
-                     {"zone": "Medirigiriya", "type": "rural-paddy", "relative_risk": "low"}],
-    "Batticaloa":   [{"zone": "Batticaloa Town", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Kattankudy", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Eravur", "type": "coastal", "relative_risk": "moderate"}],
-    "Ampara":       [{"zone": "Ampara Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Kalmunai", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Sammanthurai", "type": "rural", "relative_risk": "low"}],
-    "Trincomalee":  [{"zone": "Trincomalee City", "type": "coastal-urban", "relative_risk": "high"},
-                     {"zone": "Kinniya", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Muttur", "type": "rural-coastal", "relative_risk": "low"}],
-    "Jaffna":       [{"zone": "Jaffna City", "type": "urban", "relative_risk": "high"},
-                     {"zone": "Nallur", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Chavakachcheri", "type": "rural", "relative_risk": "low"}],
-    "Badulla":      [{"zone": "Badulla Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Bandarawela", "type": "peri-urban", "relative_risk": "low"},
-                     {"zone": "Welimada", "type": "rural", "relative_risk": "low"}],
-    "Matale":       [{"zone": "Matale Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Dambulla", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Galewela", "type": "rural", "relative_risk": "low"}],
-    "Kegalle":      [{"zone": "Kegalle Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Mawanella", "type": "peri-urban", "relative_risk": "moderate"},
-                     {"zone": "Warakapola", "type": "rural", "relative_risk": "low"}],
-    "Nuwara Eliya": [{"zone": "Nuwara Eliya Town", "type": "urban-estate", "relative_risk": "moderate"},
-                     {"zone": "Hatton", "type": "estate", "relative_risk": "low"},
-                     {"zone": "Welimada", "type": "rural", "relative_risk": "low"}],
-    "Monaragala":   [{"zone": "Monaragala Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Wellawaya", "type": "rural", "relative_risk": "low"},
-                     {"zone": "Bibile", "type": "rural", "relative_risk": "low"}],
-    "Puttalam":     [{"zone": "Puttalam Town", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Chilaw", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Wennappuwa", "type": "coastal", "relative_risk": "low"}],
-    "Vavuniya":     [{"zone": "Vavuniya Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Cheddikulam", "type": "rural", "relative_risk": "low"}],
-    "Mannar":       [{"zone": "Mannar Town", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Musali", "type": "rural", "relative_risk": "low"}],
-    "Mullaitivu":   [{"zone": "Mullaitivu Town", "type": "coastal-urban", "relative_risk": "moderate"},
-                     {"zone": "Oddusuddan", "type": "rural", "relative_risk": "low"}],
-    "Kilinochchi":  [{"zone": "Kilinochchi Town", "type": "urban", "relative_risk": "moderate"},
-                     {"zone": "Poonakary", "type": "rural", "relative_risk": "low"}],
+    "Colombo": [
+        {"zone": "Colombo City", "type": "urban", "relative_risk": "high"},
+        {"zone": "Dehiwala-Mt.Lavinia", "type": "urban", "relative_risk": "high"},
+        {
+            "zone": "Sri Jayawardenepura Kotte",
+            "type": "urban",
+            "relative_risk": "moderate",
+        },
+        {"zone": "Moratuwa", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Kesbewa", "type": "peri-urban", "relative_risk": "moderate"},
+    ],
+    "Gampaha": [
+        {"zone": "Negombo", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Wattala", "type": "urban", "relative_risk": "high"},
+        {"zone": "Gampaha Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Katana", "type": "peri-urban", "relative_risk": "moderate"},
+        {"zone": "Minuwangoda", "type": "rural", "relative_risk": "low"},
+    ],
+    "Kalutara": [
+        {"zone": "Kalutara Town", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Panadura", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Horana", "type": "rural", "relative_risk": "moderate"},
+        {"zone": "Agalawatta", "type": "rural", "relative_risk": "low"},
+    ],
+    "Kandy": [
+        {"zone": "Kandy City", "type": "urban", "relative_risk": "high"},
+        {"zone": "Peradeniya", "type": "peri-urban", "relative_risk": "moderate"},
+        {"zone": "Katugastota", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Kundasale", "type": "rural", "relative_risk": "low"},
+    ],
+    "Ratnapura": [
+        {"zone": "Ratnapura Town", "type": "urban", "relative_risk": "high"},
+        {"zone": "Embilipitiya", "type": "rural", "relative_risk": "moderate"},
+        {"zone": "Balangoda", "type": "rural", "relative_risk": "low"},
+    ],
+    "Galle": [
+        {"zone": "Galle City", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Hikkaduwa", "type": "coastal-tourism", "relative_risk": "moderate"},
+        {"zone": "Ambalangoda", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Balapitiya", "type": "rural", "relative_risk": "low"},
+    ],
+    "Matara": [
+        {"zone": "Matara City", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Weligama", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Deniyaya", "type": "rural", "relative_risk": "low"},
+    ],
+    "Hambantota": [
+        {"zone": "Hambantota Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Tangalle", "type": "coastal", "relative_risk": "moderate"},
+        {"zone": "Tissamaharama", "type": "rural", "relative_risk": "low"},
+    ],
+    "Kurunegala": [
+        {"zone": "Kurunegala Town", "type": "urban", "relative_risk": "high"},
+        {"zone": "Kuliyapitiya", "type": "peri-urban", "relative_risk": "moderate"},
+        {"zone": "Nikaweratiya", "type": "rural", "relative_risk": "low"},
+    ],
+    "Anuradhapura": [
+        {"zone": "Anuradhapura City", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Medawachchiya", "type": "rural", "relative_risk": "low"},
+        {"zone": "Kekirawa", "type": "rural", "relative_risk": "low"},
+    ],
+    "Polonnaruwa": [
+        {"zone": "Polonnaruwa Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Kaduruwela", "type": "peri-urban", "relative_risk": "moderate"},
+        {"zone": "Medirigiriya", "type": "rural-paddy", "relative_risk": "low"},
+    ],
+    "Batticaloa": [
+        {"zone": "Batticaloa Town", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Kattankudy", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Eravur", "type": "coastal", "relative_risk": "moderate"},
+    ],
+    "Ampara": [
+        {"zone": "Ampara Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Kalmunai", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Sammanthurai", "type": "rural", "relative_risk": "low"},
+    ],
+    "Trincomalee": [
+        {"zone": "Trincomalee City", "type": "coastal-urban", "relative_risk": "high"},
+        {"zone": "Kinniya", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Muttur", "type": "rural-coastal", "relative_risk": "low"},
+    ],
+    "Jaffna": [
+        {"zone": "Jaffna City", "type": "urban", "relative_risk": "high"},
+        {"zone": "Nallur", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Chavakachcheri", "type": "rural", "relative_risk": "low"},
+    ],
+    "Badulla": [
+        {"zone": "Badulla Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Bandarawela", "type": "peri-urban", "relative_risk": "low"},
+        {"zone": "Welimada", "type": "rural", "relative_risk": "low"},
+    ],
+    "Matale": [
+        {"zone": "Matale Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Dambulla", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Galewela", "type": "rural", "relative_risk": "low"},
+    ],
+    "Kegalle": [
+        {"zone": "Kegalle Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Mawanella", "type": "peri-urban", "relative_risk": "moderate"},
+        {"zone": "Warakapola", "type": "rural", "relative_risk": "low"},
+    ],
+    "Nuwara Eliya": [
+        {
+            "zone": "Nuwara Eliya Town",
+            "type": "urban-estate",
+            "relative_risk": "moderate",
+        },
+        {"zone": "Hatton", "type": "estate", "relative_risk": "low"},
+        {"zone": "Welimada", "type": "rural", "relative_risk": "low"},
+    ],
+    "Monaragala": [
+        {"zone": "Monaragala Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Wellawaya", "type": "rural", "relative_risk": "low"},
+        {"zone": "Bibile", "type": "rural", "relative_risk": "low"},
+    ],
+    "Puttalam": [
+        {"zone": "Puttalam Town", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Chilaw", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Wennappuwa", "type": "coastal", "relative_risk": "low"},
+    ],
+    "Vavuniya": [
+        {"zone": "Vavuniya Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Cheddikulam", "type": "rural", "relative_risk": "low"},
+    ],
+    "Mannar": [
+        {"zone": "Mannar Town", "type": "coastal-urban", "relative_risk": "moderate"},
+        {"zone": "Musali", "type": "rural", "relative_risk": "low"},
+    ],
+    "Mullaitivu": [
+        {
+            "zone": "Mullaitivu Town",
+            "type": "coastal-urban",
+            "relative_risk": "moderate",
+        },
+        {"zone": "Oddusuddan", "type": "rural", "relative_risk": "low"},
+    ],
+    "Kilinochchi": [
+        {"zone": "Kilinochchi Town", "type": "urban", "relative_risk": "moderate"},
+        {"zone": "Poonakary", "type": "rural", "relative_risk": "low"},
+    ],
 }
 _DEFAULT_ZONES = [
     {"zone": "Main urban centre", "type": "urban", "relative_risk": "moderate"},
@@ -769,7 +885,8 @@ def get_seasonal_pattern(district: str, years: int = 3) -> str:
     baseline = weekly_avg.get(current_week_num, 0)
     vs_baseline_pct = (
         round(((current_cases - baseline) / baseline) * 100, 1)
-        if baseline > 0 else None
+        if baseline > 0
+        else None
     )
 
     # Absolute peak week
@@ -782,11 +899,27 @@ def get_seasonal_pattern(district: str, years: int = 3) -> str:
         # Rough month mapping (week / 4.33 + 1 ≈ month)
         start_m = int((start_wk - 1) / 4.33) + 1
         end_m = int((end_wk - 1) / 4.33) + 1
-        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        months = [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ]
         sm = months[max(0, start_m - 1)]
         em = months[max(0, end_m - 1)]
-        label = f"Wk {start_wk}–{end_wk} ({sm}–{em})" if sm != em else f"Wk {start_wk}–{end_wk} ({sm})"
+        label = (
+            f"Wk {start_wk}–{end_wk} ({sm}–{em})"
+            if sm != em
+            else f"Wk {start_wk}–{end_wk} ({sm})"
+        )
         season_desc.append(label)
 
     in_peak = current_week_num in peak_weeks
@@ -809,7 +942,9 @@ def get_seasonal_pattern(district: str, years: int = 3) -> str:
             "years_analysed": years,
             "weekly_averages": weekly_avg,
             "peak_weeks": peak_weeks,
-            "peak_season_windows": [{"start_week": s, "end_week": e} for s, e in peak_windows],
+            "peak_season_windows": [
+                {"start_week": s, "end_week": e} for s, e in peak_windows
+            ],
             "absolute_peak_week": peak_wk,
             "absolute_peak_avg_cases": peak_avg,
             "current_week": current_week_num,
@@ -843,13 +978,19 @@ def get_cross_district_spillover(district: str) -> str:
 
     all_districts = [district_title] + neighbours
     compare_param = ",".join(all_districts)
-    data = _api_get("/analytics/historical/districts/compare", {"districts": compare_param})
+    data = _api_get(
+        "/analytics/historical/districts/compare", {"districts": compare_param}
+    )
     if not data:
-        return json.dumps({"error": "Failed to fetch district data for spillover analysis"})
+        return json.dumps(
+            {"error": "Failed to fetch district data for spillover analysis"}
+        )
 
     rows = data if isinstance(data, list) else []
     if not rows:
-        return json.dumps({"info": f"No data available for {district} or its neighbours"})
+        return json.dumps(
+            {"info": f"No data available for {district} or its neighbours"}
+        )
 
     # Aggregate per-district
     district_rows: dict[str, list[dict]] = defaultdict(list)
@@ -868,25 +1009,33 @@ def get_cross_district_spillover(district: str) -> str:
             if prev > 0:
                 wow = round(((latest_cases - prev) / prev) * 100, 1)
         risk = (
-            "critical" if latest_cases >= 100 else
-            "high" if latest_cases >= 50 else
-            "moderate" if latest_cases >= 25 else "low"
+            "critical"
+            if latest_cases >= 100
+            else (
+                "high"
+                if latest_cases >= 50
+                else "moderate" if latest_cases >= 25 else "low"
+            )
         )
-        summaries.append({
-            "district": dist_name,
-            "is_focal": dist_name == district_title,
-            "current_cases": latest_cases,
-            "wow_change_pct": wow,
-            "risk_level": risk,
-            "is_rising": (wow or 0) > 10,
-        })
+        summaries.append(
+            {
+                "district": dist_name,
+                "is_focal": dist_name == district_title,
+                "current_cases": latest_cases,
+                "wow_change_pct": wow,
+                "risk_level": risk,
+                "is_rising": (wow or 0) > 10,
+            }
+        )
 
     focal = next((s for s in summaries if s["is_focal"]), None)
     neighbour_summaries = [s for s in summaries if not s["is_focal"]]
 
     # Count simultaneously-rising neighbours
     rising_neighbours = [s for s in neighbour_summaries if s["is_rising"]]
-    high_risk_neighbours = [s for s in neighbour_summaries if s["risk_level"] in ("high", "critical")]
+    high_risk_neighbours = [
+        s for s in neighbour_summaries if s["risk_level"] in ("high", "critical")
+    ]
 
     # Spillover risk level
     if len(rising_neighbours) >= 3 or len(high_risk_neighbours) >= 2:
@@ -906,12 +1055,17 @@ def get_cross_district_spillover(district: str) -> str:
     narrative = (
         f"Spillover risk for {district_title}: {spillover_risk.upper()}. "
         f"Focal district — {focal_cases} cases, risk: {focal_risk}"
-        + (f", {'+' if (focal_wow or 0) >= 0 else ''}{focal_wow}% WoW" if focal_wow is not None else "")
+        + (
+            f", {'+' if (focal_wow or 0) >= 0 else ''}{focal_wow}% WoW"
+            if focal_wow is not None
+            else ""
+        )
         + f". Neighbours monitored: {len(neighbour_summaries)}. "
         f"Rising neighbours (>10% WoW): {len(rising_neighbours)}"
         + (f" — {rising_names}" if rising_names else "")
         + f". High/critical-risk neighbours: {len(high_risk_neighbours)}"
-        + (f" — {high_names}" if high_names else "") + "."
+        + (f" — {high_names}" if high_names else "")
+        + "."
     )
 
     if spillover_risk == "high":
@@ -921,9 +1075,7 @@ def get_cross_district_spillover(district: str) -> str:
             "Coordinate cross-district vector control."
         )
     elif spillover_risk == "moderate":
-        narrative += (
-            " Monitor borders closely; consider joint surveillance with adjacent health teams."
-        )
+        narrative += " Monitor borders closely; consider joint surveillance with adjacent health teams."
 
     return json.dumps(
         {
@@ -972,7 +1124,10 @@ def get_intervention_history(district: str) -> str:
     # Detect local peaks: case count higher than both neighbours
     peaks: list[int] = []
     for i in range(1, len(cases_series) - 1):
-        if cases_series[i] > cases_series[i - 1] and cases_series[i] > cases_series[i + 1]:
+        if (
+            cases_series[i] > cases_series[i - 1]
+            and cases_series[i] > cases_series[i + 1]
+        ):
             if cases_series[i] >= 25:  # only count meaningful peaks
                 peaks.append(i)
 
@@ -982,44 +1137,54 @@ def get_intervention_history(district: str) -> str:
         peak_cases = cases_series[peak_idx]
         peak_row = rows[peak_idx]
         # Look up to 6 weeks ahead for the recovery trough
-        recovery_weeks = cases_series[peak_idx + 1: peak_idx + 7]
+        recovery_weeks = cases_series[peak_idx + 1 : peak_idx + 7]
         if not recovery_weeks:
             continue
         trough = min(recovery_weeks)
         trough_idx = peak_idx + 1 + recovery_weeks.index(trough)
         trough_row = rows[trough_idx]
-        decline_pct = round(((trough - peak_cases) / peak_cases) * 100, 1) if peak_cases > 0 else 0
+        decline_pct = (
+            round(((trough - peak_cases) / peak_cases) * 100, 1)
+            if peak_cases > 0
+            else 0
+        )
         weeks_to_recover = trough_idx - peak_idx
 
         if decline_pct <= -30:  # 30%+ decline = likely intervention response
-            response_events.append({
-                "peak_year": peak_row.get("year"),
-                "peak_week": peak_row.get("week"),
-                "peak_cases": peak_cases,
-                "trough_year": trough_row.get("year"),
-                "trough_week": trough_row.get("week"),
-                "trough_cases": trough,
-                "decline_pct": decline_pct,
-                "weeks_to_recovery": weeks_to_recover,
-                "response_effectiveness": (
-                    "rapid" if weeks_to_recover <= 2
-                    else "moderate" if weeks_to_recover <= 4
-                    else "slow"
-                ),
-                "inferred_action": (
-                    "Emergency fogging campaign + source-reduction drive (consistent with rapid >30% decline)"
-                    if decline_pct <= -50
-                    else "Vector control intervention (30–50% decline)"
-                ),
-            })
+            response_events.append(
+                {
+                    "peak_year": peak_row.get("year"),
+                    "peak_week": peak_row.get("week"),
+                    "peak_cases": peak_cases,
+                    "trough_year": trough_row.get("year"),
+                    "trough_week": trough_row.get("week"),
+                    "trough_cases": trough,
+                    "decline_pct": decline_pct,
+                    "weeks_to_recovery": weeks_to_recover,
+                    "response_effectiveness": (
+                        "rapid"
+                        if weeks_to_recover <= 2
+                        else "moderate" if weeks_to_recover <= 4 else "slow"
+                    ),
+                    "inferred_action": (
+                        "Emergency fogging campaign + source-reduction drive (consistent with rapid >30% decline)"
+                        if decline_pct <= -50
+                        else "Vector control intervention (30–50% decline)"
+                    ),
+                }
+            )
 
     # Most recent peak for context
     most_recent_peak = response_events[-1] if response_events else None
 
     # Average time to recovery
     avg_recovery = (
-        round(sum(e["weeks_to_recovery"] for e in response_events) / len(response_events), 1)
-        if response_events else None
+        round(
+            sum(e["weeks_to_recovery"] for e in response_events) / len(response_events),
+            1,
+        )
+        if response_events
+        else None
     )
 
     narrative_parts: list[str] = [
@@ -1083,12 +1248,15 @@ def get_model_performance_metrics(district: str) -> str:
     timeseries = _api_get(f"/analytics/districts/{district}/timeseries")
 
     if not latest_predictions or not timeseries:
-        return json.dumps({"error": f"Insufficient data to evaluate model performance for {district}"})
+        return json.dumps(
+            {"error": f"Insufficient data to evaluate model performance for {district}"}
+        )
 
     # Find this district's latest prediction
     pred_rows = latest_predictions if isinstance(latest_predictions, list) else []
     pred_entry = next(
-        (r for r in pred_rows if r.get("district", "").lower() == district.lower()), None
+        (r for r in pred_rows if r.get("district", "").lower() == district.lower()),
+        None,
     )
 
     ts_rows = timeseries if isinstance(timeseries, list) else []
@@ -1113,16 +1281,23 @@ def get_model_performance_metrics(district: str) -> str:
         predicted_cases = pred_entry.get("predicted_cases")
         pred_year = pred_entry.get("year")
         pred_week = pred_entry.get("week")
-        prediction_week = f"{pred_year}-W{pred_week:02d}" if pred_year and pred_week else None
+        prediction_week = (
+            f"{pred_year}-W{pred_week:02d}" if pred_year and pred_week else None
+        )
 
         if predicted_cases is not None and actual_cases > 0:
             abs_error = round(abs(predicted_cases - actual_cases), 1)
-            pct_error = round(abs(predicted_cases - actual_cases) / actual_cases * 100, 1)
+            pct_error = round(
+                abs(predicted_cases - actual_cases) / actual_cases * 100, 1
+            )
             accuracy_class = (
-                "excellent" if pct_error <= 10
-                else "good" if pct_error <= 20
-                else "moderate" if pct_error <= 35
-                else "poor"
+                "excellent"
+                if pct_error <= 10
+                else (
+                    "good"
+                    if pct_error <= 20
+                    else "moderate" if pct_error <= 35 else "poor"
+                )
             )
 
     # Directional accuracy: does the model trend match the actual recent trend?
@@ -1143,7 +1318,9 @@ def get_model_performance_metrics(district: str) -> str:
         naive_pred = recent_8[i - 1].get("cases", 0) or 0
         actual = recent_8[i].get("cases", 0) or 0
         naive_errors.append(abs(naive_pred - actual))
-    naive_mae = round(sum(naive_errors) / len(naive_errors), 1) if naive_errors else None
+    naive_mae = (
+        round(sum(naive_errors) / len(naive_errors), 1) if naive_errors else None
+    )
 
     # Build summary narrative
     parts: list[str] = [f"Model performance for {district}:"]
@@ -1169,7 +1346,11 @@ def get_model_performance_metrics(district: str) -> str:
     return json.dumps(
         {
             "district": district,
-            "actual_week": f"{actual_year}-W{actual_week:02d}" if actual_year and actual_week else None,
+            "actual_week": (
+                f"{actual_year}-W{actual_week:02d}"
+                if actual_year and actual_week
+                else None
+            ),
             "actual_cases": actual_cases,
             "predicted_cases": predicted_cases,
             "prediction_week": prediction_week,
@@ -1222,42 +1403,73 @@ def get_demographic_hotspots(district: str) -> str:
     zone_estimates: list[dict] = []
     for zone in zones:
         weight = _RISK_WEIGHT.get(zone["relative_risk"], 1)
-        estimated_cases = round(total_cases * weight / total_weight) if total_weight > 0 else 0
+        estimated_cases = (
+            round(total_cases * weight / total_weight) if total_weight > 0 else 0
+        )
         # Boost coastal and urban zones in high precipitation periods
         context_flags: list[str] = []
-        if precipitation and precipitation > 60 and zone["type"] in ("coastal", "coastal-urban", "coastal-tourism"):
-            context_flags.append("elevated: high rainfall increases coastal waterlogging")
-        if temperature and temperature > 29 and zone["type"] in ("urban", "coastal-urban"):
-            context_flags.append("elevated: high temp accelerates urban Aedes lifecycle")
+        if (
+            precipitation
+            and precipitation > 60
+            and zone["type"] in ("coastal", "coastal-urban", "coastal-tourism")
+        ):
+            context_flags.append(
+                "elevated: high rainfall increases coastal waterlogging"
+            )
+        if (
+            temperature
+            and temperature > 29
+            and zone["type"] in ("urban", "coastal-urban")
+        ):
+            context_flags.append(
+                "elevated: high temp accelerates urban Aedes lifecycle"
+            )
         if zone["type"] == "urban" and total_cases >= 50:
-            context_flags.append("priority: dense housing increases human-vector contact")
+            context_flags.append(
+                "priority: dense housing increases human-vector contact"
+            )
         if zone["type"] in ("rural-paddy",):
-            context_flags.append("note: irrigation infrastructure creates persistent breeding sites")
-        zone_estimates.append({
-            "zone": zone["zone"],
-            "type": zone["type"],
-            "relative_risk": zone["relative_risk"],
-            "estimated_cases": estimated_cases,
-            "context_flags": context_flags,
-            "intervention_priority": (
-                "immediate" if zone["relative_risk"] == "high" and total_cases >= 50
-                else "high" if zone["relative_risk"] == "high"
-                else "moderate" if zone["relative_risk"] == "moderate"
-                else "routine"
-            ),
-        })
+            context_flags.append(
+                "note: irrigation infrastructure creates persistent breeding sites"
+            )
+        zone_estimates.append(
+            {
+                "zone": zone["zone"],
+                "type": zone["type"],
+                "relative_risk": zone["relative_risk"],
+                "estimated_cases": estimated_cases,
+                "context_flags": context_flags,
+                "intervention_priority": (
+                    "immediate"
+                    if zone["relative_risk"] == "high" and total_cases >= 50
+                    else (
+                        "high"
+                        if zone["relative_risk"] == "high"
+                        else (
+                            "moderate"
+                            if zone["relative_risk"] == "moderate"
+                            else "routine"
+                        )
+                    )
+                ),
+            }
+        )
 
     # Sort by intervention priority
     priority_order = {"immediate": 0, "high": 1, "moderate": 2, "routine": 3}
     zone_estimates.sort(key=lambda z: priority_order.get(z["intervention_priority"], 3))
 
     # Top priority sites
-    top_sites = [z["zone"] for z in zone_estimates if z["intervention_priority"] in ("immediate", "high")]
+    top_sites = [
+        z["zone"]
+        for z in zone_estimates
+        if z["intervention_priority"] in ("immediate", "high")
+    ]
 
     district_risk = (
-        "critical" if total_cases >= 100 else
-        "high" if total_cases >= 50 else
-        "moderate" if total_cases >= 25 else "low"
+        "critical"
+        if total_cases >= 100
+        else "high" if total_cases >= 50 else "moderate" if total_cases >= 25 else "low"
     )
 
     narrative_parts: list[str] = [
