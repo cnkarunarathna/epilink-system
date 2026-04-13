@@ -9,5 +9,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
   imports: [EventsModule],
   providers: [AnalyticsService, RolesGuard],
   controllers: [AnalyticsController, PublicAnalyticsController],
+  exports: [AnalyticsService],
 })
 export class AnalyticsModule {}

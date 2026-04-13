@@ -26,8 +26,8 @@ docker-compose.override.yml
 Thumbs.db
 Desktop.ini
 
-# Reports / Exports
-reports/
+# Reports / Exports (root level only; components/reports/ is needed for code)
+/reports/
 *.pdf
 *.xlsx
 *.csv
