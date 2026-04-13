@@ -62,6 +62,11 @@ def fetch_all_weather_forecasts(start_date, end_date):
     """Fetch weather forecast for all districts at once."""
     import time
 
+    # Configurable inter-request delay — set WEATHER_REQUEST_DELAY=1.0 in CI
+    # to avoid hitting Open-Meteo rate limits on shared runner IPs.
+    request_delay = float(os.getenv("WEATHER_REQUEST_DELAY", "0.5"))
+    max_retries = 5
+
     print(f"\nPre-fetching weather data for all {len(DISTRICTS)} districts...")
     weather_cache = {}
     successful = 0
@@ -77,10 +82,19 @@ def fetch_all_weather_forecasts(start_date, end_date):
             f"&timezone=Asia%2FColombo"
         )
 
-        # Retry up to 3 times with exponential backoff
-        for attempt in range(3):
+        fetched = False
+        for attempt in range(max_retries):
             try:
                 r = requests.get(url, timeout=30)
+
+                # Explicit rate-limit handling — 429 is valid JSON but has no "daily"
+                if r.status_code == 429:
+                    wait = 5 * (2 ** attempt)
+                    print(f"   Rate limited on {district} (attempt {attempt + 1}/{max_retries}), retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+
+                r.raise_for_status()
                 data = r.json()
 
                 if "daily" in data:
@@ -88,7 +102,6 @@ def fetch_all_weather_forecasts(start_date, end_date):
                         data["daily"]["temperature_2m_mean"]
                     )
                     precip_sum = sum(data["daily"]["precipitation_sum"])
-                    # Get humidity if available
                     humidity = 70.0  # Default
                     if "relative_humidity_2m_mean" in data["daily"]:
                         humidity = sum(data["daily"]["relative_humidity_2m_mean"]) / len(
@@ -96,17 +109,24 @@ def fetch_all_weather_forecasts(start_date, end_date):
                         )
                     weather_cache[district] = (temp_mean, precip_sum, humidity)
                     successful += 1
+                    fetched = True
                     break
-            except Exception as e:
-                if attempt < 2:
-                    time.sleep(2**attempt)
-                elif attempt == 2:
-                    # Use fallback on final failure
-                    weather_cache[district] = (27.0, 100.0, 70.0)
-                    failed += 1
+                else:
+                    # Unexpected API response (e.g. error payload) — retry with backoff
+                    wait = 2 ** attempt
+                    if attempt < max_retries - 1:
+                        time.sleep(wait)
 
-        # Small delay between requests
-        time.sleep(0.2)
+            except Exception as e:
+                wait = 2 ** attempt
+                if attempt < max_retries - 1:
+                    time.sleep(wait)
+
+        if not fetched:
+            weather_cache[district] = (27.0, 100.0, 70.0)
+            failed += 1
+
+        time.sleep(request_delay)
 
     print(f"   Fetched: {successful}/{len(DISTRICTS)} districts")
     if failed > 0:

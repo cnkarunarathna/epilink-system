@@ -1,9 +1,8 @@
 name: Weekly Forecast Update
 
 on:
-    # Manual trigger only (uncomment schedule when ready for production)
-    # schedule:
-    #   - cron: "0 0 * * 1"  # Every Monday at 00:00 UTC
+    schedule:
+        - cron: "0 2 * * 1"  # Every Monday at 02:00 UTC (main branch only)
 
     workflow_dispatch:
         inputs:
@@ -22,6 +21,7 @@ env:
 jobs:
     generate-forecast:
         runs-on: ubuntu-latest
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
         defaults:
             run:
                 working-directory: ml-model
@@ -87,6 +87,9 @@ jobs:
                   DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
                   PGSSLMODE: require
                   PYTHONUNBUFFERED: 1
+                  # Longer delay between Open-Meteo requests on shared CI runner IPs
+                  # to avoid hitting rate limits that don't occur on local machines.
+                  WEATHER_REQUEST_DELAY: "1.0"
 
             - name: Summary
               if: success()
