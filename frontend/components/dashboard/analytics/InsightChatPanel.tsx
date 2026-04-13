@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +17,8 @@ import {
   ChevronUp,
   MessageSquare,
   Trash2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { chatWithAgent, deleteChatSession } from "@/services/analytics.service";
 
@@ -34,67 +38,64 @@ const PRESET_QUESTIONS = [
   "Which districts have the fastest case growth?",
 ];
 
-function renderInline(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const re = /\*\*(.*?)\*\*/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(
-      <strong key={k++} className="font-semibold text-purple-700 dark:text-purple-300">
-        {m[1]}
-      </strong>
-    );
-    last = re.lastIndex;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  if (parts.length === 0) return null;
-  if (parts.length === 1) return parts[0] as React.ReactNode;
-  return <>{parts}</>;
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => (
+          <p className="text-sm mb-1.5 last:mb-0 leading-relaxed">{children}</p>
+        ),
+        ul: ({ children }) => (
+          <ul className="list-disc pl-4 mb-1.5 space-y-0.5 text-sm">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5 text-sm">{children}</ol>
+        ),
+        li: ({ children }) => (
+          <li className="leading-relaxed">{children}</li>
+        ),
+        strong: ({ children }) => (
+          <strong className="font-semibold text-purple-700 dark:text-purple-300">{children}</strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 text-xs font-mono">
+            {children}
+          </code>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-purple-300 dark:border-purple-700 pl-3 opacity-80 my-1 text-sm">
+            {children}
+          </blockquote>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
 }
 
-function MarkdownMessage({ content }: { content: string }) {
-  const result: React.ReactNode[] = [];
-  const pending: string[] = [];
-  let key = 0;
-
-  const flushList = () => {
-    if (!pending.length) return;
-    result.push(
-      <ul key={key++} className="list-disc ml-4 space-y-1 my-1">
-        {pending.map((item, i) => (
-          <li key={i} className="text-sm leading-relaxed">
-            {renderInline(item)}
-          </li>
-        ))}
-      </ul>
-    );
-    pending.length = 0;
-  };
-
-  for (const raw of content.split("\n")) {
-    const line = raw.trim();
-    if (!line) {
-      flushList();
-      continue;
-    }
-    const listMatch = line.match(/^[*\-]\s+([\s\S]*)/);
-    if (listMatch) {
-      pending.push(listMatch[1]);
-    } else {
-      flushList();
-      result.push(
-        <p key={key++} className="text-sm leading-relaxed">
-          {renderInline(line)}
-        </p>
-      );
-    }
-  }
-
-  flushList();
-  return <div className="space-y-1">{result}</div>;
+function CopyButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(content).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30"
+      aria-label="Copy message"
+    >
+      {copied ? (
+        <Check className="h-3 w-3 text-green-500" />
+      ) : (
+        <Copy className="h-3 w-3 text-purple-400" />
+      )}
+    </button>
+  );
 }
 
 interface ChatEntry {
@@ -274,20 +275,18 @@ export default function InsightChatPanel({ district }: Props) {
             {messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in-50 slide-in-from-bottom-2`}
+                className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in-50 slide-in-from-bottom-2`}
               >
                 {msg.role === "assistant" && (
                   <div className="p-1.5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg h-fit shadow">
                     <Bot className="h-4 w-4 text-white" />
                   </div>
                 )}
-                <div
-                  className={`max-w-[80%] space-y-2 ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
-                      : "bg-slate-50 dark:bg-slate-800 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-200 dark:border-slate-700"
-                  }`}
-                >
+                <div className={`max-w-[80%] space-y-2 ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
+                    : "bg-slate-50 dark:bg-slate-800 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-200 dark:border-slate-700"
+                }`}>
                   {/* Tool calls badge */}
                   {msg.toolCalls && msg.toolCalls.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -308,11 +307,16 @@ export default function InsightChatPanel({ district }: Props) {
                       {msg.content}
                     </p>
                   ) : (
-                    <div className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                      <MarkdownMessage content={msg.content} />
+                    <div className="text-slate-700 dark:text-slate-300">
+                      <MarkdownContent content={msg.content} />
                     </div>
                   )}
                 </div>
+                {msg.role === "assistant" && (
+                  <div className="h-fit self-end pb-1">
+                    <CopyButton content={msg.content} />
+                  </div>
+                )}
                 {msg.role === "user" && (
                   <div className="p-1.5 bg-primary rounded-lg h-fit shadow">
                     <User className="h-4 w-4 text-primary-foreground" />
