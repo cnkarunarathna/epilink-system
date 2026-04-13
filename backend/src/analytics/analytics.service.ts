@@ -1221,13 +1221,13 @@ export class AnalyticsService implements OnModuleInit {
 
   // ── Enhancement 7: session history and management ──────────────────
 
-  async getChatHistory(sessionId: string) {
+  async getChatHistory(sessionId: string, user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
       const resp = await axios.get(
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/history`,
-        { headers: buildServiceHeaders() },
+        { headers: buildServiceHeaders(user) },
       );
       return resp.data;
     } catch {
@@ -1240,13 +1240,13 @@ export class AnalyticsService implements OnModuleInit {
     }
   }
 
-  async deleteChatSession(sessionId: string) {
+  async deleteChatSession(sessionId: string, user: ValidatedServiceUser) {
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
       const resp = await axios.delete(
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}`,
-        { headers: buildServiceHeaders() },
+        { headers: buildServiceHeaders(user) },
       );
       return resp.data;
     } catch {
