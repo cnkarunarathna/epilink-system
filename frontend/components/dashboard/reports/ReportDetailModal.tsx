@@ -47,14 +47,18 @@ const TREND_COLORS: Record<string, string> = {
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-100 border-red-300 text-red-800 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300",
+  critical:
+    "bg-red-100 border-red-300 text-red-800 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300",
   high: "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300",
-  moderate: "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300",
+  moderate:
+    "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300",
 };
 
 function TrendIcon({ trend }: { trend: string }) {
-  if (trend === "Rising") return <TrendingUp className="h-3.5 w-3.5 text-red-500" />;
-  if (trend === "Falling") return <TrendingDown className="h-3.5 w-3.5 text-green-500" />;
+  if (trend === "Rising")
+    return <TrendingUp className="h-3.5 w-3.5 text-red-500" />;
+  if (trend === "Falling")
+    return <TrendingDown className="h-3.5 w-3.5 text-green-500" />;
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
@@ -69,7 +73,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
   const nationalText =
     typeof nationalSummary === "string"
       ? nationalSummary
-      : nationalSummary?.situation_report ?? "Summary not available.";
+      : (nationalSummary?.situation_report ?? "Summary not available.");
 
   const top10 = [...forecast]
     .sort((a, b) => b.forecast - a.forecast)
@@ -109,7 +113,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Badge
-                  variant={report.status === "approved" ? "default" : "secondary"}
+                  variant={
+                    report.status === "approved" ? "default" : "secondary"
+                  }
                 >
                   {report.status}
                 </Badge>
@@ -147,9 +153,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
             </p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-amber-500">
-              {alerts.length}
-            </p>
+            <p className="text-2xl font-bold text-amber-500">{alerts.length}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Active Alerts
             </p>
@@ -205,8 +209,8 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                     width={75}
                   />
                   <Tooltip
-                    formatter={(value: number) => [
-                      value.toLocaleString(),
+                    formatter={(value: number | undefined) => [
+                      (value ?? 0).toLocaleString(),
                       "Predicted Cases",
                     ]}
                   />
