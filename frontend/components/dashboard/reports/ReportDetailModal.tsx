@@ -70,6 +70,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
   const forecast = report.reportData?.forecast ?? [];
   const alerts = report.reportData?.alerts ?? [];
   const nationalSummary = report.reportData?.nationalSummary;
+  const reportType = report.reportData?.reportType ?? 'predicted';
+  const isHistorical = reportType === 'historical';
+  const totalCurrentCases = report.reportData?.totalCurrentCases;
   const nationalText =
     typeof nationalSummary === "string"
       ? nationalSummary
@@ -135,16 +138,26 @@ export default function ReportDetailModal({ report, onClose }: Props) {
         </div>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-3 px-6 py-4 bg-muted/30">
+        <div className={`grid gap-3 px-6 py-4 bg-muted/30 ${!isHistorical && totalCurrentCases !== undefined ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <div className="text-center">
             <p className="text-2xl font-bold">
               {report.totalPredictedCases.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Total Predicted Cases
+              {isHistorical ? 'Total Reported Cases' : 'Predicted Cases (Next Wk)'}
             </p>
           </div>
-          <div className="text-center border-x">
+          {!isHistorical && totalCurrentCases !== undefined && (
+            <div className="text-center border-l">
+              <p className="text-2xl font-bold text-green-600">
+                {totalCurrentCases.toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Current Week (Actual)
+              </p>
+            </div>
+          )}
+          <div className="text-center border-l">
             <p className="text-2xl font-bold text-red-500">
               {report.highRiskDistricts}
             </p>
@@ -152,7 +165,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
               High-Risk Districts
             </p>
           </div>
-          <div className="text-center">
+          <div className="text-center border-l">
             <p className="text-2xl font-bold text-amber-500">{alerts.length}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Active Alerts
@@ -191,7 +204,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
           {/* Chart tab */}
           <TabsContent value="chart" className="mt-4">
             <p className="text-sm font-medium mb-3">
-              Top 10 Districts — Predicted Cases Next Week
+              {isHistorical
+                ? 'Top 10 Districts — Reported Cases This Week'
+                : 'Top 10 Districts — Predicted Cases Next Week'}
             </p>
             {top10.length > 0 ? (
               <ResponsiveContainer width="100%" height={320}>
@@ -252,10 +267,10 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                       District
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
-                      Current
+                      {isHistorical ? 'Reported' : 'Current'}
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
-                      Predicted
+                      {isHistorical ? 'vs Prior Wk' : 'Predicted'}
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
                       4-Wk Avg

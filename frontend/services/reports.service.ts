@@ -19,6 +19,8 @@ export interface WeeklyReport {
   totalDistricts: number;
   highRiskDistricts: number;
   reportData: {
+    reportType: 'historical' | 'predicted';
+    totalCurrentCases?: number;
     forecast: ForecastRow[];
     alerts: OutbreakAlert[];
     hotspots: any[];

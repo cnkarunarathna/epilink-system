@@ -949,6 +949,58 @@ export class AnalyticsService implements OnModuleInit {
     }));
   }
 
+  /**
+   * Historical week data: returns the actual recorded cases from dengue_cases
+   * for the exact week specified. Used for past-week reports so they reflect
+   * what actually happened rather than a forecast based on that week's data.
+   */
+  async getActualWeekData(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH target_week AS (
+        SELECT dc.district_id, d.name, dc.cases
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE dc.year = $1 AND dc.week = $2
+      ),
+      prev_stats AS (
+        SELECT ranked.district_id,
+               AVG(ranked.cases) as avg_4week
+        FROM (
+          SELECT dc.district_id, dc.cases,
+                 ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+          FROM dengue_cases dc
+          WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week < $2)
+        ) ranked
+        WHERE ranked.rn <= 4
+        GROUP BY ranked.district_id
+      )
+      SELECT t.name as district,
+             t.cases as actual_cases,
+             COALESCE(p.avg_4week, t.cases) as avg_4week,
+             CASE
+               WHEN t.cases > COALESCE(p.avg_4week, t.cases) * 1.3 THEN 'Rising'
+               WHEN t.cases < COALESCE(p.avg_4week, t.cases) * 0.7 THEN 'Falling'
+               ELSE 'Stable'
+             END as trend
+      FROM target_week t
+      LEFT JOIN prev_stats p ON p.district_id = t.district_id
+      ORDER BY t.cases DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => ({
+      district: row.district,
+      // For historical: forecast = actual_cases (what actually happened)
+      current_cases: Number(row.actual_cases) || 0,
+      avg_4week: Number(row.avg_4week) || 0,
+      forecast: Number(row.actual_cases) || 0,
+      trend: row.trend,
+      confidence: 'actual',
+    }));
+  }
+
   async getExplainableInsight(
     districtName: string,
     user: ValidatedServiceUser,

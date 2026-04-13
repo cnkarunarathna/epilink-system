@@ -77,29 +77,72 @@ export class ReportsService {
       dto.year,
       dto.weekNumber,
     );
-    const title = `Weekly Dengue Surveillance Report — Week ${dto.weekNumber}, ${dto.year}`;
 
-    // Collect analytics data in parallel, anchored to the requested week
+    // Determine if this is a historical (past) or predicted (current/future) report
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentWeek = this.getCurrentISOWeek(now);
+    const isHistorical =
+      dto.year < currentYear ||
+      (dto.year === currentYear && dto.weekNumber < currentWeek);
+    const reportType: 'historical' | 'predicted' = isHistorical
+      ? 'historical'
+      : 'predicted';
+
+    const title = isHistorical
+      ? `Weekly Dengue Historical Report — Week ${dto.weekNumber}, ${dto.year}`
+      : `Weekly Dengue Surveillance & Prediction Report — Week ${dto.weekNumber}, ${dto.year}`;
+
+    // Collect analytics data from the database for the requested week.
+    // Both historical and predicted reports read directly from dengue_cases
+    // for the specified (year, weekNumber) — the DB already holds actual
+    // historical records for past weeks AND pre-computed predictions for
+    // future weeks. No on-the-fly formula computation is needed.
     this.logger.log(
-      `Generating report for Week ${dto.weekNumber} ${dto.year} — collecting analytics data`,
+      `Generating ${reportType} report for Week ${dto.weekNumber} ${dto.year}`,
     );
     const weekLabel = `${dto.year}-W${String(dto.weekNumber).padStart(2, '0')}`;
-    const [forecast, alerts, hotspots, summary, nationalSummary] =
+
+    // For predicted reports, also fetch the previous week's actual totals so
+    // we can show "Current Week (Actual)" alongside "Predicted (Next Week)".
+    let prevYear = dto.year;
+    let prevWeek = dto.weekNumber - 1;
+    if (prevWeek === 0) {
+      prevYear -= 1;
+      prevWeek = 52; // safe fallback; 53-week years are rare
+    }
+
+    const [forecast, alerts, hotspots, summary, nationalSummary, prevWeekData] =
       await Promise.all([
-        this.analyticsService.getWeeklyForecastForWeek(dto.year, dto.weekNumber),
+        // Always read stored cases for the target week — no formula re-computation
+        this.analyticsService.getActualWeekData(dto.year, dto.weekNumber),
         this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
         this.analyticsService.getHotspots(),
         this.analyticsService.getDashboardSummary(),
         this.analyticsService.getNationalSummary(weekLabel, user),
+        // Previous week data (used for totalCurrentCases in predicted reports)
+        isHistorical
+          ? Promise.resolve([])
+          : this.analyticsService.getActualWeekData(prevYear, prevWeek),
       ]);
 
     const forecastArr = Array.isArray(forecast) ? forecast : [];
     const alertsArr = Array.isArray(alerts) ? alerts : [];
 
+    // Sum stored cases for the target week
     const totalPredictedCases = forecastArr.reduce(
       (sum: number, d: any) => sum + (Number(d.forecast) || 0),
       0,
     );
+    // For predicted reports: sum the previous week's actual cases so the UI
+    // can display "Current Week (Actual)" vs "Predicted (Next Week)"
+    const prevWeekArr = Array.isArray(prevWeekData) ? prevWeekData : [];
+    const totalCurrentCases = isHistorical
+      ? undefined
+      : prevWeekArr.reduce(
+          (sum: number, d: any) => sum + (Number(d.current_cases) || 0),
+          0,
+        );
     const totalDistricts = forecastArr.length;
     const highRiskDistricts = forecastArr.filter(
       (d: any) => d.trend === 'Rising',
@@ -117,6 +160,8 @@ export class ReportsService {
       totalDistricts,
       highRiskDistricts,
       reportData: {
+        reportType,
+        totalCurrentCases,
         forecast: forecastArr,
         alerts: alertsArr,
         hotspots,
@@ -141,7 +186,9 @@ export class ReportsService {
       weekNumber: dto.weekNumber,
       startDate,
       endDate,
+      reportType,
       totalPredictedCases,
+      totalCurrentCases,
       totalDistricts,
       highRiskDistricts,
       generatedAt: saved.generatedAt.toISOString(),
@@ -202,6 +249,16 @@ export class ReportsService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
+
+  /** Returns the ISO 8601 week number for the given date. */
+  private getCurrentISOWeek(date: Date): number {
+    const jan4 = new Date(date.getFullYear(), 0, 4);
+    const dayOfWeek = jan4.getDay() || 7;
+    const weekOneMonday = new Date(jan4);
+    weekOneMonday.setDate(jan4.getDate() - dayOfWeek + 1);
+    const diff = date.getTime() - weekOneMonday.getTime();
+    return Math.max(1, Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1);
+  }
 
   private isoWeekDateRange(
     year: number,
