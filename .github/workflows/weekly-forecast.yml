@@ -87,6 +87,9 @@ jobs:
                   DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
                   PGSSLMODE: require
                   PYTHONUNBUFFERED: 1
+                  # Longer delay between Open-Meteo requests on shared CI runner IPs
+                  # to avoid hitting rate limits that don't occur on local machines.
+                  WEATHER_REQUEST_DELAY: "1.0"
 
             - name: Summary
               if: success()
