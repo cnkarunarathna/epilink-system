@@ -31,7 +31,12 @@ export class AuthController {
       path: '/',
     });
 
-    return { user: result.user };
+    // Keep token in response body for non-browser clients (e.g. mobile apps)
+    // while also setting an HTTP-only cookie for web clients.
+    return {
+      accessToken: result.accessToken,
+      user: result.user,
+    };
   }
 
   @Get('me')
