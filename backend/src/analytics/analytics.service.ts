@@ -831,6 +831,124 @@ export class AnalyticsService implements OnModuleInit {
     );
   }
 
+  /**
+   * Week-anchored forecast: treats the specified (year, weekNumber) as the
+   * "current" week and looks back from there instead of always using the
+   * latest data. Used by report generation so each report reflects the
+   * epidemiological week it was requested for.
+   */
+  async getWeeklyForecastForWeek(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH recent AS (
+        SELECT dc.district_id, d.name, dc.year, dc.week, dc.cases,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week <= $2)
+      ),
+      stats AS (
+        SELECT district_id, name,
+               AVG(cases) as avg_4week,
+               MAX(CASE WHEN rn = 1 THEN cases END) as current,
+               MAX(CASE WHEN rn = 2 THEN cases END) as prev1,
+               MAX(CASE WHEN rn = 3 THEN cases END) as prev2
+        FROM recent
+        WHERE rn <= 4
+        GROUP BY district_id, name
+      )
+      SELECT name as district,
+             current,
+             avg_4week,
+             ROUND(avg_4week + (current - prev1) * 0.7) as forecast,
+             CASE
+               WHEN current > avg_4week * 1.3 THEN 'Rising'
+               WHEN current < avg_4week * 0.7 THEN 'Falling'
+               ELSE 'Stable'
+             END as trend
+      FROM stats
+      WHERE current IS NOT NULL
+      ORDER BY forecast DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current) || 0,
+      avg_4week: Number(row.avg_4week) || 0,
+      forecast: Number(row.forecast) || 0,
+      trend: row.trend,
+      confidence: 'medium',
+    }));
+  }
+
+  /**
+   * Week-anchored outbreak alerts: anchors the "latest" week to the specified
+   * (year, weekNumber) so historical reports reflect that week's alert state.
+   */
+  async getOutbreakAlertsForWeek(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH latest AS (
+        SELECT dc.district_id, d.name, dc.cases, dc.year, dc.week,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week <= $2)
+      ),
+      prev_4weeks AS (
+        SELECT dc.district_id,
+               AVG(dc.cases) as avg_cases,
+               MAX(dc.cases) as max_cases
+        FROM dengue_cases dc
+        WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week < $2)
+        GROUP BY dc.district_id
+      )
+      SELECT l.name as district,
+             l.cases as current_cases,
+             p.avg_cases,
+             CASE
+               WHEN l.cases > p.avg_cases * 2 THEN 'Outbreak Alert'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Warning'
+               WHEN l.cases >= 100 THEN 'High Cases'
+               ELSE 'Normal'
+             END as alert_level,
+             CASE
+               WHEN l.cases > p.avg_cases * 2 THEN 'Cases doubled compared to 4-week average'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Cases 50% above average'
+               WHEN l.cases >= 100 THEN 'Very high case count'
+               ELSE 'Within normal range'
+             END as description
+      FROM latest l
+      LEFT JOIN prev_4weeks p ON p.district_id = l.district_id
+      WHERE l.rn = 1 AND (l.cases > p.avg_cases * 1.5 OR l.cases >= 50)
+      ORDER BY
+        CASE
+          WHEN l.cases > p.avg_cases * 2 THEN 1
+          WHEN l.cases > p.avg_cases * 1.5 THEN 2
+          ELSE 3
+        END,
+        l.cases DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current_cases) || 0,
+      avg_cases: Number(row.avg_cases) || 0,
+      alert_level: row.alert_level,
+      description: row.description,
+      severity:
+        row.alert_level === 'Outbreak Alert'
+          ? 'critical'
+          : row.alert_level === 'Warning'
+            ? 'high'
+            : 'moderate',
+    }));
+  }
+
   async getExplainableInsight(
     districtName: string,
     user: ValidatedServiceUser,

@@ -79,17 +79,18 @@ export class ReportsService {
     );
     const title = `Weekly Dengue Surveillance Report — Week ${dto.weekNumber}, ${dto.year}`;
 
-    // Collect analytics data in parallel
+    // Collect analytics data in parallel, anchored to the requested week
     this.logger.log(
       `Generating report for Week ${dto.weekNumber} ${dto.year} — collecting analytics data`,
     );
+    const weekLabel = `${dto.year}-W${String(dto.weekNumber).padStart(2, '0')}`;
     const [forecast, alerts, hotspots, summary, nationalSummary] =
       await Promise.all([
-        this.analyticsService.getWeeklyForecast(),
-        this.analyticsService.getOutbreakAlerts(),
+        this.analyticsService.getWeeklyForecastForWeek(dto.year, dto.weekNumber),
+        this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
         this.analyticsService.getHotspots(),
         this.analyticsService.getDashboardSummary(),
-        this.analyticsService.getNationalSummary(undefined, user),
+        this.analyticsService.getNationalSummary(weekLabel, user),
       ]);
 
     const forecastArr = Array.isArray(forecast) ? forecast : [];
