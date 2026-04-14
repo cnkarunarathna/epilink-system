@@ -226,7 +226,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                   <Tooltip
                     formatter={(value: number | undefined) => [
                       (value ?? 0).toLocaleString(),
-                      "Predicted Cases",
+                      isHistorical ? "Reported Cases" : "Predicted Cases",
                     ]}
                   />
                   <Bar dataKey="forecast" radius={[0, 4, 4, 0]}>
@@ -276,12 +276,16 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                       4-Wk Avg
                     </th>
                     <th className="px-3 py-2 font-semibold">Trend</th>
+                    <th className="px-3 py-2 font-semibold">Source</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[...forecast]
                     .sort((a, b) => b.forecast - a.forecast)
-                    .map((row, i) => (
+                    .map((row, i) => {
+                      const conf = row.confidence ?? (isHistorical ? 'actual' : 'medium');
+                      const isActual = conf === 'actual';
+                      return (
                       <tr
                         key={i}
                         className="border-t hover:bg-muted/30 transition-colors"
@@ -311,8 +315,20 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                             </span>
                           </span>
                         </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
+                              isActual
+                                ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+                            }`}
+                          >
+                            {isActual ? 'Actual' : conf}
+                          </span>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -357,12 +373,44 @@ export default function ReportDetailModal({ report, onClose }: Props) {
           </TabsContent>
 
           {/* National summary tab */}
-          <TabsContent value="summary" className="mt-4">
+          <TabsContent value="summary" className="mt-4 space-y-4">
+            {/* Week-over-week stats from reportData.summary */}
+            {report.reportData?.summary && (() => {
+              const s = report.reportData.summary;
+              const changePercent = Number(s.change_percent ?? 0);
+              const previousTotal = Number(s.previous_total ?? 0);
+              const avgTemp = s.avg_temperature != null ? Number(s.avg_temperature) : null;
+              const districtCount = Number(s.district_count ?? 0);
+              return (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className={`text-lg font-bold ${changePercent > 0 ? 'text-red-500' : changePercent < 0 ? 'text-green-600' : ''}`}>
+                      {changePercent > 0 ? '+' : ''}{changePercent.toFixed(1)}%
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Week-on-Week Change</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">{previousTotal.toLocaleString()}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Previous Week Total</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">{districtCount}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Districts Reporting</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">
+                      {avgTemp != null ? `${avgTemp.toFixed(1)}°C` : '—'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Avg Temperature</p>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="rounded-lg bg-muted/40 border p-4 text-sm leading-relaxed text-foreground/90">
               {nationalText}
             </div>
             {report.approvedBy && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Approved by{" "}
                 <span className="font-medium">{report.approvedBy.name}</span>
                 {report.approvedAt &&

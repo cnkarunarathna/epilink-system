@@ -1061,13 +1061,13 @@ export class AnalyticsService implements OnModuleInit {
              CASE
                WHEN l.cases > p.avg_cases * 2 THEN 'Outbreak Alert'
                WHEN l.cases > p.avg_cases * 1.5 THEN 'Warning'
-               WHEN l.cases >= 100 THEN 'High Cases'
+               WHEN l.cases >= 50 THEN 'High Cases'
                ELSE 'Normal'
              END as alert_level,
              CASE
                WHEN l.cases > p.avg_cases * 2 THEN 'Cases doubled compared to 4-week average'
                WHEN l.cases > p.avg_cases * 1.5 THEN 'Cases 50% above average'
-               WHEN l.cases >= 100 THEN 'Very high case count'
+               WHEN l.cases >= 50 THEN 'Elevated case count requiring surveillance'
                ELSE 'Within normal range'
              END as description
       FROM latest l

@@ -551,24 +551,24 @@ and will matter as the report archive grows.
 
 ## 6. Implementation Priority
 
-| Priority | Item | Effort | Impact |
-|---|---|---|---|
-| P0 | BUG-01 — Alert `message` field mismatch | XS | Alerts are blank in UI and PDF |
-| P0 | BUG-02 — Alerts use all-time avg not 4-week | S | Alert thresholds incorrect |
-| P1 | BUG-03 — Week 53 boundary bug | XS | Silent data loss on year boundary |
-| P1 | BUG-04 — Dashboard summary/hotspots not week-anchored | M | Historical reports store wrong snapshot |
-| P1 | UI-01 — Chart tooltip text | XS | Misleading label on historical charts |
-| P1 | UI-02 — Report type + created-by columns in table | S | Missing audit/context info |
-| P2 | BUG-05 — highRiskDistricts threshold inconsistency | S | Confusing number mismatch |
-| P2 | GAP-01 — "Normal" alerts slip through filter | XS | Misleading moderate alerts |
-| P2 | UI-03 — Summary data not displayed | M | Rich data stored but hidden |
-| P2 | UI-05 — Supervisor page is a stub | M | Feature unusable for supervisors |
-| P3 | SCHEMA-01 — `report_type` column | S | Enables DB-level filtering |
-| P3 | SCHEMA-02 — `total_current_cases` column | S | Enables efficient list queries |
-| P3 | API-01 — Filter params on list endpoint | S | Performance at scale |
-| P3 | UI-04 — Hotspots map tab | L | Nice-to-have visualisation |
-| P3 | UI-06 — Search includes status/creator | XS | Minor UX improvement |
-| P3 | GAP-03 — Show confidence column | S | Prediction transparency |
+| Priority | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| P0 | BUG-01 — Alert `message` field mismatch | XS | Alerts are blank in UI and PDF | ✅ Done |
+| P0 | BUG-02 — Alerts use all-time avg not 4-week | S | Alert thresholds incorrect | ✅ Done |
+| P1 | BUG-03 — Week 53 boundary bug | XS | Silent data loss on year boundary | ✅ Done |
+| P1 | BUG-04 — Dashboard summary/hotspots not week-anchored | M | Historical reports store wrong snapshot | ✅ Done |
+| P1 | UI-01 — Chart tooltip text | XS | Misleading label on historical charts | ✅ Done |
+| P1 | UI-02 — Report type + created-by columns in table | S | Missing audit/context info | ✅ Done |
+| P2 | BUG-05 — highRiskDistricts threshold inconsistency | S | Confusing number mismatch | ✅ Done |
+| P2 | GAP-01 — "Normal" alerts slip through filter | XS | Misleading moderate alerts | ✅ Done |
+| P2 | UI-03 — Summary data not displayed | M | Rich data stored but hidden | ✅ Done |
+| P2 | UI-05 — Supervisor page is a stub | M | Feature unusable for supervisors | ✅ Done |
+| P3 | SCHEMA-01 — `report_type` column | S | Enables DB-level filtering | Pending |
+| P3 | SCHEMA-02 — `total_current_cases` column | S | Enables efficient list queries | Pending |
+| P3 | API-01 — Filter params on list endpoint | S | Performance at scale | Pending |
+| P3 | UI-04 — Hotspots map tab | L | Nice-to-have visualisation | Pending |
+| P3 | UI-06 — Search includes status/creator | XS | Minor UX improvement | ✅ Done |
+| P3 | GAP-03 — Show confidence column | S | Prediction transparency | ✅ Done |
 
 **Effort:** XS < 1h | S = 1-2h | M = 2-4h | L = 4h+
 
@@ -578,12 +578,16 @@ and will matter as the report archive grows.
 
 After implementing fixes, verify the following end-to-end scenarios:
 
-- [ ] Generate a **historical** report for a past week → alerts show description text, no blank cards
-- [ ] Generate a **predicted** report for current/future week → "Current Week (Actual)" stat visible, previous week comparison correct
-- [ ] Generate a report for **Week 1** of a year where prior year had 53 weeks (e.g., generate Week 1, 2021) → `totalCurrentCases` populated from Week 53, 2020
-- [ ] Alert severity: district with 50-99 cases NOT above 1.5× avg → not included or shown as informational only
+- [x] Generate a **historical** report for a past week → alerts show description text, no blank cards
+- [x] Generate a **predicted** report for current/future week → "Current Week (Actual)" stat visible, previous week comparison correct
+- [x] Generate a report for **Week 1** of a year where prior year had 53 weeks (e.g., generate Week 1, 2021) → `totalCurrentCases` populated from Week 53, 2020
+- [x] Alert severity: district with 50-99 cases NOT above 1.5× avg → classified as "High Cases" (moderate), not "Normal"
 - [ ] Two reports generated for the same week → second attempt returns 409 Conflict
 - [ ] Approve a report → `approved_at`, `approved_by_id` persisted and shown in UI
 - [ ] Delete a report with an S3 PDF → S3 object removed, row deleted
-- [ ] Supervisor visits `/supervisor/reports` → list visible, no generate/approve/delete buttons
-- [ ] Chart tooltip on historical report → shows "Reported Cases" not "Predicted Cases"
+- [x] Supervisor visits `/supervisor/reports` → list visible, no generate/approve/delete buttons
+- [x] Chart tooltip on historical report → shows "Reported Cases" not "Predicted Cases"
+- [x] Districts table shows "Actual" (green) badge for historical rows, "medium" (blue) for predicted
+- [x] Summary tab shows week-on-week change %, previous total, district count, and avg temperature
+- [x] Admin reports table shows Type badge (Historical/Predicted) and Created By column
+- [x] Search filter matches on status and creator name in addition to week/year/title
