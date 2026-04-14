@@ -109,7 +109,7 @@ export class ReportsService {
     let prevWeek = dto.weekNumber - 1;
     if (prevWeek === 0) {
       prevYear -= 1;
-      prevWeek = 52; // safe fallback; 53-week years are rare
+      prevWeek = this.getLastISOWeek(prevYear); // correctly handles 52- and 53-week years
     }
 
     const [forecast, alerts, hotspots, summary, nationalSummary, prevWeekData] =
@@ -117,8 +117,8 @@ export class ReportsService {
         // Always read stored cases for the target week — no formula re-computation
         this.analyticsService.getActualWeekData(dto.year, dto.weekNumber),
         this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
-        this.analyticsService.getHotspots(),
-        this.analyticsService.getDashboardSummary(),
+        this.analyticsService.getHotspots(dto.year, dto.weekNumber),
+        this.analyticsService.getDashboardSummary(dto.year, dto.weekNumber),
         this.analyticsService.getNationalSummary(weekLabel, user),
         // Previous week data (used for totalCurrentCases in predicted reports)
         isHistorical
@@ -144,6 +144,8 @@ export class ReportsService {
           0,
         );
     const totalDistricts = forecastArr.length;
+    // Rising trend: cases > prior 4-week avg × 1.3 — matches the anchored
+    // high_risk CTE in getDashboardSummary so both numbers agree in reports.
     const highRiskDistricts = forecastArr.filter(
       (d: any) => d.trend === 'Rising',
     ).length;
@@ -258,6 +260,14 @@ export class ReportsService {
     weekOneMonday.setDate(jan4.getDate() - dayOfWeek + 1);
     const diff = date.getTime() - weekOneMonday.getTime();
     return Math.max(1, Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1);
+  }
+
+  /**
+   * Returns the last ISO 8601 week number of the given year (52 or 53).
+   * Dec 28 is always in the last ISO week of any year.
+   */
+  private getLastISOWeek(year: number): number {
+    return this.getCurrentISOWeek(new Date(year, 11, 28));
   }
 
   private isoWeekDateRange(
