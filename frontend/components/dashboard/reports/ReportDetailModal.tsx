@@ -33,7 +33,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { WeeklyReport, getReportDownloadUrl } from "@/services/reports.service";
+import { WeeklyReport, HotspotRow, getReportDownloadUrl } from "@/services/reports.service";
 
 interface Props {
   report: WeeklyReport | null;
@@ -69,10 +69,11 @@ export default function ReportDetailModal({ report, onClose }: Props) {
 
   const forecast = report.reportData?.forecast ?? [];
   const alerts = report.reportData?.alerts ?? [];
+  const hotspots: HotspotRow[] = report.reportData?.hotspots ?? [];
   const nationalSummary = report.reportData?.nationalSummary;
-  const reportType = report.reportData?.reportType ?? 'predicted';
-  const isHistorical = reportType === 'historical';
-  const totalCurrentCases = report.reportData?.totalCurrentCases;
+  // Prefer the dedicated DB column; fall back to JSONB for older records
+  const isHistorical = (report.reportType ?? report.reportData?.reportType) === 'historical';
+  const totalCurrentCases = report.totalCurrentCases ?? report.reportData?.totalCurrentCases;
   const nationalText =
     typeof nationalSummary === "string"
       ? nationalSummary
@@ -189,9 +190,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
             <TabsTrigger value="alerts" className="text-xs">
               <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
               Alerts
-              {alerts.length > 0 && (
+              {(alerts.length + hotspots.length) > 0 && (
                 <span className="ml-1.5 rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 leading-none">
-                  {alerts.length}
+                  {alerts.length + hotspots.length}
                 </span>
               )}
             </TabsTrigger>
@@ -335,40 +336,88 @@ export default function ReportDetailModal({ report, onClose }: Props) {
           </TabsContent>
 
           {/* Alerts tab */}
-          <TabsContent value="alerts" className="mt-4 space-y-3">
-            {alerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No active outbreak alerts for this period.
-              </p>
-            ) : (
-              alerts.map((alert, i) => (
-                <div
-                  key={i}
-                  className={`rounded-lg border p-4 ${SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.moderate}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-sm">{alert.district}</p>
-                      {alert.current_cases !== undefined && (
-                        <p className="text-xs mt-0.5 opacity-80">
-                          {alert.current_cases.toLocaleString()} current cases
-                        </p>
-                      )}
+          <TabsContent value="alerts" className="mt-4 space-y-4">
+            {/* Outbreak alerts */}
+            <div className="space-y-3">
+              {alerts.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No active outbreak alerts for this period.
+                </p>
+              ) : (
+                alerts.map((alert, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg border p-4 ${SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.moderate}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-sm">{alert.district}</p>
+                        {alert.current_cases !== undefined && (
+                          <p className="text-xs mt-0.5 opacity-80">
+                            {alert.current_cases.toLocaleString()} current cases
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-xs uppercase">
+                        {alert.severity}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-xs uppercase">
-                      {alert.severity}
-                    </Badge>
+                    {alert.message && (
+                      <p className="text-xs mt-2 opacity-90">{alert.message}</p>
+                    )}
+                    {alert.recommendation && (
+                      <p className="text-xs mt-1 italic opacity-75">
+                        {alert.recommendation}
+                      </p>
+                    )}
                   </div>
-                  {alert.message && (
-                    <p className="text-xs mt-2 opacity-90">{alert.message}</p>
-                  )}
-                  {alert.recommendation && (
-                    <p className="text-xs mt-1 italic opacity-75">
-                      {alert.recommendation}
-                    </p>
-                  )}
+                ))
+              )}
+            </div>
+
+            {/* Hotspots */}
+            {hotspots.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  Geographic Hotspots
+                  <span className="ml-2 rounded-full bg-amber-500 text-white text-[10px] px-1.5 py-0.5 leading-none">
+                    {hotspots.length}
+                  </span>
+                </p>
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/60">
+                        <th className="text-left px-3 py-2 font-semibold">District</th>
+                        <th className="text-right px-3 py-2 font-semibold">Cases</th>
+                        <th className="text-right px-3 py-2 font-semibold">Growth</th>
+                        <th className="px-3 py-2 font-semibold">Severity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hotspots.map((h, i) => (
+                        <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
+                          <td className="px-3 py-2 font-medium">{h.district}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{h.current_cases.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {h.growth_rate > 0 ? '+' : ''}{h.growth_rate.toFixed(0)}%
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
+                              h.severity === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                              : h.severity === 'high' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                              : h.severity === 'moderate' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+                              : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {h.severity}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))
+              </div>
             )}
           </TabsContent>
 

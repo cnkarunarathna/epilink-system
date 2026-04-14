@@ -50,6 +50,12 @@ export class WeeklyReport {
   @Column({ name: 'high_risk_districts', type: 'integer', default: 0 })
   highRiskDistricts: number;
 
+  @Column({ name: 'report_type', type: 'varchar', length: 20, default: 'predicted' })
+  reportType: 'historical' | 'predicted';
+
+  @Column({ name: 'total_current_cases', type: 'integer', nullable: true })
+  totalCurrentCases: number | null;
+
   @Column({ name: 'report_data', type: 'jsonb' })
   reportData: Record<string, any>;
 

@@ -563,10 +563,10 @@ and will matter as the report archive grows.
 | P2 | GAP-01 — "Normal" alerts slip through filter | XS | Misleading moderate alerts | ✅ Done |
 | P2 | UI-03 — Summary data not displayed | M | Rich data stored but hidden | ✅ Done |
 | P2 | UI-05 — Supervisor page is a stub | M | Feature unusable for supervisors | ✅ Done |
-| P3 | SCHEMA-01 — `report_type` column | S | Enables DB-level filtering | Pending |
-| P3 | SCHEMA-02 — `total_current_cases` column | S | Enables efficient list queries | Pending |
-| P3 | API-01 — Filter params on list endpoint | S | Performance at scale | Pending |
-| P3 | UI-04 — Hotspots map tab | L | Nice-to-have visualisation | Pending |
+| P3 | SCHEMA-01 — `report_type` column | S | Enables DB-level filtering | ✅ Done |
+| P3 | SCHEMA-02 — `total_current_cases` column | S | Enables efficient list queries | ✅ Done |
+| P3 | API-01 — Filter params on list endpoint | S | Performance at scale | ✅ Done |
+| P3 | UI-04 — Hotspots list in Alerts tab | M | Geographic hotspot data now visible | ✅ Done |
 | P3 | UI-06 — Search includes status/creator | XS | Minor UX improvement | ✅ Done |
 | P3 | GAP-03 — Show confidence column | S | Prediction transparency | ✅ Done |
 
@@ -591,3 +591,8 @@ After implementing fixes, verify the following end-to-end scenarios:
 - [x] Summary tab shows week-on-week change %, previous total, district count, and avg temperature
 - [x] Admin reports table shows Type badge (Historical/Predicted) and Created By column
 - [x] Search filter matches on status and creator name in addition to week/year/title
+- [ ] `GET /api/reports?status=approved` returns only approved reports
+- [ ] `GET /api/reports?type=historical` returns only historical reports
+- [ ] `GET /api/reports?year=2025` returns only reports for that year
+- [ ] Newly generated report has `report_type` and `total_current_cases` columns populated in DB
+- [ ] Alerts tab shows both outbreak alerts and a hotspots table when hotspot data is present

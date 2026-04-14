@@ -62,7 +62,7 @@ export default function SupervisorReportsPage() {
   }, [load]);
 
   const filtered = reports.filter((r) =>
-    `${r.title} week ${r.weekNumber} ${r.year} ${r.status} ${r.createdBy?.name ?? ''} ${r.reportData?.reportType ?? ''}`
+    `${r.title} week ${r.weekNumber} ${r.year} ${r.status} ${r.createdBy?.name ?? ''} ${r.reportType}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase()),
   );
@@ -254,14 +254,9 @@ export default function SupervisorReportsPage() {
                     </TableCell>
 
                     <TableCell>
-                      {(() => {
-                        const isHistorical = report.reportData?.reportType === 'historical';
-                        return (
-                          <Badge variant={isHistorical ? "outline" : "secondary"} className="text-xs">
-                            {isHistorical ? "Historical" : "Predicted"}
-                          </Badge>
-                        );
-                      })()}
+                      <Badge variant={report.reportType === 'historical' ? "outline" : "secondary"} className="text-xs">
+                        {report.reportType === 'historical' ? "Historical" : "Predicted"}
+                      </Badge>
                     </TableCell>
 
                     <TableCell className="text-sm text-muted-foreground">

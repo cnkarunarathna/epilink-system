@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ReportsService } from './reports.service';
@@ -23,8 +24,16 @@ export class ReportsController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
-  async list() {
-    return this.reportsService.listReports();
+  async list(
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('year') year?: string,
+  ) {
+    return this.reportsService.listReports({
+      status,
+      type,
+      year: year ? Number(year) : undefined,
+    });
   }
 
   @Get(':id')

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere } from 'typeorm';
 import { WeeklyReport, ReportStatus } from './entities/weekly-report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -42,8 +42,18 @@ export class ReportsService {
     this.bucket = this.configService.getOrThrow<string>('AWS_S3_BUCKET');
   }
 
-  async listReports(): Promise<WeeklyReport[]> {
+  async listReports(filters?: {
+    status?: string;
+    type?: string;
+    year?: number;
+  }): Promise<WeeklyReport[]> {
+    const where: FindOptionsWhere<WeeklyReport> = {};
+    if (filters?.status) where.status = filters.status as any;
+    if (filters?.type) where.reportType = filters.type as any;
+    if (filters?.year) where.year = filters.year;
+
     return this.repo.find({
+      where: Object.keys(where).length ? where : undefined,
       order: { year: 'DESC', weekNumber: 'DESC' },
       relations: ['approvedBy', 'createdBy'],
     });
@@ -158,7 +168,9 @@ export class ReportsService {
       endDate,
       title,
       status: ReportStatus.PENDING,
+      reportType,
       totalPredictedCases,
+      totalCurrentCases: totalCurrentCases ?? null,
       totalDistricts,
       highRiskDistricts,
       reportData: {
