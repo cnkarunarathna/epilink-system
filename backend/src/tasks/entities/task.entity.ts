@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from '../../entities/user.entity';
 import { District } from '../../entities/district.entity';
+import { TaskMessage } from './task-message.entity';
 
 export enum TaskType {
   CLEANUP = 'cleanup',
@@ -109,6 +110,9 @@ export class Task {
 
   @OneToMany('Evidence', 'task')
   evidence: any[];
+
+  @OneToMany(() => TaskMessage, (msg) => msg.task)
+  messages: TaskMessage[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

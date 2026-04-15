@@ -20,7 +20,7 @@ A persistent, real-time messaging feature scoped to individual operational tasks
 
 ---
 
-## Phase 1 — Database Layer
+## Phase 1 — Database Layer ✅ DONE
 
 **Goal:** Persistent schema for messages and read receipts, zero changes to existing tables.
 
@@ -651,17 +651,17 @@ Week 4 │ Phase 6 (select enhancements)
 ## File Creation Checklist
 
 ### Backend (`/backend/src/`)
-- [ ] `tasks/entities/task-message.entity.ts`
-- [ ] `tasks/entities/message-read.entity.ts`
+- [x] `tasks/entities/task-message.entity.ts`
+- [x] `tasks/entities/message-read.entity.ts`
 - [ ] `tasks/guards/task-participant.guard.ts`
 - [ ] `tasks/dto/create-message.dto.ts`
 - [ ] `tasks/dto/get-messages-query.dto.ts`
 - [ ] `tasks/dto/message-response.dto.ts`
 - [ ] `tasks/task-messages.service.ts`
 - [ ] `tasks/task-messages.controller.ts`
-- [ ] `migrations/XXXXXXXXXX-CreateTaskMessages.ts`
-- [ ] Update `tasks/entities/task.entity.ts` (add messages relation)
-- [ ] Update `tasks/tasks.module.ts` (register entities + service)
+- [x] `migrations/1778200000000-CreateTaskMessages.ts`
+- [x] Update `tasks/entities/task.entity.ts` (add messages relation)
+- [x] Update `tasks/tasks.module.ts` (register entities + service)
 - [ ] Update `events/events.gateway.ts` (chat:join, chat:leave, chat:typing)
 - [ ] Wire `@socket.io/redis-adapter` in `main.ts`
 - [ ] Add Redis unread count cache methods to `task-messages.service.ts`
