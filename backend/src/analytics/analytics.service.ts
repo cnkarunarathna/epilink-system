@@ -315,58 +315,142 @@ export class AnalyticsService implements OnModuleInit {
     return resp.data;
   }
 
-  async getDashboardSummary(): Promise<DashboardSummary> {
+  async getDashboardSummary(
+    year?: number,
+    weekNumber?: number,
+  ): Promise<DashboardSummary> {
+    const isAnchored = year !== undefined && weekNumber !== undefined;
+
+    // Anchored calls (report generation) use a per-week cache key with a long
+    // TTL — historical data is immutable so it never needs refreshing.
+    // Live calls (dashboard) keep the existing short-TTL key unchanged.
+    const cacheKey = isAnchored
+      ? `analytics:dashboard_summary:${year}:${weekNumber}`
+      : 'analytics:dashboard_summary';
+    const ttl = isAnchored
+      ? 86400000 // 24 hours — historical data does not change
+      : 600000; // 10 minutes for live data
+
     return this.cacheHelper.getOrRefresh<DashboardSummary>(
-      'analytics:dashboard_summary',
-      600000, // 10 minutes fresh
+      cacheKey,
+      ttl,
       async () => {
         const manager = this.dataSource.manager;
-        const summary = await manager.query(`
-          WITH current_week AS (
-            SELECT dc.year, dc.week, SUM(dc.cases) as total_cases, COUNT(DISTINCT dc.district_id) as district_count
-            FROM dengue_cases dc
-            WHERE (dc.year, dc.week) = (
-              SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1
-            )
-            GROUP BY dc.year, dc.week
-          ),
-          previous_week AS (
-            SELECT dc.year, dc.week, SUM(dc.cases) as total_cases
-            FROM dengue_cases dc
-            WHERE (dc.year, dc.week) = (
-              SELECT year, week FROM dengue_cases
-              WHERE (year, week) < (SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1)
-              ORDER BY year DESC, week DESC LIMIT 1
-            )
-            GROUP BY dc.year, dc.week
-          ),
-          high_risk AS (
-            SELECT COUNT(*) as count
-            FROM (
-              SELECT dc.district_id, dc.cases,
-                     ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        let summary: any[];
+
+        if (isAnchored) {
+          // Anchor every sub-query to the requested (year, weekNumber).
+          summary = await manager.query(
+            `
+            WITH current_week AS (
+              SELECT dc.year, dc.week,
+                     SUM(dc.cases) as total_cases,
+                     COUNT(DISTINCT dc.district_id) as district_count
               FROM dengue_cases dc
-            ) ranked
-            WHERE ranked.rn = 1 AND ranked.cases >= 50
-          ),
-          avg_temp AS (
-            SELECT AVG(w.temperature_2m_mean) as avg_temp
-            FROM weather_data w
-            WHERE (w.year, w.week) = (
-              SELECT year, week FROM weather_data ORDER BY year DESC, week DESC LIMIT 1
+              WHERE dc.year = $1 AND dc.week = $2
+              GROUP BY dc.year, dc.week
+            ),
+            previous_week AS (
+              SELECT SUM(dc.cases) as total_cases
+              FROM dengue_cases dc
+              WHERE (dc.year, dc.week) = (
+                SELECT year, week FROM dengue_cases
+                WHERE (year < $1) OR (year = $1 AND week < $2)
+                ORDER BY year DESC, week DESC LIMIT 1
+              )
+            ),
+            -- Prior 4-week averages per district (excludes the target week itself)
+            prior_avgs AS (
+              SELECT ranked.district_id, AVG(ranked.cases) as avg_4week
+              FROM (
+                SELECT dc.district_id, dc.cases,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY dc.district_id
+                         ORDER BY dc.year DESC, dc.week DESC
+                       ) as rn
+                FROM dengue_cases dc
+                WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week < $2)
+              ) ranked
+              WHERE ranked.rn <= 4
+              GROUP BY ranked.district_id
+            ),
+            -- Rising trend: cases > prior 4-week avg × 1.3 (matches weekly_reports.high_risk_districts)
+            high_risk AS (
+              SELECT COUNT(*) as count
+              FROM dengue_cases dc
+              LEFT JOIN prior_avgs pa ON pa.district_id = dc.district_id
+              WHERE dc.year = $1 AND dc.week = $2
+                AND dc.cases > COALESCE(pa.avg_4week, dc.cases) * 1.3
+            ),
+            avg_temp AS (
+              SELECT AVG(w.temperature_2m_mean) as avg_temp
+              FROM weather_data w
+              WHERE w.year = $1 AND w.week = $2
             )
-          )
-          SELECT
-            c.year, c.week, c.total_cases, c.district_count,
-            p.total_cases as previous_total,
-            COALESCE(((c.total_cases - p.total_cases) * 100.0 / NULLIF(p.total_cases, 0)), 0) as change_percent,
-            h.count as high_risk_districts,
-            a.avg_temp
-          FROM current_week c
-          LEFT JOIN previous_week p ON true
-          LEFT JOIN high_risk h ON true
-          LEFT JOIN avg_temp a ON true;
-        `);
+            SELECT
+              c.year, c.week, c.total_cases, c.district_count,
+              p.total_cases as previous_total,
+              COALESCE(((c.total_cases - p.total_cases) * 100.0 / NULLIF(p.total_cases, 0)), 0) as change_percent,
+              h.count as high_risk_districts,
+              a.avg_temp
+            FROM current_week c
+            LEFT JOIN previous_week p ON true
+            LEFT JOIN high_risk h ON true
+            LEFT JOIN avg_temp a ON true;
+            `,
+            [year, weekNumber],
+          );
+        } else {
+          // Live query — always returns the latest week in the database.
+          summary = await manager.query(`
+            WITH current_week AS (
+              SELECT dc.year, dc.week, SUM(dc.cases) as total_cases, COUNT(DISTINCT dc.district_id) as district_count
+              FROM dengue_cases dc
+              WHERE (dc.year, dc.week) = (
+                SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1
+              )
+              GROUP BY dc.year, dc.week
+            ),
+            previous_week AS (
+              SELECT dc.year, dc.week, SUM(dc.cases) as total_cases
+              FROM dengue_cases dc
+              WHERE (dc.year, dc.week) = (
+                SELECT year, week FROM dengue_cases
+                WHERE (year, week) < (SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1)
+                ORDER BY year DESC, week DESC LIMIT 1
+              )
+              GROUP BY dc.year, dc.week
+            ),
+            -- Absolute burden metric for the live dashboard: districts with >= 50 cases
+            -- (distinct from the trend-based Rising definition used in report generation)
+            high_risk AS (
+              SELECT COUNT(*) as count
+              FROM (
+                SELECT dc.district_id, dc.cases,
+                       ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+                FROM dengue_cases dc
+              ) ranked
+              WHERE ranked.rn = 1 AND ranked.cases >= 50
+            ),
+            avg_temp AS (
+              SELECT AVG(w.temperature_2m_mean) as avg_temp
+              FROM weather_data w
+              WHERE (w.year, w.week) = (
+                SELECT year, week FROM weather_data ORDER BY year DESC, week DESC LIMIT 1
+              )
+            )
+            SELECT
+              c.year, c.week, c.total_cases, c.district_count,
+              p.total_cases as previous_total,
+              COALESCE(((c.total_cases - p.total_cases) * 100.0 / NULLIF(p.total_cases, 0)), 0) as change_percent,
+              h.count as high_risk_districts,
+              a.avg_temp
+            FROM current_week c
+            LEFT JOIN previous_week p ON true
+            LEFT JOIN high_risk h ON true
+            LEFT JOIN avg_temp a ON true;
+          `);
+        }
 
         if (summary.length === 0) {
           return {
@@ -660,48 +744,105 @@ export class AnalyticsService implements OnModuleInit {
     );
   }
 
-  async getHotspots() {
+  async getHotspots(year?: number, weekNumber?: number) {
+    const isAnchored = year !== undefined && weekNumber !== undefined;
+
+    const cacheKey = isAnchored
+      ? `analytics:hotspots:${year}:${weekNumber}`
+      : 'analytics:hotspots';
+    const ttl = isAnchored
+      ? 86400000 // 24 hours — historical data does not change
+      : 900000; // 15 minutes for live data
+
     return this.cacheHelper.getOrRefresh(
-      'analytics:hotspots',
-      900000, // 15 minutes fresh
+      cacheKey,
+      ttl,
       async () => {
         const manager = this.dataSource.manager;
-        const data = await manager.query(`
-          WITH latest AS (
-            SELECT dc.district_id, d.name, d.latitude, d.longitude,
-                   dc.cases, dc.year, dc.week,
-                   ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
-            FROM dengue_cases dc
-            JOIN districts d ON d.id = dc.district_id
-          ),
-          prev_week AS (
-            SELECT dc.district_id, dc.cases as prev_cases
-            FROM dengue_cases dc
-            WHERE (dc.year, dc.week) = (
-              SELECT year, week FROM dengue_cases
-              WHERE (year, week) < (SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1)
-              ORDER BY year DESC, week DESC LIMIT 1
+        let data: any[];
+
+        if (isAnchored) {
+          // Anchor both the target week and the comparison week to the
+          // requested (year, weekNumber).
+          data = await manager.query(
+            `
+            WITH latest AS (
+              SELECT dc.district_id, d.name, d.latitude, d.longitude,
+                     dc.cases, dc.year, dc.week
+              FROM dengue_cases dc
+              JOIN districts d ON d.id = dc.district_id
+              WHERE dc.year = $1 AND dc.week = $2
+            ),
+            prev_week AS (
+              SELECT dc.district_id, dc.cases as prev_cases
+              FROM dengue_cases dc
+              WHERE (dc.year, dc.week) = (
+                SELECT year, week FROM dengue_cases
+                WHERE (year < $1) OR (year = $1 AND week < $2)
+                ORDER BY year DESC, week DESC LIMIT 1
+              )
             )
-          )
-          SELECT l.name as district,
-                 l.cases as current_cases,
-                 COALESCE(p.prev_cases, 0) as previous_cases,
-                 CASE WHEN p.prev_cases > 0
-                   THEN ((l.cases - p.prev_cases) * 100.0 / p.prev_cases)
-                   ELSE 0 END as growth_rate,
-                 l.latitude,
-                 l.longitude,
-                 CASE
-                   WHEN l.cases >= 100 THEN 'critical'
-                   WHEN l.cases >= 50 AND (l.cases - COALESCE(p.prev_cases, 0)) > 20 THEN 'high'
-                   WHEN l.cases >= 25 THEN 'moderate'
-                   ELSE 'low'
-                 END as severity
-          FROM latest l
-          LEFT JOIN prev_week p ON p.district_id = l.district_id
-          WHERE l.rn = 1 AND l.cases >= 25
-          ORDER BY l.cases DESC, growth_rate DESC
-        `);
+            SELECT l.name as district,
+                   l.cases as current_cases,
+                   COALESCE(p.prev_cases, 0) as previous_cases,
+                   CASE WHEN p.prev_cases > 0
+                     THEN ((l.cases - p.prev_cases) * 100.0 / p.prev_cases)
+                     ELSE 0 END as growth_rate,
+                   l.latitude,
+                   l.longitude,
+                   CASE
+                     WHEN l.cases >= 100 THEN 'critical'
+                     WHEN l.cases >= 50 AND (l.cases - COALESCE(p.prev_cases, 0)) > 20 THEN 'high'
+                     WHEN l.cases >= 25 THEN 'moderate'
+                     ELSE 'low'
+                   END as severity
+            FROM latest l
+            LEFT JOIN prev_week p ON p.district_id = l.district_id
+            WHERE l.cases >= 25
+            ORDER BY l.cases DESC, growth_rate DESC
+            `,
+            [year, weekNumber],
+          );
+        } else {
+          // Live query — always uses the latest week in the database.
+          data = await manager.query(`
+            WITH latest AS (
+              SELECT dc.district_id, d.name, d.latitude, d.longitude,
+                     dc.cases, dc.year, dc.week,
+                     ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+              FROM dengue_cases dc
+              JOIN districts d ON d.id = dc.district_id
+            ),
+            prev_week AS (
+              SELECT dc.district_id, dc.cases as prev_cases
+              FROM dengue_cases dc
+              WHERE (dc.year, dc.week) = (
+                SELECT year, week FROM dengue_cases
+                WHERE (year, week) < (SELECT year, week FROM dengue_cases ORDER BY year DESC, week DESC LIMIT 1)
+                ORDER BY year DESC, week DESC LIMIT 1
+              )
+            )
+            SELECT l.name as district,
+                   l.cases as current_cases,
+                   COALESCE(p.prev_cases, 0) as previous_cases,
+                   CASE WHEN p.prev_cases > 0
+                     THEN ((l.cases - p.prev_cases) * 100.0 / p.prev_cases)
+                     ELSE 0 END as growth_rate,
+                   l.latitude,
+                   l.longitude,
+                   CASE
+                     WHEN l.cases >= 100 THEN 'critical'
+                     WHEN l.cases >= 50 AND (l.cases - COALESCE(p.prev_cases, 0)) > 20 THEN 'high'
+                     WHEN l.cases >= 25 THEN 'moderate'
+                     ELSE 'low'
+                   END as severity
+            FROM latest l
+            LEFT JOIN prev_week p ON p.district_id = l.district_id
+            WHERE l.rn = 1 AND l.cases >= 25
+            ORDER BY l.cases DESC, growth_rate DESC
+          `);
+        }
+
         return data.map((row: any) => ({
           district: row.district,
           current_cases: Number(row.current_cases) || 0,
@@ -829,6 +970,196 @@ export class AnalyticsService implements OnModuleInit {
         }));
       },
     );
+  }
+
+  /**
+   * Week-anchored forecast: treats the specified (year, weekNumber) as the
+   * "current" week and looks back from there instead of always using the
+   * latest data. Used by report generation so each report reflects the
+   * epidemiological week it was requested for.
+   */
+  async getWeeklyForecastForWeek(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH recent AS (
+        SELECT dc.district_id, d.name, dc.year, dc.week, dc.cases,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week <= $2)
+      ),
+      stats AS (
+        SELECT district_id, name,
+               AVG(cases) as avg_4week,
+               MAX(CASE WHEN rn = 1 THEN cases END) as current,
+               MAX(CASE WHEN rn = 2 THEN cases END) as prev1,
+               MAX(CASE WHEN rn = 3 THEN cases END) as prev2
+        FROM recent
+        WHERE rn <= 4
+        GROUP BY district_id, name
+      )
+      SELECT name as district,
+             current,
+             avg_4week,
+             ROUND(avg_4week + (current - prev1) * 0.7) as forecast,
+             CASE
+               WHEN current > avg_4week * 1.3 THEN 'Rising'
+               WHEN current < avg_4week * 0.7 THEN 'Falling'
+               ELSE 'Stable'
+             END as trend
+      FROM stats
+      WHERE current IS NOT NULL
+      ORDER BY forecast DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => ({
+      district: row.district,
+      current_cases: Number(row.current) || 0,
+      avg_4week: Number(row.avg_4week) || 0,
+      forecast: Number(row.forecast) || 0,
+      trend: row.trend,
+      confidence: 'medium',
+    }));
+  }
+
+  /**
+   * Week-anchored outbreak alerts: anchors the "latest" week to the specified
+   * (year, weekNumber) so historical reports reflect that week's alert state.
+   */
+  async getOutbreakAlertsForWeek(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH latest AS (
+        SELECT dc.district_id, d.name, dc.cases, dc.year, dc.week,
+               ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week <= $2)
+      ),
+      prev_4weeks AS (
+        SELECT ranked.district_id,
+               AVG(ranked.cases) as avg_cases,
+               MAX(ranked.cases) as max_cases
+        FROM (
+          SELECT dc.district_id, dc.cases,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY dc.district_id
+                   ORDER BY dc.year DESC, dc.week DESC
+                 ) as rn
+          FROM dengue_cases dc
+          WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week < $2)
+        ) ranked
+        WHERE ranked.rn <= 4
+        GROUP BY ranked.district_id
+      )
+      SELECT l.name as district,
+             l.cases as current_cases,
+             p.avg_cases,
+             CASE
+               WHEN l.cases > p.avg_cases * 2 THEN 'Outbreak Alert'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Warning'
+               WHEN l.cases >= 50 THEN 'High Cases'
+               ELSE 'Normal'
+             END as alert_level,
+             CASE
+               WHEN l.cases > p.avg_cases * 2 THEN 'Cases doubled compared to 4-week average'
+               WHEN l.cases > p.avg_cases * 1.5 THEN 'Cases 50% above average'
+               WHEN l.cases >= 50 THEN 'Elevated case count requiring surveillance'
+               ELSE 'Within normal range'
+             END as description
+      FROM latest l
+      LEFT JOIN prev_4weeks p ON p.district_id = l.district_id
+      WHERE l.rn = 1 AND (l.cases > p.avg_cases * 1.5 OR l.cases >= 50)
+      ORDER BY
+        CASE
+          WHEN l.cases > p.avg_cases * 2 THEN 1
+          WHEN l.cases > p.avg_cases * 1.5 THEN 2
+          ELSE 3
+        END,
+        l.cases DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => {
+      const severity: 'critical' | 'high' | 'moderate' =
+        row.alert_level === 'Outbreak Alert'
+          ? 'critical'
+          : row.alert_level === 'Warning'
+            ? 'high'
+            : 'moderate';
+
+      const recommendation =
+        severity === 'critical'
+          ? 'Deploy rapid response teams and issue an immediate public health advisory.'
+          : severity === 'high'
+            ? 'Increase surveillance frequency and alert local health authorities.'
+            : 'Continue routine surveillance and monitor for further increases.';
+
+      return {
+        district: row.district,
+        current_cases: Number(row.current_cases) || 0,
+        avg_cases: Number(row.avg_cases) || 0,
+        alert_level: row.alert_level,
+        message: row.description,
+        recommendation,
+        severity,
+      };
+    });
+  }
+
+  /**
+   * Historical week data: returns the actual recorded cases from dengue_cases
+   * for the exact week specified. Used for past-week reports so they reflect
+   * what actually happened rather than a forecast based on that week's data.
+   */
+  async getActualWeekData(year: number, weekNumber: number) {
+    const manager = this.dataSource.manager;
+    const data = await manager.query(
+      `
+      WITH target_week AS (
+        SELECT dc.district_id, d.name, dc.cases
+        FROM dengue_cases dc
+        JOIN districts d ON d.id = dc.district_id
+        WHERE dc.year = $1 AND dc.week = $2
+      ),
+      prev_stats AS (
+        SELECT ranked.district_id,
+               AVG(ranked.cases) as avg_4week
+        FROM (
+          SELECT dc.district_id, dc.cases,
+                 ROW_NUMBER() OVER (PARTITION BY dc.district_id ORDER BY dc.year DESC, dc.week DESC) as rn
+          FROM dengue_cases dc
+          WHERE (dc.year < $1) OR (dc.year = $1 AND dc.week < $2)
+        ) ranked
+        WHERE ranked.rn <= 4
+        GROUP BY ranked.district_id
+      )
+      SELECT t.name as district,
+             t.cases as actual_cases,
+             COALESCE(p.avg_4week, t.cases) as avg_4week,
+             CASE
+               WHEN t.cases > COALESCE(p.avg_4week, t.cases) * 1.3 THEN 'Rising'
+               WHEN t.cases < COALESCE(p.avg_4week, t.cases) * 0.7 THEN 'Falling'
+               ELSE 'Stable'
+             END as trend
+      FROM target_week t
+      LEFT JOIN prev_stats p ON p.district_id = t.district_id
+      ORDER BY t.cases DESC
+      `,
+      [year, weekNumber],
+    );
+    return data.map((row: any) => ({
+      district: row.district,
+      // For historical: forecast = actual_cases (what actually happened)
+      current_cases: Number(row.actual_cases) || 0,
+      avg_4week: Number(row.avg_4week) || 0,
+      forecast: Number(row.actual_cases) || 0,
+      trend: row.trend,
+      confidence: 'actual',
+    }));
   }
 
   async getExplainableInsight(

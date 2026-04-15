@@ -33,7 +33,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { WeeklyReport, getReportDownloadUrl } from "@/services/reports.service";
+import { WeeklyReport, HotspotRow, getReportDownloadUrl } from "@/services/reports.service";
 
 interface Props {
   report: WeeklyReport | null;
@@ -69,7 +69,11 @@ export default function ReportDetailModal({ report, onClose }: Props) {
 
   const forecast = report.reportData?.forecast ?? [];
   const alerts = report.reportData?.alerts ?? [];
+  const hotspots: HotspotRow[] = report.reportData?.hotspots ?? [];
   const nationalSummary = report.reportData?.nationalSummary;
+  // Prefer the dedicated DB column; fall back to JSONB for older records
+  const isHistorical = (report.reportType ?? report.reportData?.reportType) === 'historical';
+  const totalCurrentCases = report.totalCurrentCases ?? report.reportData?.totalCurrentCases;
   const nationalText =
     typeof nationalSummary === "string"
       ? nationalSummary
@@ -135,16 +139,26 @@ export default function ReportDetailModal({ report, onClose }: Props) {
         </div>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-3 px-6 py-4 bg-muted/30">
+        <div className={`grid gap-3 px-6 py-4 bg-muted/30 ${!isHistorical && totalCurrentCases !== undefined ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <div className="text-center">
             <p className="text-2xl font-bold">
               {report.totalPredictedCases.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Total Predicted Cases
+              {isHistorical ? 'Total Reported Cases' : 'Predicted Cases (Next Wk)'}
             </p>
           </div>
-          <div className="text-center border-x">
+          {!isHistorical && totalCurrentCases !== undefined && (
+            <div className="text-center border-l">
+              <p className="text-2xl font-bold text-green-600">
+                {totalCurrentCases.toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Current Week (Actual)
+              </p>
+            </div>
+          )}
+          <div className="text-center border-l">
             <p className="text-2xl font-bold text-red-500">
               {report.highRiskDistricts}
             </p>
@@ -152,7 +166,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
               High-Risk Districts
             </p>
           </div>
-          <div className="text-center">
+          <div className="text-center border-l">
             <p className="text-2xl font-bold text-amber-500">{alerts.length}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Active Alerts
@@ -176,9 +190,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
             <TabsTrigger value="alerts" className="text-xs">
               <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
               Alerts
-              {alerts.length > 0 && (
+              {(alerts.length + hotspots.length) > 0 && (
                 <span className="ml-1.5 rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 leading-none">
-                  {alerts.length}
+                  {alerts.length + hotspots.length}
                 </span>
               )}
             </TabsTrigger>
@@ -191,7 +205,9 @@ export default function ReportDetailModal({ report, onClose }: Props) {
           {/* Chart tab */}
           <TabsContent value="chart" className="mt-4">
             <p className="text-sm font-medium mb-3">
-              Top 10 Districts — Predicted Cases Next Week
+              {isHistorical
+                ? 'Top 10 Districts — Reported Cases This Week'
+                : 'Top 10 Districts — Predicted Cases Next Week'}
             </p>
             {top10.length > 0 ? (
               <ResponsiveContainer width="100%" height={320}>
@@ -211,7 +227,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                   <Tooltip
                     formatter={(value: number | undefined) => [
                       (value ?? 0).toLocaleString(),
-                      "Predicted Cases",
+                      isHistorical ? "Reported Cases" : "Predicted Cases",
                     ]}
                   />
                   <Bar dataKey="forecast" radius={[0, 4, 4, 0]}>
@@ -252,21 +268,25 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                       District
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
-                      Current
+                      {isHistorical ? 'Reported' : 'Current'}
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
-                      Predicted
+                      {isHistorical ? 'vs Prior Wk' : 'Predicted'}
                     </th>
                     <th className="text-right px-3 py-2 font-semibold">
                       4-Wk Avg
                     </th>
                     <th className="px-3 py-2 font-semibold">Trend</th>
+                    <th className="px-3 py-2 font-semibold">Source</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[...forecast]
                     .sort((a, b) => b.forecast - a.forecast)
-                    .map((row, i) => (
+                    .map((row, i) => {
+                      const conf = row.confidence ?? (isHistorical ? 'actual' : 'medium');
+                      const isActual = conf === 'actual';
+                      return (
                       <tr
                         key={i}
                         className="border-t hover:bg-muted/30 transition-colors"
@@ -296,58 +316,150 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                             </span>
                           </span>
                         </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
+                              isActual
+                                ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+                            }`}
+                          >
+                            {isActual ? 'Actual' : conf}
+                          </span>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           </TabsContent>
 
           {/* Alerts tab */}
-          <TabsContent value="alerts" className="mt-4 space-y-3">
-            {alerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No active outbreak alerts for this period.
-              </p>
-            ) : (
-              alerts.map((alert, i) => (
-                <div
-                  key={i}
-                  className={`rounded-lg border p-4 ${SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.moderate}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-sm">{alert.district}</p>
-                      {alert.current_cases !== undefined && (
-                        <p className="text-xs mt-0.5 opacity-80">
-                          {alert.current_cases.toLocaleString()} current cases
-                        </p>
-                      )}
+          <TabsContent value="alerts" className="mt-4 space-y-4">
+            {/* Outbreak alerts */}
+            <div className="space-y-3">
+              {alerts.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No active outbreak alerts for this period.
+                </p>
+              ) : (
+                alerts.map((alert, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg border p-4 ${SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.moderate}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-sm">{alert.district}</p>
+                        {alert.current_cases !== undefined && (
+                          <p className="text-xs mt-0.5 opacity-80">
+                            {alert.current_cases.toLocaleString()} current cases
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-xs uppercase">
+                        {alert.severity}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-xs uppercase">
-                      {alert.severity}
-                    </Badge>
+                    {alert.message && (
+                      <p className="text-xs mt-2 opacity-90">{alert.message}</p>
+                    )}
+                    {alert.recommendation && (
+                      <p className="text-xs mt-1 italic opacity-75">
+                        {alert.recommendation}
+                      </p>
+                    )}
                   </div>
-                  {alert.message && (
-                    <p className="text-xs mt-2 opacity-90">{alert.message}</p>
-                  )}
-                  {alert.recommendation && (
-                    <p className="text-xs mt-1 italic opacity-75">
-                      {alert.recommendation}
-                    </p>
-                  )}
+                ))
+              )}
+            </div>
+
+            {/* Hotspots */}
+            {hotspots.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  Geographic Hotspots
+                  <span className="ml-2 rounded-full bg-amber-500 text-white text-[10px] px-1.5 py-0.5 leading-none">
+                    {hotspots.length}
+                  </span>
+                </p>
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/60">
+                        <th className="text-left px-3 py-2 font-semibold">District</th>
+                        <th className="text-right px-3 py-2 font-semibold">Cases</th>
+                        <th className="text-right px-3 py-2 font-semibold">Growth</th>
+                        <th className="px-3 py-2 font-semibold">Severity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hotspots.map((h, i) => (
+                        <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
+                          <td className="px-3 py-2 font-medium">{h.district}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{h.current_cases.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {h.growth_rate > 0 ? '+' : ''}{h.growth_rate.toFixed(0)}%
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
+                              h.severity === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                              : h.severity === 'high' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                              : h.severity === 'moderate' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+                              : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {h.severity}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))
+              </div>
             )}
           </TabsContent>
 
           {/* National summary tab */}
-          <TabsContent value="summary" className="mt-4">
+          <TabsContent value="summary" className="mt-4 space-y-4">
+            {/* Week-over-week stats from reportData.summary */}
+            {report.reportData?.summary && (() => {
+              const s = report.reportData.summary;
+              const changePercent = Number(s.change_percent ?? 0);
+              const previousTotal = Number(s.previous_total ?? 0);
+              const avgTemp = s.avg_temperature != null ? Number(s.avg_temperature) : null;
+              const districtCount = Number(s.district_count ?? 0);
+              return (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className={`text-lg font-bold ${changePercent > 0 ? 'text-red-500' : changePercent < 0 ? 'text-green-600' : ''}`}>
+                      {changePercent > 0 ? '+' : ''}{changePercent.toFixed(1)}%
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Week-on-Week Change</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">{previousTotal.toLocaleString()}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Previous Week Total</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">{districtCount}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Districts Reporting</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-lg font-bold">
+                      {avgTemp != null ? `${avgTemp.toFixed(1)}°C` : '—'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Avg Temperature</p>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="rounded-lg bg-muted/40 border p-4 text-sm leading-relaxed text-foreground/90">
               {nationalText}
             </div>
             {report.approvedBy && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Approved by{" "}
                 <span className="font-medium">{report.approvedBy.name}</span>
                 {report.approvedAt &&

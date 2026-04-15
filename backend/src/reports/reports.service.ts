@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere } from 'typeorm';
 import { WeeklyReport, ReportStatus } from './entities/weekly-report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -42,8 +42,18 @@ export class ReportsService {
     this.bucket = this.configService.getOrThrow<string>('AWS_S3_BUCKET');
   }
 
-  async listReports(): Promise<WeeklyReport[]> {
+  async listReports(filters?: {
+    status?: string;
+    type?: string;
+    year?: number;
+  }): Promise<WeeklyReport[]> {
+    const where: FindOptionsWhere<WeeklyReport> = {};
+    if (filters?.status) where.status = filters.status as any;
+    if (filters?.type) where.reportType = filters.type as any;
+    if (filters?.year) where.year = filters.year;
+
     return this.repo.find({
+      where: Object.keys(where).length ? where : undefined,
       order: { year: 'DESC', weekNumber: 'DESC' },
       relations: ['approvedBy', 'createdBy'],
     });
@@ -77,29 +87,90 @@ export class ReportsService {
       dto.year,
       dto.weekNumber,
     );
-    const title = `Weekly Dengue Surveillance Report — Week ${dto.weekNumber}, ${dto.year}`;
 
-    // Collect analytics data in parallel
+    // Determine if this is a historical (past) or predicted (current/future) report
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentWeek = this.getCurrentISOWeek(now);
+    const isHistorical =
+      dto.year < currentYear ||
+      (dto.year === currentYear && dto.weekNumber < currentWeek);
+    const reportType: 'historical' | 'predicted' = isHistorical
+      ? 'historical'
+      : 'predicted';
+
+    const title = isHistorical
+      ? `Weekly Dengue Historical Report — Week ${dto.weekNumber}, ${dto.year}`
+      : `Weekly Dengue Surveillance & Prediction Report — Week ${dto.weekNumber}, ${dto.year}`;
+
+    // Collect analytics data from the database for the requested week.
+    // Both historical and predicted reports read directly from dengue_cases
+    // for the specified (year, weekNumber) — the DB already holds actual
+    // historical records for past weeks AND pre-computed predictions for
+    // future weeks. No on-the-fly formula computation is needed.
     this.logger.log(
-      `Generating report for Week ${dto.weekNumber} ${dto.year} — collecting analytics data`,
+      `Generating ${reportType} report for Week ${dto.weekNumber} ${dto.year}`,
     );
-    const [forecast, alerts, hotspots, summary, nationalSummary] =
+    const weekLabel = `${dto.year}-W${String(dto.weekNumber).padStart(2, '0')}`;
+
+    // For predicted reports, also fetch the previous week's actual totals so
+    // we can show "Current Week (Actual)" alongside "Predicted (Next Week)".
+    let prevYear = dto.year;
+    let prevWeek = dto.weekNumber - 1;
+    if (prevWeek === 0) {
+      prevYear -= 1;
+      prevWeek = this.getLastISOWeek(prevYear); // correctly handles 52- and 53-week years
+    }
+
+    const [forecast, alerts, hotspots, summary, nationalSummary, prevWeekData] =
       await Promise.all([
-        this.analyticsService.getWeeklyForecast(),
-        this.analyticsService.getOutbreakAlerts(),
-        this.analyticsService.getHotspots(),
-        this.analyticsService.getDashboardSummary(),
-        this.analyticsService.getNationalSummary(undefined, user),
+        // Always read stored cases for the target week — no formula re-computation
+        this.analyticsService.getActualWeekData(dto.year, dto.weekNumber),
+        this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
+        this.analyticsService.getHotspots(dto.year, dto.weekNumber),
+        this.analyticsService.getDashboardSummary(dto.year, dto.weekNumber),
+        this.analyticsService.getNationalSummary(weekLabel, user),
+        // Always fetch previous week data — used for per-district current_cases
+        // enrichment (both historical and predicted) and totalCurrentCases stat
+        this.analyticsService.getActualWeekData(prevYear, prevWeek),
       ]);
 
-    const forecastArr = Array.isArray(forecast) ? forecast : [];
+    // Raw rows from the target week: forecast = actual_cases (same as current_cases)
+    const rawForecastArr = Array.isArray(forecast) ? forecast : [];
     const alertsArr = Array.isArray(alerts) ? alerts : [];
 
-    const totalPredictedCases = forecastArr.reduce(
+    // Compute totals from raw values before per-district enrichment
+    const totalPredictedCases = rawForecastArr.reduce(
       (sum: number, d: any) => sum + (Number(d.forecast) || 0),
       0,
     );
+    const prevWeekArr = Array.isArray(prevWeekData) ? prevWeekData : [];
+    // For predicted reports: sum the previous week's actual cases so the UI
+    // can display "Current Week (Actual)" vs "Predicted (Next Week)"
+    const totalCurrentCases = isHistorical
+      ? undefined
+      : prevWeekArr.reduce(
+          (sum: number, d: any) => sum + (Number(d.current_cases) || 0),
+          0,
+        );
+
+    // Enrich per-district rows so the Districts table shows two distinct values:
+    //   Predicted report  — "Current" col = prior-week actual; "Predicted" col = this-week stored prediction
+    //   Historical report — "Reported" col = this-week actual; "vs Prior Wk" col = prior-week actual
+    const prevByDistrict = new Map<string, number>(
+      prevWeekArr.map((r: any) => [r.district as string, Number(r.current_cases) || 0]),
+    );
+    const forecastArr = rawForecastArr.map((row: any) => ({
+      ...row,
+      ...(isHistorical
+        // Historical: keep current_cases (this week's reported); replace forecast with prior week
+        ? { forecast: prevByDistrict.get(row.district) ?? row.forecast }
+        // Predicted: replace current_cases with prior-week actual; keep forecast (this week's prediction)
+        : { current_cases: prevByDistrict.get(row.district) ?? row.current_cases }),
+    }));
     const totalDistricts = forecastArr.length;
+    // Rising trend: cases > prior 4-week avg × 1.3 — matches the anchored
+    // high_risk CTE in getDashboardSummary so both numbers agree in reports.
     const highRiskDistricts = forecastArr.filter(
       (d: any) => d.trend === 'Rising',
     ).length;
@@ -112,10 +183,14 @@ export class ReportsService {
       endDate,
       title,
       status: ReportStatus.PENDING,
+      reportType,
       totalPredictedCases,
+      totalCurrentCases: totalCurrentCases ?? null,
       totalDistricts,
       highRiskDistricts,
       reportData: {
+        reportType,
+        totalCurrentCases,
         forecast: forecastArr,
         alerts: alertsArr,
         hotspots,
@@ -140,7 +215,9 @@ export class ReportsService {
       weekNumber: dto.weekNumber,
       startDate,
       endDate,
+      reportType,
       totalPredictedCases,
+      totalCurrentCases,
       totalDistricts,
       highRiskDistricts,
       generatedAt: saved.generatedAt.toISOString(),
@@ -201,6 +278,24 @@ export class ReportsService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
+
+  /** Returns the ISO 8601 week number for the given date. */
+  private getCurrentISOWeek(date: Date): number {
+    const jan4 = new Date(date.getFullYear(), 0, 4);
+    const dayOfWeek = jan4.getDay() || 7;
+    const weekOneMonday = new Date(jan4);
+    weekOneMonday.setDate(jan4.getDate() - dayOfWeek + 1);
+    const diff = date.getTime() - weekOneMonday.getTime();
+    return Math.max(1, Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1);
+  }
+
+  /**
+   * Returns the last ISO 8601 week number of the given year (52 or 53).
+   * Dec 28 is always in the last ISO week of any year.
+   */
+  private getLastISOWeek(year: number): number {
+    return this.getCurrentISOWeek(new Date(year, 11, 28));
+  }
 
   private isoWeekDateRange(
     year: number,

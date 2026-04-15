@@ -24,7 +24,11 @@ export interface ReportPdfData {
   weekNumber: number;
   startDate: string;
   endDate: string;
+  reportType: 'historical' | 'predicted';
+  /** For predicted: SUM(forecast per district). For historical: SUM(actual_cases). */
   totalPredictedCases: number;
+  /** Predicted reports only: SUM(current_cases) = actual recorded cases this week (matches analytics page). */
+  totalCurrentCases?: number;
   totalDistricts: number;
   highRiskDistricts: number;
   generatedAt: string;
@@ -68,13 +72,14 @@ export class ReportPdfGenerator {
   }
 
   private buildHtml(data: ReportPdfData): string {
+    const isHistorical = data.reportType === 'historical';
     const top10 = [...data.forecast]
       .sort((a, b) => b.forecast - a.forecast)
       .slice(0, 10);
     const maxForecast = Math.max(...top10.map((d) => d.forecast), 1);
 
-    const barChart = this.buildBarChart(top10, maxForecast);
-    const forecastTable = this.buildForecastTable(data.forecast);
+    const barChart = this.buildBarChart(top10, maxForecast, isHistorical);
+    const forecastTable = this.buildForecastTable(data.forecast, isHistorical);
     const alertCards = this.buildAlertCards(data.alerts);
 
     const nationalText =
@@ -280,16 +285,27 @@ export class ReportPdfGenerator {
       ${data.approvedBy ? `<div><strong>Approved by:</strong> ${this.escapeHtml(data.approvedBy)}</div>` : ''}
     </div>
   </div>
-  <p class="report-title">Weekly Dengue Surveillance &amp; Prediction Report — Week ${data.weekNumber}, ${data.year}</p>
+  <p class="report-title">Weekly Dengue ${isHistorical ? 'Historical' : 'Surveillance &amp; Prediction'} Report — Week ${data.weekNumber}, ${data.year}</p>
 </div>
 
 <!-- EXECUTIVE SUMMARY -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Total Predicted Cases</div>
+    <div class="stat-label">${isHistorical ? 'Total Reported Cases' : 'Predicted Cases (Next Week)'}</div>
     <div class="stat-value">${data.totalPredictedCases.toLocaleString()}</div>
-    <div class="stat-sub">Next-week forecast</div>
+    <div class="stat-sub">${isHistorical ? 'Actual recorded' : 'Model forecast'}</div>
   </div>
+  ${!isHistorical && data.totalCurrentCases !== undefined ? `
+  <div class="stat-card green">
+    <div class="stat-label">Current Week (Actual)</div>
+    <div class="stat-value">${data.totalCurrentCases.toLocaleString()}</div>
+    <div class="stat-sub">Recorded this week</div>
+  </div>` : `
+  <div class="stat-card green">
+    <div class="stat-label">Districts Reporting</div>
+    <div class="stat-value">${data.totalDistricts}</div>
+    <div class="stat-sub">Of 25 districts</div>
+  </div>`}
   <div class="stat-card red">
     <div class="stat-label">High-Risk Districts</div>
     <div class="stat-value">${data.highRiskDistricts}</div>
@@ -300,22 +316,17 @@ export class ReportPdfGenerator {
     <div class="stat-value">${data.alerts.length}</div>
     <div class="stat-sub">Requiring action</div>
   </div>
-  <div class="stat-card green">
-    <div class="stat-label">Districts Reporting</div>
-    <div class="stat-value">${data.totalDistricts}</div>
-    <div class="stat-sub">Of 25 districts</div>
-  </div>
 </div>
 
 <!-- BAR CHART -->
 <div class="chart-wrap">
-  <div class="section-title" style="margin-bottom:8px;">Top 10 Districts by Predicted Cases</div>
+  <div class="section-title" style="margin-bottom:8px;">Top 10 Districts by ${isHistorical ? 'Reported' : 'Predicted'} Cases</div>
   ${barChart}
 </div>
 
 <!-- DISTRICT FORECAST TABLE -->
 <div class="section">
-  <div class="section-title">District-wise Forecast Breakdown</div>
+  <div class="section-title">${isHistorical ? 'District-wise Historical Case Breakdown' : 'District-wise Forecast Breakdown'}</div>
   ${forecastTable}
 </div>
 
@@ -348,8 +359,9 @@ export class ReportPdfGenerator {
 </html>`;
   }
 
-  private buildBarChart(top10: ForecastRow[], maxForecast: number): string {
-    if (top10.length === 0) return '<p class="no-data">No forecast data available.</p>';
+  private buildBarChart(top10: ForecastRow[], maxForecast: number, isHistorical: boolean): string {
+    const noDataLabel = isHistorical ? 'No historical data available.' : 'No forecast data available.';
+    if (top10.length === 0) return `<p class="no-data">${noDataLabel}</p>`;
 
     return top10
       .map((row) => {
@@ -370,7 +382,7 @@ export class ReportPdfGenerator {
       .join('');
   }
 
-  private buildForecastTable(forecast: ForecastRow[]): string {
+  private buildForecastTable(forecast: ForecastRow[], isHistorical: boolean): string {
     if (forecast.length === 0) return '<p class="no-data">No forecast data available.</p>';
 
     const sorted = [...forecast].sort((a, b) => b.forecast - a.forecast);
@@ -411,8 +423,8 @@ export class ReportPdfGenerator {
       <thead>
         <tr>
           <th>District</th>
-          <th style="text-align:right;">Current Cases</th>
-          <th style="text-align:right;">Predicted</th>
+          <th style="text-align:right;">${isHistorical ? 'Reported Cases' : 'Current Cases'}</th>
+          <th style="text-align:right;">${isHistorical ? 'vs Prior Week' : 'Predicted (Next Wk)'}</th>
           <th style="text-align:right;">4-Wk Avg</th>
           <th>Trend</th>
           <th>Risk Level</th>

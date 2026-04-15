@@ -15,13 +15,17 @@ export interface WeeklyReport {
   endDate: string;
   title: string;
   status: ReportStatus;
+  reportType: 'historical' | 'predicted';
   totalPredictedCases: number;
+  totalCurrentCases: number | null;
   totalDistricts: number;
   highRiskDistricts: number;
   reportData: {
+    reportType: 'historical' | 'predicted';
+    totalCurrentCases?: number;
     forecast: ForecastRow[];
     alerts: OutbreakAlert[];
-    hotspots: any[];
+    hotspots: HotspotRow[];
     summary: any;
     nationalSummary: any;
   };
@@ -32,6 +36,16 @@ export interface WeeklyReport {
   createdBy: { id: string; name: string } | null;
   // returned only from generate endpoint
   downloadUrl?: string;
+}
+
+export interface HotspotRow {
+  district: string;
+  current_cases: number;
+  previous_cases: number;
+  growth_rate: number;
+  latitude: number;
+  longitude: number;
+  severity: 'critical' | 'high' | 'moderate' | 'low';
 }
 
 export interface ForecastRow {
@@ -51,8 +65,12 @@ export interface OutbreakAlert {
   recommendation?: string;
 }
 
-export async function listReports(): Promise<WeeklyReport[]> {
-  const res = await axios.get(`${API_BASE}/reports`);
+export async function listReports(filters?: {
+  status?: string;
+  type?: string;
+  year?: number;
+}): Promise<WeeklyReport[]> {
+  const res = await axios.get(`${API_BASE}/reports`, { params: filters });
   return res.data;
 }
 

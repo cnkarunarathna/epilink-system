@@ -5,17 +5,37 @@
 import apiClient from "./client";
 import { LoginRequest, LoginResponse, User } from "../types/user.types";
 
+type RawLoginResponse = LoginResponse & {
+  access_token?: string;
+  token?: string;
+};
+
 /**
  * Login user
  */
 export const login = async (
   credentials: LoginRequest,
 ): Promise<LoginResponse> => {
-  const response = await apiClient.post<LoginResponse>(
+  const response = await apiClient.post<RawLoginResponse>(
     "/auth/login",
     credentials,
   );
-  return response.data;
+
+  const token =
+    response.data.accessToken ??
+    response.data.access_token ??
+    response.data.token;
+
+  if (!token) {
+    throw new Error(
+      "Login succeeded but no access token was returned by backend",
+    );
+  }
+
+  return {
+    ...response.data,
+    accessToken: token,
+  };
 };
 
 /**
