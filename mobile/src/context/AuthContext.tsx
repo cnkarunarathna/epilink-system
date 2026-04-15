@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (credentials: LoginRequest, rememberMe = false) => {
     try {
       const response = await authApi.login(credentials);
+      if (!response.accessToken) {
+        throw new Error("Authentication token missing in login response");
+      }
 
       // Store token and user data
       await storeAuthToken(response.accessToken);

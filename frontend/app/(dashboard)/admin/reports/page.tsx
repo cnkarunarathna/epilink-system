@@ -82,7 +82,7 @@ export default function ReportsPage() {
   }, [load]);
 
   const filtered = reports.filter((r) =>
-    `${r.title} week ${r.weekNumber} ${r.year}`
+    `${r.title} week ${r.weekNumber} ${r.year} ${r.status} ${r.createdBy?.name ?? ''} ${r.reportType}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase()),
   );
@@ -302,10 +302,12 @@ export default function ReportsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Period</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Date Range</TableHead>
-                  <TableHead className="text-right">Predicted Cases</TableHead>
+                  <TableHead className="text-right">Cases</TableHead>
                   <TableHead className="text-right">High-Risk</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Approved By</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -320,6 +322,12 @@ export default function ReportsPage() {
                           Week {report.weekNumber}, {report.year}
                         </span>
                       </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge variant={report.reportType === 'historical' ? "outline" : "secondary"} className="text-xs">
+                        {report.reportType === 'historical' ? "Historical" : "Predicted"}
+                      </Badge>
                     </TableCell>
 
                     <TableCell className="text-sm text-muted-foreground">
@@ -355,6 +363,12 @@ export default function ReportsPage() {
                         )}
                         {report.status}
                       </Badge>
+                    </TableCell>
+
+                    <TableCell className="text-sm">
+                      {report.createdBy?.name ?? (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
 
                     <TableCell className="text-sm">
