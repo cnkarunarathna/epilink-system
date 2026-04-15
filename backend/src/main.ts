@@ -1,9 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
 import { AppModule } from './app.module';
 import { SeedService } from './seed/seed.service';
+import { EventsGateway } from './events/events.gateway';
 
 dotenv.config();
 
@@ -47,6 +50,28 @@ async function bootstrap() {
         : true, // Allow all origins in development for mobile testing
     credentials: true,
   });
+
+  // Wire Redis adapter for Socket.io cross-instance pub/sub.
+  // Uses the same Redis credentials already in the project.
+  // Transparent to all existing socket code — just enables horizontal scaling.
+  const redisOptions = {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+    ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }),
+    ...(process.env.REDIS_USERNAME && { username: process.env.REDIS_USERNAME }),
+  };
+  const pubClient = new Redis(redisOptions);
+  const subClient = pubClient.duplicate();
+
+  pubClient.on('error', (err) =>
+    console.error('[Redis pub] connection error:', err.message),
+  );
+  subClient.on('error', (err) =>
+    console.error('[Redis sub] connection error:', err.message),
+  );
+
+  const eventsGateway = app.get(EventsGateway);
+  eventsGateway.server.adapter(createAdapter(pubClient, subClient));
 
   // Run database seed
   const seedService = app.get(SeedService);

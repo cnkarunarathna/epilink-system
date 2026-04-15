@@ -4,11 +4,18 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { Task } from '../tasks/entities/task.entity';
+import { MessageResponseDto } from '../tasks/dto/message-response.dto';
 
 export interface AuthenticatedSocket extends Socket {
   user?: {
@@ -37,6 +44,8 @@ export class EventsGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    @InjectRepository(Task)
+    private readonly taskRepository: Repository<Task>,
   ) {}
 
   private extractCookieToken(cookieHeader?: string): string | null {
@@ -266,5 +275,86 @@ export class EventsGateway
 
   getConnectedClients(): number {
     return this.server?.sockets?.sockets?.size || 0;
+  }
+
+  // ==================== Chat Socket Handlers ====================
+
+  @SubscribeMessage('chat:join')
+  async handleChatJoin(
+    @MessageBody() data: { taskId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    if (!client.user || !data?.taskId) return;
+
+    const task = await this.taskRepository.findOne({
+      where: { id: data.taskId },
+      select: ['id', 'createdById', 'assignedPhiId'],
+    });
+
+    if (!task) return;
+
+    const isParticipant =
+      client.user.role === 'admin' ||
+      client.user.id === task.createdById ||
+      client.user.id === task.assignedPhiId;
+
+    if (!isParticipant) {
+      this.logger.warn(
+        `User ${client.user.id} attempted to join task room ${data.taskId} without being a participant`,
+      );
+      return;
+    }
+
+    await client.join(`task:${data.taskId}`);
+    this.logger.debug(
+      `User ${client.user.id} joined task room task:${data.taskId}`,
+    );
+  }
+
+  @SubscribeMessage('chat:leave')
+  async handleChatLeave(
+    @MessageBody() data: { taskId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    if (!data?.taskId) return;
+    await client.leave(`task:${data.taskId}`);
+    this.logger.debug(
+      `User ${client.user?.id} left task room task:${data.taskId}`,
+    );
+  }
+
+  @SubscribeMessage('chat:typing')
+  handleChatTyping(
+    @MessageBody() data: { taskId: string; isTyping: boolean },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    if (!client.user || !data?.taskId) return;
+    client.to(`task:${data.taskId}`).emit('chat:typing', {
+      taskId: data.taskId,
+      userId: client.user.id,
+      userName: (client.user as any).name ?? client.user.email,
+      isTyping: data.isTyping,
+    });
+  }
+
+  // ==================== Chat Emit Helpers ====================
+
+  emitChatMessage(taskId: string, message: MessageResponseDto) {
+    this.server.to(`task:${taskId}`).emit('chat:message', message);
+    this.logger.debug(`Emitted chat:message to task:${taskId}`);
+  }
+
+  emitChatRead(
+    taskId: string,
+    userId: string,
+    messageIds: string[],
+  ) {
+    this.server.to(`task:${taskId}`).emit('chat:read', {
+      taskId,
+      userId,
+      messageIds,
+      readAt: new Date(),
+    });
+    this.logger.debug(`Emitted chat:read to task:${taskId} for user ${userId}`);
   }
 }

@@ -4,6 +4,9 @@ import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
 import { GeocodingService } from './geocoding.service';
 import { RouteService } from './route.service';
+import { TaskMessagesController } from './task-messages.controller';
+import { TaskMessagesService } from './task-messages.service';
+import { TaskParticipantGuard } from './guards/task-participant.guard';
 import { Task } from './entities/task.entity';
 import { Evidence } from './entities/evidence.entity';
 import { TaskMessage } from './entities/task-message.entity';
@@ -16,8 +19,14 @@ import { StorageModule } from '../storage/storage.module';
     TypeOrmModule.forFeature([Task, Evidence, TaskMessage, MessageRead, User]),
     StorageModule,
   ],
-  controllers: [TasksController],
-  providers: [TasksService, GeocodingService, RouteService],
+  controllers: [TasksController, TaskMessagesController],
+  providers: [
+    TasksService,
+    GeocodingService,
+    RouteService,
+    TaskMessagesService,
+    TaskParticipantGuard,
+  ],
   exports: [TasksService, GeocodingService, RouteService],
 })
 export class TasksModule {}
