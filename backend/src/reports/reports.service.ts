@@ -130,29 +130,44 @@ export class ReportsService {
         this.analyticsService.getHotspots(dto.year, dto.weekNumber),
         this.analyticsService.getDashboardSummary(dto.year, dto.weekNumber),
         this.analyticsService.getNationalSummary(weekLabel, user),
-        // Previous week data (used for totalCurrentCases in predicted reports)
-        isHistorical
-          ? Promise.resolve([])
-          : this.analyticsService.getActualWeekData(prevYear, prevWeek),
+        // Always fetch previous week data — used for per-district current_cases
+        // enrichment (both historical and predicted) and totalCurrentCases stat
+        this.analyticsService.getActualWeekData(prevYear, prevWeek),
       ]);
 
-    const forecastArr = Array.isArray(forecast) ? forecast : [];
+    // Raw rows from the target week: forecast = actual_cases (same as current_cases)
+    const rawForecastArr = Array.isArray(forecast) ? forecast : [];
     const alertsArr = Array.isArray(alerts) ? alerts : [];
 
-    // Sum stored cases for the target week
-    const totalPredictedCases = forecastArr.reduce(
+    // Compute totals from raw values before per-district enrichment
+    const totalPredictedCases = rawForecastArr.reduce(
       (sum: number, d: any) => sum + (Number(d.forecast) || 0),
       0,
     );
+    const prevWeekArr = Array.isArray(prevWeekData) ? prevWeekData : [];
     // For predicted reports: sum the previous week's actual cases so the UI
     // can display "Current Week (Actual)" vs "Predicted (Next Week)"
-    const prevWeekArr = Array.isArray(prevWeekData) ? prevWeekData : [];
     const totalCurrentCases = isHistorical
       ? undefined
       : prevWeekArr.reduce(
           (sum: number, d: any) => sum + (Number(d.current_cases) || 0),
           0,
         );
+
+    // Enrich per-district rows so the Districts table shows two distinct values:
+    //   Predicted report  — "Current" col = prior-week actual; "Predicted" col = this-week stored prediction
+    //   Historical report — "Reported" col = this-week actual; "vs Prior Wk" col = prior-week actual
+    const prevByDistrict = new Map<string, number>(
+      prevWeekArr.map((r: any) => [r.district as string, Number(r.current_cases) || 0]),
+    );
+    const forecastArr = rawForecastArr.map((row: any) => ({
+      ...row,
+      ...(isHistorical
+        // Historical: keep current_cases (this week's reported); replace forecast with prior week
+        ? { forecast: prevByDistrict.get(row.district) ?? row.forecast }
+        // Predicted: replace current_cases with prior-week actual; keep forecast (this week's prediction)
+        : { current_cases: prevByDistrict.get(row.district) ?? row.current_cases }),
+    }));
     const totalDistricts = forecastArr.length;
     // Rising trend: cases > prior 4-week avg × 1.3 — matches the anchored
     // high_risk CTE in getDashboardSummary so both numbers agree in reports.
