@@ -13,9 +13,12 @@ import {
   TouchableOpacity,
   Animated,
   Easing,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useNavigation } from "@react-navigation/native";
@@ -48,11 +51,8 @@ import {
 
 const STALE_TIME_MS = 30_000; // 30-second stale threshold — prevents re-fetch on tab focus
 
-// Stats card width: two cards + one gap fit exactly within the horizontal padding
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = Math.floor(
-  (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm) / 2,
-);
+const getCardWidth = (screenWidth: number) =>
+  Math.min(Math.floor((screenWidth - spacing.lg * 2 - spacing.sm) / 2), 220);
 
 // ─── ActionCard — hoisted to module scope so React never re-creates the type ──
 // Defining this inside HomeScreen would cause every HomeScreen render to create
@@ -65,87 +65,129 @@ interface ActionCardProps {
   onPress: () => void;
 }
 
-const ActionCard = React.memo<ActionCardProps>(({ icon, label, color, onPress }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+const ActionCard = React.memo<ActionCardProps>(
+  ({ icon, label, color, onPress }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.93,
-      ...animation.spring.snappy,
-      useNativeDriver: true,
-    }).start();
-  };
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.93,
+        ...animation.spring.snappy,
+        useNativeDriver: true,
+      }).start();
+    };
 
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      ...animation.spring.bouncy,
-      useNativeDriver: true,
-    }).start();
-  };
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        ...animation.spring.bouncy,
+        useNativeDriver: true,
+      }).start();
+    };
 
-  return (
-    <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
-      <TouchableOpacity
-        style={[styles.actionCard, shadows.md]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPress();
-        }}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={1}
-      >
-        <LinearGradient
-          colors={[color + "15", color + "08"]}
-          style={styles.actionIcon}
+    return (
+      <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
+        <TouchableOpacity
+          style={[styles.actionCard, shadows.md]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPress();
+          }}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={1}
         >
-          <MaterialCommunityIcons
-            name={icon as any}
-            size={24}
-            color={color}
-          />
-        </LinearGradient>
-        <Text style={styles.actionText}>{label}</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-});
+          <LinearGradient
+            colors={[color + "15", color + "08"]}
+            style={styles.actionIcon}
+          >
+            <MaterialCommunityIcons
+              name={icon as any}
+              size={24}
+              color={color}
+            />
+          </LinearGradient>
+          <Text style={styles.actionText}>{label}</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  },
+);
 
 // ─── HomeScreenSkeleton ───────────────────────────────────────────────────────
 // Shown on first load before any data arrives. Mirrors the HomeScreen layout:
 // gradient header block → 4 stat cards (2×2) → risk card → 3 action cards.
 
-const HomeScreenSkeleton: React.FC = () => (
+const HomeScreenSkeleton: React.FC<{ cardWidth: number }> = ({ cardWidth }) => (
   <ScrollView
     contentContainerStyle={skeletonStyles.container}
     scrollEnabled={false}
     showsVerticalScrollIndicator={false}
   >
     {/* Gradient header block */}
-    <ShimmerPlaceholder height={120} borderRadiusValue={0} style={skeletonStyles.headerBlock} />
+    <ShimmerPlaceholder
+      height={120}
+      borderRadiusValue={0}
+      style={skeletonStyles.headerBlock}
+    />
 
     {/* Stat cards — 2×2 grid */}
     <View style={skeletonStyles.sectionRow}>
-      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
-      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+      <ShimmerPlaceholder
+        width={cardWidth}
+        height={90}
+        borderRadiusValue={16}
+      />
+      <ShimmerPlaceholder
+        width={cardWidth}
+        height={90}
+        borderRadiusValue={16}
+      />
     </View>
     <View style={skeletonStyles.sectionRow}>
-      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
-      <ShimmerPlaceholder width={CARD_WIDTH} height={90} borderRadiusValue={16} />
+      <ShimmerPlaceholder
+        width={cardWidth}
+        height={90}
+        borderRadiusValue={16}
+      />
+      <ShimmerPlaceholder
+        width={cardWidth}
+        height={90}
+        borderRadiusValue={16}
+      />
     </View>
 
     {/* Total summary bar */}
-    <ShimmerPlaceholder height={60} borderRadiusValue={16} style={skeletonStyles.fullRow} />
+    <ShimmerPlaceholder
+      height={60}
+      borderRadiusValue={16}
+      style={skeletonStyles.fullRow}
+    />
 
     {/* Risk card */}
-    <ShimmerPlaceholder height={100} borderRadiusValue={16} style={skeletonStyles.fullRow} />
+    <ShimmerPlaceholder
+      height={100}
+      borderRadiusValue={16}
+      style={skeletonStyles.fullRow}
+    />
 
     {/* Action cards — 1 row of 3 */}
     <View style={skeletonStyles.sectionRow}>
-      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
-      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
-      <ShimmerPlaceholder style={skeletonStyles.actionCard} height={88} borderRadiusValue={16} />
+      <ShimmerPlaceholder
+        style={skeletonStyles.actionCard}
+        height={88}
+        borderRadiusValue={16}
+      />
+      <ShimmerPlaceholder
+        style={skeletonStyles.actionCard}
+        height={88}
+        borderRadiusValue={16}
+      />
+      <ShimmerPlaceholder
+        style={skeletonStyles.actionCard}
+        height={88}
+        borderRadiusValue={16}
+      />
     </View>
   </ScrollView>
 );
@@ -176,8 +218,10 @@ export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigation = useNavigation<MainTabNavigationProp>();
+  const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
+  const cardWidth = getCardWidth(screenWidth);
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [districtRisk, setDistrictRisk] = useState<DistrictPrediction | null>(
     null,
@@ -250,7 +294,8 @@ export const HomeScreen: React.FC = () => {
         // silently handle
       } finally {
         refresh ? setIsRefreshing(false) : setIsLoading(false);
-        if (refresh) showToast({ message: "Dashboard updated.", variant: "info" });
+        if (refresh)
+          showToast({ message: "Dashboard updated.", variant: "info" });
         // Content sections stagger in after data arrives; header animates separately on mount
         Animated.stagger(120, [
           Animated.timing(fadeAlert, {
@@ -368,7 +413,7 @@ export const HomeScreen: React.FC = () => {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <HomeScreenSkeleton />
+        <HomeScreenSkeleton cardWidth={cardWidth} />
       </SafeAreaView>
     );
   }
@@ -376,7 +421,10 @@ export const HomeScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollPaddingBottom }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: scrollPaddingBottom },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -474,7 +522,10 @@ export const HomeScreen: React.FC = () => {
                 {
                   borderColor: alertPulse.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.destructive + "20", colors.destructive + "AA"],
+                    outputRange: [
+                      colors.destructive + "20",
+                      colors.destructive + "AA",
+                    ],
                   }) as any,
                 },
               ]}
@@ -522,7 +573,10 @@ export const HomeScreen: React.FC = () => {
           </View>
           <View style={styles.statsGrid}>
             {statCards.map((card, i) => (
-              <View key={card.label} style={[styles.statCard, shadows.md]}>
+              <View
+                key={card.label}
+                style={[styles.statCard, shadows.md, { width: cardWidth }]}
+              >
                 <LinearGradient
                   colors={[card.color + "18", card.color + "08"]}
                   style={styles.statIconCircle}
@@ -764,15 +818,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     zIndex: 2,
+    flexWrap: "wrap",
   },
   headerLeft: {
     flex: 1,
+    minWidth: 0,
   },
   headerRight: {
     marginLeft: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    flexShrink: 0,
   },
   bellButton: {
     width: 36,
@@ -929,9 +986,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
+    justifyContent: "center",
   },
   statCard: {
-    width: CARD_WIDTH,
     backgroundColor: colors.card,
     borderRadius: borderRadius.xl,
     padding: spacing.md,
@@ -1067,9 +1124,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
+    flexWrap: "wrap",
   },
   actionCard: {
     flex: 1,
+    minWidth: 102,
     backgroundColor: colors.card,
     borderRadius: borderRadius.xl,
     padding: spacing.md,

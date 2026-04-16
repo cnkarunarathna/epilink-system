@@ -139,6 +139,7 @@ const styles = StyleSheet.create({
     borderColor: colors.input,
     borderRadius: borderRadius.md,
     overflow: "hidden",
+    minHeight: 48,
   },
   inputWrapperError: {
     borderColor: colors.error,
@@ -148,10 +149,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: spacing.md,
+    minHeight: 48,
+    paddingVertical: 0,
     paddingHorizontal: spacing.md,
     fontSize: typography.fontSize.base,
     color: colors.text,
+    textAlignVertical: "center",
   },
   inputWithLeftIcon: {
     paddingLeft: spacing.sm,

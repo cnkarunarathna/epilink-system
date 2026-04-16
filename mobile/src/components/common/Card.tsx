@@ -42,6 +42,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    minWidth: 0,
   },
   glass: {
     backgroundColor: colors.glass.card,

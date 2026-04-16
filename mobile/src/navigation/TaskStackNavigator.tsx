@@ -25,7 +25,7 @@ export const TaskStackNavigator: React.FC = () => {
       <Stack.Screen
         name="TaskList"
         component={TaskListScreen}
-        options={{ title: "My Tasks" }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="TaskDetail"
