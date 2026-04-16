@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
 import { SocketProvider } from "@/contexts/SocketContext";
+import { UnreadProvider } from "@/contexts/UnreadContext";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionStatus } from "@/components/ui/connection-status";
 import {
@@ -36,6 +37,10 @@ import {
   ChevronRight as BreadcrumbChevron,
   Shield,
 } from "lucide-react";
+import { useUnread } from "@/contexts/UnreadContext";
+import { useRouter as useAppRouter } from "next/navigation";
+import { useSocketEvent } from "@/hooks/useSocket";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -487,6 +492,68 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   );
 }
 
+// ─── Notification Bell ────────────────────────────────────────────────────────
+
+function NotificationBell({ role }: { role: string }) {
+  const { totalUnread, counts } = useUnread();
+  const router = useAppRouter();
+
+  const handleClick = () => {
+    // Navigate to the task with the highest unread count, or fall back to the tasks list
+    const tasksPath = `/${role}/tasks`;
+    if (totalUnread > 0) {
+      const topTaskId = Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0];
+      if (topTaskId) {
+        router.push(`${tasksPath}/${topTaskId}`);
+        return;
+      }
+    }
+    router.push(tasksPath);
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="relative"
+      aria-label={totalUnread > 0 ? `${totalUnread} unread messages` : "Notifications"}
+      onClick={handleClick}
+    >
+      <Bell className="h-5 w-5" />
+      {totalUnread > 0 ? (
+        <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+          {totalUnread > 99 ? "99+" : totalUnread}
+        </span>
+      ) : (
+        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
+      )}
+    </Button>
+  );
+}
+
+// ─── Broadcast listener (6.5) ─────────────────────────────────────────────────
+
+interface BroadcastEvent {
+  senderName: string;
+  districtName: string;
+  content: string;
+  sentAt: string;
+}
+
+function BroadcastListener() {
+  useSocketEvent<BroadcastEvent>(
+    "chat:broadcast",
+    (data) => {
+      toast.info(`📢 ${data.senderName}: ${data.content}`, {
+        duration: 8000,
+        description: `District broadcast — ${data.districtName}`,
+      });
+    },
+    [],
+  );
+  return null;
+}
+
 // ─── Root layout ──────────────────────────────────────────────────────────────
 
 export default function DashboardLayout({
@@ -540,6 +607,8 @@ export default function DashboardLayout({
   return (
     <ProtectedRoute>
       <SocketProvider>
+        <UnreadProvider>
+        <BroadcastListener />
         <div className="min-h-screen bg-background">
           {/* Desktop sidebar */}
           <div className="hidden md:block">
@@ -581,10 +650,7 @@ export default function DashboardLayout({
                 <ThemeToggle />
 
                 {/* Notifications */}
-                <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
-                </Button>
+                <NotificationBell role={role} />
 
                 {/* User avatar */}
                 <Avatar className="h-8 w-8 cursor-pointer">
@@ -632,10 +698,7 @@ export default function DashboardLayout({
                 <ConnectionStatus />
                 <ThemeToggle />
 
-                <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
-                </Button>
+                <NotificationBell role={role} />
               </div>
             </header>
 
@@ -644,6 +707,7 @@ export default function DashboardLayout({
             </main>
           </div>
         </div>
+        </UnreadProvider>
       </SocketProvider>
     </ProtectedRoute>
   );

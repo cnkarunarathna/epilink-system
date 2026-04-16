@@ -24,6 +24,7 @@ import { User, UserRole } from '../entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { StorageService } from '../storage/storage.service';
 import { CacheHelperService } from '../cache/cache-helper.service';
+import { TaskMessagesService } from './task-messages.service';
 
 export interface TaskFilters {
   districtId?: number;
@@ -57,6 +58,7 @@ export class TasksService {
     private eventsGateway: EventsGateway,
     private storageService: StorageService,
     private cacheHelper: CacheHelperService,
+    private taskMessagesService: TaskMessagesService,
   ) {}
 
   private async invalidateTaskCaches(): Promise<void> {
@@ -259,11 +261,19 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    // 6.1 — System message audit trail
+    const systemContent = this.buildStatusSystemMessage(dto.status, dto.rejectionReason);
+    if (systemContent) {
+      this.taskMessagesService
+        .sendSystemMessage(id, systemContent, userId)
+        .catch(() => {});
+    }
+
     await this.invalidateTaskCaches();
     return taskWithRelations;
   }
 
-  async assignTask(id: string, dto: AssignTaskDto): Promise<Task> {
+  async assignTask(id: string, dto: AssignTaskDto, actorId?: string): Promise<Task> {
     const task = await this.findOne(id);
 
     // Verify PHI exists and is active
@@ -288,8 +298,37 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    // 6.1 — System message audit trail
+    if (actorId) {
+      this.taskMessagesService
+        .sendSystemMessage(id, `Task assigned to ${phi.name}`, actorId)
+        .catch(() => {});
+    }
+
     await this.invalidateTaskCaches();
     return taskWithRelations;
+  }
+
+  private buildStatusSystemMessage(
+    status: TaskStatus,
+    rejectionReason?: string,
+  ): string | null {
+    switch (status) {
+      case TaskStatus.IN_PROGRESS:
+        return 'PHI started working on the task';
+      case TaskStatus.SUBMITTED:
+        return 'PHI submitted evidence for review';
+      case TaskStatus.VERIFIED:
+        return 'Evidence approved — task verified';
+      case TaskStatus.COMPLETED:
+        return 'Task marked as completed';
+      case TaskStatus.REJECTED:
+        return rejectionReason
+          ? `Task rejected: ${rejectionReason}`
+          : 'Task rejected';
+      default:
+        return null;
+    }
   }
 
   async saveRouteOrder(

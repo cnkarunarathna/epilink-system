@@ -40,6 +40,10 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
+  /** FCM device token for mobile push notifications (nullable — set by mobile app on login) */
+  @Column({ name: 'fcm_token', type: 'varchar', length: 512, nullable: true })
+  fcmToken: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

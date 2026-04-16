@@ -13,6 +13,7 @@ import { StorageModule } from './storage/storage.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { ReportsModule } from './reports/reports.module';
 import { CacheHelperModule } from './cache/cache-helper.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import databaseConfig from './config/database.config';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
@@ -41,6 +42,7 @@ import * as redisStore from 'cache-manager-redis-store';
       inject: [ConfigService],
     }),
     CacheHelperModule,
+    NotificationsModule,
     DatabaseModule,
     SeedModule,
     AuthModule,
