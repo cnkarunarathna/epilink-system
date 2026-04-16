@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useCallback, useState } from "react";
-import { Send } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AttachmentPicker } from "./AttachmentPicker";
@@ -22,7 +22,11 @@ interface MessageInputProps {
   disabled?: boolean;
 }
 
-export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) {
+export function MessageInput({
+  onSend,
+  onTyping,
+  disabled,
+}: MessageInputProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<PendingAttachment | null>(null);
@@ -107,8 +111,27 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
   const canSend = (value.trim().length > 0 || attachment !== null) && !disabled;
 
   return (
-    <div className="border-t bg-background px-3 py-2">
-      <div className="flex items-end gap-2 rounded-xl border bg-muted/50 px-2 py-1.5 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50">
+    <div className="border-t bg-background/95 px-3 py-2 backdrop-blur">
+      <div className="mb-1 flex items-center justify-between px-1">
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+          <Sparkles className="h-3.5 w-3.5" />
+          Task channel
+        </span>
+        {nearLimit && (
+          <p
+            className={cn(
+              "text-[10px]",
+              charCount >= MAX_CHARS
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {charCount}/{MAX_CHARS}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-end gap-2 rounded-2xl border border-border/75 bg-muted/35 px-2 py-1.5 shadow-sm focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40">
         {/* Attachment picker */}
         <AttachmentPicker
           disabled={disabled || sending}
@@ -122,11 +145,13 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Chat is read-only for closed tasks." : "Type a message…"}
+          placeholder={
+            disabled ? "Chat is read-only for closed tasks." : "Type a message…"
+          }
           disabled={disabled}
           className={cn(
             "flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
-            "py-1 leading-7",
+            "py-1 leading-6",
           )}
         />
 
@@ -134,7 +159,7 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
         <Button
           type="button"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-8 w-8 shrink-0 rounded-full"
           disabled={!canSend || sending}
           onClick={handleSend}
         >
@@ -142,10 +167,9 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
         </Button>
       </div>
 
-      {/* Character counter */}
-      {nearLimit && (
-        <p className={cn("mt-0.5 text-right text-[10px]", charCount >= MAX_CHARS ? "text-destructive" : "text-muted-foreground")}>
-          {charCount}/{MAX_CHARS}
+      {!nearLimit && !disabled && (
+        <p className="mt-1 px-1 text-[10px] text-muted-foreground">
+          Press Enter to send, Shift+Enter for a new line.
         </p>
       )}
     </div>

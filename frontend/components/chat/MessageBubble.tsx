@@ -16,9 +16,10 @@ interface MessageBubbleProps {
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], {
+  return new Date(iso).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Colombo",
   });
 }
 
@@ -47,6 +48,12 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = useState(false);
 
+  const initials = message.sender.name
+    .split(" ")
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+
   // System messages — centred, no bubble
   if (message.isSystemMessage) {
     return (
@@ -59,7 +66,8 @@ export function MessageBubble({
   }
 
   const isPending = message.id.startsWith("opt_");
-  const readByOthers = !isPending && message.readBy.some((r) => r.userId !== currentUserId);
+  const readByOthers =
+    !isPending && message.readBy.some((r) => r.userId !== currentUserId);
   const groupedReactions = groupReactions(message.reactions ?? []);
 
   const handleReact = (emoji: string) => {
@@ -70,32 +78,51 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "group flex flex-col gap-0.5",
+        "group flex flex-col gap-1",
         isOwn ? "items-end" : "items-start",
         isPending && "opacity-60",
       )}
     >
-      {/* Sender name */}
-      {showSenderName && !isOwn && (
-        <span className="px-1 text-xs font-medium text-muted-foreground">
-          {message.sender.name}
-        </span>
-      )}
-
       {/* Bubble + reaction picker trigger */}
-      <div className={cn("flex items-end gap-1", isOwn ? "flex-row-reverse" : "flex-row")}>
+      <div
+        className={cn(
+          "flex items-end gap-2",
+          isOwn ? "flex-row-reverse" : "flex-row",
+        )}
+      >
+        {!isOwn && (
+          <div
+            className={cn(
+              "mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold",
+              "bg-background text-muted-foreground",
+              !showSenderName && "opacity-0",
+            )}
+            aria-hidden
+          >
+            {initials || "U"}
+          </div>
+        )}
+
         {/* Bubble */}
         <div
           className={cn(
-            "relative max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm",
+            "relative max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm",
             isOwn
-              ? "rounded-br-sm bg-primary text-primary-foreground"
-              : "rounded-bl-sm bg-muted text-foreground",
+              ? "rounded-br-sm border-primary/25 bg-linear-to-br from-primary to-primary/90 text-primary-foreground"
+              : "rounded-bl-sm border-border/75 bg-background text-foreground",
           )}
         >
+          {showSenderName && !isOwn && (
+            <span className="mb-0.5 block text-[11px] font-semibold text-muted-foreground">
+              {message.sender.name}
+            </span>
+          )}
+
           {/* Text content */}
           {message.content && (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            <p className="whitespace-pre-wrap wrap-break-word">
+              {message.content}
+            </p>
           )}
 
           {/* Attachment */}
@@ -106,7 +133,7 @@ export function MessageBubble({
                 <img
                   src={message.attachmentUrl}
                   alt="attachment"
-                  className="max-h-48 max-w-full rounded-lg object-contain"
+                  className="max-h-48 max-w-full rounded-lg border border-black/10 object-contain"
                 />
               ) : (
                 <a
@@ -130,20 +157,24 @@ export function MessageBubble({
           {/* Timestamp + read receipt */}
           <div
             className={cn(
-              "mt-0.5 flex items-center gap-1 text-[10px]",
+              "mt-1 flex items-center gap-1 text-[10px]",
               isOwn
                 ? "justify-end text-primary-foreground/60"
                 : "text-muted-foreground",
             )}
           >
             <span>{formatTime(message.createdAt)}</span>
-            {isOwn && (
-              isPending
-                ? <Clock className="h-3 w-3 animate-pulse" />
-                : readByOthers
-                  ? <CheckCheck className="h-3 w-3" />
-                  : <Check className="h-3 w-3" />
-            )}
+            {isOwn &&
+              (isPending ? (
+                <Clock className="h-3 w-3 animate-pulse" />
+              ) : readByOthers ? (
+                <>
+                  <CheckCheck className="h-3 w-3" />
+                  <span className="font-medium">Read</span>
+                </>
+              ) : (
+                <Check className="h-3 w-3" />
+              ))}
           </div>
         </div>
 
@@ -152,7 +183,7 @@ export function MessageBubble({
           <div className="relative">
             <button
               onClick={() => setShowPicker((v) => !v)}
-              className="mb-1 hidden h-6 w-6 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:flex group-hover:opacity-100"
+              className="mb-1 flex h-6 w-6 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground opacity-100 transition-opacity hover:bg-muted md:opacity-0 md:group-hover:opacity-100"
               aria-label="React"
             >
               <Smile className="h-3.5 w-3.5" />
