@@ -332,7 +332,7 @@ const results = await pipeline.exec();
 
 ---
 
-## Phase 3 — Frontend Services & State
+## Phase 3 — Frontend Services & State ✅ DONE
 
 **Goal:** API client, socket hooks, and unread-count state wiring across the app.
 
@@ -667,9 +667,9 @@ Week 4 │ Phase 6 (select enhancements)
 - [x] Add Redis unread count cache methods to `task-messages.service.ts`
 
 ### Frontend (`/frontend/src/`)
-- [ ] `services/chat.service.ts`
-- [ ] `hooks/useTaskChat.ts`
-- [ ] `contexts/UnreadContext.tsx`
+- [x] `services/chat.service.ts`
+- [x] `hooks/useTaskChat.ts`
+- [x] `contexts/UnreadContext.tsx`
 - [ ] `components/chat/ChatPanel.tsx`
 - [ ] `components/chat/MessageList.tsx`
 - [ ] `components/chat/MessageBubble.tsx`

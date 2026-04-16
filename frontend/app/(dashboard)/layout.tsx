@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
 import { SocketProvider } from "@/contexts/SocketContext";
+import { UnreadProvider } from "@/contexts/UnreadContext";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionStatus } from "@/components/ui/connection-status";
 import {
@@ -540,6 +541,7 @@ export default function DashboardLayout({
   return (
     <ProtectedRoute>
       <SocketProvider>
+        <UnreadProvider>
         <div className="min-h-screen bg-background">
           {/* Desktop sidebar */}
           <div className="hidden md:block">
@@ -644,6 +646,7 @@ export default function DashboardLayout({
             </main>
           </div>
         </div>
+        </UnreadProvider>
       </SocketProvider>
     </ProtectedRoute>
   );
