@@ -588,7 +588,7 @@ In `/mobile/` (React Native/Expo):
 
 ---
 
-## Phase 6 — Enhancements (Post-MVP)
+## Phase 6 — Enhancements (Post-MVP) ✅ DONE
 
 These features should be deferred until Phase 1–5 are stable.
 

@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useRouter as useAppRouter } from "next/navigation";
+import { useSocketEvent } from "@/hooks/useSocket";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -529,6 +531,29 @@ function NotificationBell({ role }: { role: string }) {
   );
 }
 
+// ─── Broadcast listener (6.5) ─────────────────────────────────────────────────
+
+interface BroadcastEvent {
+  senderName: string;
+  districtName: string;
+  content: string;
+  sentAt: string;
+}
+
+function BroadcastListener() {
+  useSocketEvent<BroadcastEvent>(
+    "chat:broadcast",
+    (data) => {
+      toast.info(`📢 ${data.senderName}: ${data.content}`, {
+        duration: 8000,
+        description: `District broadcast — ${data.districtName}`,
+      });
+    },
+    [],
+  );
+  return null;
+}
+
 // ─── Root layout ──────────────────────────────────────────────────────────────
 
 export default function DashboardLayout({
@@ -583,6 +608,7 @@ export default function DashboardLayout({
     <ProtectedRoute>
       <SocketProvider>
         <UnreadProvider>
+        <BroadcastListener />
         <div className="min-h-screen bg-background">
           {/* Desktop sidebar */}
           <div className="hidden md:block">

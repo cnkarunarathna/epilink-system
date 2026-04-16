@@ -9,6 +9,11 @@ export interface MessageReadDto {
   readAt: Date;
 }
 
+export interface MessageReactionDto {
+  emoji: string;
+  userId: string;
+}
+
 export interface MessageResponseDto {
   id: string;
   taskId: string;
@@ -19,4 +24,5 @@ export interface MessageResponseDto {
   isSystemMessage: boolean;
   createdAt: Date;
   readBy: MessageReadDto[];
+  reactions: MessageReactionDto[];
 }

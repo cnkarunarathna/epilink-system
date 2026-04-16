@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { MessageSquare, AlertCircle } from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { MessageSquare, AlertCircle, Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useTaskChat } from "@/hooks/useTaskChat";
+import { searchMessages, MessageResponseDto } from "@/services/chat.service";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { TypingIndicator } from "./TypingIndicator";
@@ -40,7 +41,45 @@ export function ChatPanel({
     loadMore,
     markVisible,
     emitTyping,
+    reactToMessage,
   } = useTaskChat(taskId, visible);
+
+  // ─── 6.2 Search state ────────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MessageResponseDto[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  const runSearch = useCallback(
+    async (q: string) => {
+      if (!q.trim()) {
+        setSearchResults([]);
+        return;
+      }
+      setSearchLoading(true);
+      try {
+        const results = await searchMessages(taskId, q);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [taskId],
+  );
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => runSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery, runSearch]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
 
   // When panel becomes visible, clear unread badge immediately and refresh from backend
   useEffect(() => {
@@ -67,6 +106,10 @@ export function ChatPanel({
     );
   }
 
+  const displayMessages = searchOpen ? searchResults : messages;
+  const displayLoading = searchOpen ? searchLoading : loading;
+  const displayHasMore = searchOpen ? false : hasMore;
+
   return (
     <div
       className={cn(
@@ -77,7 +120,38 @@ export function ChatPanel({
       {/* Header */}
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <MessageSquare className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Messages</span>
+        <span className="text-sm font-medium flex-1">Messages</span>
+
+        {/* Search toggle */}
+        {searchOpen ? (
+          <>
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search messages…"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            {searchLoading && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            )}
+            <button
+              onClick={closeSearch}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Close search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Search messages"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Read-only banner */}
@@ -87,21 +161,31 @@ export function ChatPanel({
         </div>
       )}
 
+      {/* Search results info */}
+      {searchOpen && !searchLoading && searchQuery.trim() && (
+        <div className="border-b bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
+          {searchResults.length === 0
+            ? "No messages found"
+            : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""}`}
+        </div>
+      )}
+
       {/* Message area */}
       <MessageList
-        messages={messages}
-        loading={loading}
-        hasMore={hasMore}
+        messages={displayMessages}
+        loading={displayLoading}
+        hasMore={displayHasMore}
         currentUserId={user.id}
         onLoadMore={loadMore}
         onVisibleMessages={markVisible}
+        onReact={reactToMessage}
       />
 
-      {/* Typing indicator */}
-      <TypingIndicator typingUsers={typingUsers} />
+      {/* Typing indicator (hidden during search) */}
+      {!searchOpen && <TypingIndicator typingUsers={typingUsers} />}
 
       {/* Input */}
-      {!readOnly && (
+      {!readOnly && !searchOpen && (
         <MessageInput
           onSend={send}
           onTyping={emitTyping}

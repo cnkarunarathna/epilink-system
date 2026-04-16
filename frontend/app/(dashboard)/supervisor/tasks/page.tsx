@@ -49,6 +49,7 @@ import {
   X,
   CheckSquare,
   Users,
+  Megaphone,
 } from "lucide-react";
 import {
   fetchTasks,
@@ -63,6 +64,7 @@ import {
   getStatusColor,
   getPriorityColor,
 } from "@/services/tasks.service";
+import { broadcastToDistrict } from "@/services/chat.service";
 import { toast } from "sonner";
 import TasksMap from "@/components/tasks/TasksMap";
 import { RouteMap } from "@/components/tasks/RouteMap";
@@ -95,6 +97,11 @@ export default function TasksListPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewRoute, setPreviewRoute] = useState<RouteResult | null>(null);
   const [assigning, setAssigning] = useState(false);
+
+  // 6.5 Broadcast state
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastContent, setBroadcastContent] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -280,6 +287,22 @@ export default function TasksListPage() {
     }
   }, [selectedPhiId, selectedIds, phiOptions, loadTasks]);
 
+  // 6.5 Broadcast handler
+  const handleBroadcast = useCallback(async () => {
+    if (!broadcastContent.trim() || !user?.district) return;
+    setBroadcastSending(true);
+    try {
+      await broadcastToDistrict(user.district, broadcastContent.trim());
+      toast.success("Broadcast sent to district PHIs");
+      setBroadcastOpen(false);
+      setBroadcastContent("");
+    } catch {
+      toast.error("Failed to send broadcast");
+    } finally {
+      setBroadcastSending(false);
+    }
+  }, [broadcastContent, user?.district]);
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("en-GB", {
@@ -319,6 +342,16 @@ export default function TasksListPage() {
                   Bulk Assign
                 </>
               )}
+            </Button>
+          )}
+          {user?.district && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBroadcastOpen(true)}
+            >
+              <Megaphone className="mr-2 h-4 w-4" />
+              Broadcast
             </Button>
           )}
           <Link href="/supervisor/tasks/new">
@@ -675,6 +708,55 @@ export default function TasksListPage() {
               ) : null}
               Assign {selectedIds.size} task
               {selectedIds.size !== 1 ? "s" : ""} to {selectedPhi?.name}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 6.5 Broadcast dialog */}
+      <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Megaphone className="h-5 w-5" />
+              Broadcast to District
+            </DialogTitle>
+            <DialogDescription>
+              Send a real-time message to all PHIs connected in{" "}
+              <span className="font-medium">{user?.district}</span> district.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            className="min-h-[100px] w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="Type your broadcast message…"
+            maxLength={500}
+            value={broadcastContent}
+            onChange={(e) => setBroadcastContent(e.target.value)}
+          />
+          <p className="text-right text-xs text-muted-foreground">
+            {broadcastContent.length}/500
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBroadcastOpen(false);
+                setBroadcastContent("");
+              }}
+              disabled={broadcastSending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBroadcast}
+              disabled={broadcastSending || !broadcastContent.trim()}
+            >
+              {broadcastSending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Megaphone className="mr-2 h-4 w-4" />
+              )}
+              Send Broadcast
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseArrayPipe,
@@ -16,6 +17,7 @@ import { TaskParticipantGuard } from './guards/task-participant.guard';
 import { TaskMessagesService } from './task-messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { GetMessagesQueryDto } from './dto/get-messages-query.dto';
+import { UserRole } from '../entities/user.entity';
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -74,5 +76,61 @@ export class TaskMessagesController {
     @Request() req,
   ) {
     return this.messagesService.getUnreadCountsForUser(req.user.id, taskIds);
+  }
+
+  // ─── 6.2 Message Search ───────────────────────────────────────────────────
+
+  /** GET /tasks/:taskId/messages/search?q=keyword */
+  @Get(':taskId/messages/search')
+  @UseGuards(TaskParticipantGuard)
+  searchMessages(
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Query('q') q: string,
+  ) {
+    return this.messagesService.searchMessages(taskId, q ?? '');
+  }
+
+  // ─── 6.3 Message Reactions ────────────────────────────────────────────────
+
+  /** POST /tasks/:taskId/messages/:messageId/reactions — toggle a reaction */
+  @Post(':taskId/messages/:messageId/reactions')
+  @UseGuards(TaskParticipantGuard)
+  toggleReaction(
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Body('emoji') emoji: string,
+    @Request() req,
+  ) {
+    return this.messagesService.toggleReaction(
+      taskId,
+      messageId,
+      req.user.id,
+      emoji,
+    );
+  }
+
+  // ─── 6.5 Supervisor Broadcast ─────────────────────────────────────────────
+
+  /**
+   * POST /tasks/messages/broadcast
+   * Body: { districtName: string; content: string }
+   * Supervisor/admin only — emits chat:broadcast to district:{districtName} socket room.
+   */
+  @Post('messages/broadcast')
+  async broadcastToDistrict(
+    @Body('districtName') districtName: string,
+    @Body('content') content: string,
+    @Request() req,
+  ) {
+    const role: UserRole = req.user.role;
+    if (role !== UserRole.SUPERVISOR && role !== UserRole.ADMIN) {
+      return { ok: false, reason: 'Supervisor or admin role required' };
+    }
+    await this.messagesService.broadcastToDistrict(
+      districtName,
+      content,
+      req.user.name ?? req.user.email,
+    );
+    return { ok: true };
   }
 }

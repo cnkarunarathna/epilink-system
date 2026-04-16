@@ -357,4 +357,33 @@ export class EventsGateway
     });
     this.logger.debug(`Emitted chat:read to task:${taskId} for user ${userId}`);
   }
+
+  /** 6.3 — Broadcast a reaction add/remove to the task room */
+  emitChatReaction(
+    taskId: string,
+    messageId: string,
+    userId: string,
+    emoji: string,
+    action: 'added' | 'removed',
+    reactions: { emoji: string; userId: string }[],
+  ) {
+    this.server.to(`task:${taskId}`).emit('chat:reaction', {
+      taskId,
+      messageId,
+      userId,
+      emoji,
+      action,
+      reactions,
+    });
+    this.logger.debug(`Emitted chat:reaction (${action} ${emoji}) to task:${taskId}`);
+  }
+
+  /** 6.5 — Broadcast a supervisor message to all sockets in a district room */
+  emitBroadcast(
+    districtName: string,
+    payload: { content: string; senderName: string; districtName: string; sentAt: Date },
+  ) {
+    this.server.to(`district:${districtName}`).emit('chat:broadcast', payload);
+    this.logger.debug(`Emitted chat:broadcast to district:${districtName}`);
+  }
 }

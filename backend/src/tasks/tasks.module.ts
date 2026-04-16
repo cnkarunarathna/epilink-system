@@ -11,12 +11,20 @@ import { Task } from './entities/task.entity';
 import { Evidence } from './entities/evidence.entity';
 import { TaskMessage } from './entities/task-message.entity';
 import { MessageRead } from './entities/message-read.entity';
+import { MessageReaction } from './entities/message-reaction.entity';
 import { User } from '../entities/user.entity';
 import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Task, Evidence, TaskMessage, MessageRead, User]),
+    TypeOrmModule.forFeature([
+      Task,
+      Evidence,
+      TaskMessage,
+      MessageRead,
+      MessageReaction,
+      User,
+    ]),
     StorageModule,
   ],
   controllers: [TasksController, TaskMessagesController],
@@ -27,6 +35,6 @@ import { StorageModule } from '../storage/storage.module';
     TaskMessagesService,
     TaskParticipantGuard,
   ],
-  exports: [TasksService, GeocodingService, RouteService],
+  exports: [TasksService, TaskMessagesService, GeocodingService, RouteService],
 })
 export class TasksModule {}

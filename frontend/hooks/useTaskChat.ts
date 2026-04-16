@@ -8,7 +8,9 @@ import {
   fetchMessages,
   sendMessage,
   markMessagesRead,
+  toggleReaction,
   MessageResponseDto,
+  MessageReactionDto,
   CreateMessageDto,
 } from "@/services/chat.service";
 
@@ -31,6 +33,15 @@ interface ChatTypingEvent {
   isTyping: boolean;
 }
 
+interface ChatReactionEvent {
+  taskId: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  action: "added" | "removed";
+  reactions: MessageReactionDto[];
+}
+
 export function useTaskChat(taskId: string, panelVisible = false) {
   const [messages, setMessages] = useState<MessageResponseDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +55,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     new Map(),
   );
 
-  // ─── Initial load ────────────────────────────────────────────────────────
+  // ─── Initial load ────────────────────────────────────────────────────────────
 
   const loadMessages = useCallback(
     async (before?: string) => {
@@ -73,7 +84,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     loadMessages();
   }, [taskId, loadMessages]);
 
-  // ─── Join / leave task socket room ───────────────────────────────────────
+  // ─── Join / leave task socket room ───────────────────────────────────────────
 
   useEffect(() => {
     if (!socket) return;
@@ -83,7 +94,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     };
   }, [socket, taskId]);
 
-  // ─── Real-time: new message ───────────────────────────────────────────────
+  // ─── Real-time: new message ───────────────────────────────────────────────────
 
   useSocketEvent<MessageResponseDto>(
     "chat:message",
@@ -102,7 +113,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     [taskId, panelVisible, user],
   );
 
-  // ─── Real-time: read receipts ─────────────────────────────────────────────
+  // ─── Real-time: read receipts ─────────────────────────────────────────────────
 
   useSocketEvent<ChatReadEvent>(
     "chat:read",
@@ -123,7 +134,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     [taskId],
   );
 
-  // ─── Real-time: typing indicator ──────────────────────────────────────────
+  // ─── Real-time: typing indicator ──────────────────────────────────────────────
 
   useSocketEvent<ChatTypingEvent>(
     "chat:typing",
@@ -154,6 +165,21 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     [taskId],
   );
 
+  // ─── 6.3 Real-time: reactions ─────────────────────────────────────────────────
+
+  useSocketEvent<ChatReactionEvent>(
+    "chat:reaction",
+    (data) => {
+      if (data.taskId !== taskId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.messageId ? { ...m, reactions: data.reactions } : m,
+        ),
+      );
+    },
+    [taskId],
+  );
+
   // Cleanup typing timers on unmount
   useEffect(() => {
     return () => {
@@ -161,7 +187,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     };
   }, []);
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  // ─── Actions ──────────────────────────────────────────────────────────────────
 
   const send = useCallback(
     async (
@@ -210,6 +236,37 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     [socket, taskId],
   );
 
+  // ─── 6.3 React to a message ───────────────────────────────────────────────────
+
+  const reactToMessage = useCallback(
+    async (messageId: string, emoji: string): Promise<void> => {
+      // Optimistic update
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !user) return m;
+          const hasReaction = m.reactions.some(
+            (r) => r.emoji === emoji && r.userId === user.id,
+          );
+          const reactions = hasReaction
+            ? m.reactions.filter(
+                (r) => !(r.emoji === emoji && r.userId === user.id),
+              )
+            : [...m.reactions, { emoji, userId: user.id }];
+          return { ...m, reactions };
+        }),
+      );
+
+      try {
+        await toggleReaction(taskId, messageId, emoji);
+        // Socket broadcast (chat:reaction) will reconcile the final state
+      } catch {
+        // Revert optimistic update on failure
+        await loadMessages();
+      }
+    },
+    [taskId, user, loadMessages],
+  );
+
   return {
     messages,
     loading,
@@ -219,5 +276,6 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     loadMore,
     markVisible,
     emitTyping,
+    reactToMessage,
   };
 }

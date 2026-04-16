@@ -7,15 +7,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { TaskMessage } from './entities/task-message.entity';
 import { MessageRead } from './entities/message-read.entity';
+import { MessageReaction } from './entities/message-reaction.entity';
 import { Task } from './entities/task.entity';
+import { User } from '../entities/user.entity';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { GetMessagesQueryDto } from './dto/get-messages-query.dto';
 import { MessageResponseDto } from './dto/message-response.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 /** TTL for unread count cache keys: 7 days (invalidated on markRead anyway) */
 const UNREAD_CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+
+/** Emojis allowed as reactions */
+const ALLOWED_EMOJIS = new Set(['👍', '✅', '👀', '❤️', '😊', '🙏']);
 
 @Injectable()
 export class TaskMessagesService {
@@ -26,10 +32,15 @@ export class TaskMessagesService {
     private readonly messageRepository: Repository<TaskMessage>,
     @InjectRepository(MessageRead)
     private readonly readRepository: Repository<MessageRead>,
+    @InjectRepository(MessageReaction)
+    private readonly reactionRepository: Repository<MessageReaction>,
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly eventsGateway: EventsGateway,
     private readonly cacheHelper: CacheHelperService,
+    private readonly pushNotification: PushNotificationService,
   ) {}
 
   // ─── Public API ──────────────────────────────────────────────────────────
@@ -41,7 +52,7 @@ export class TaskMessagesService {
   ): Promise<MessageResponseDto> {
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
-      select: ['id', 'createdById', 'assignedPhiId'],
+      select: ['id', 'createdById', 'assignedPhiId', 'title'],
     });
 
     if (!task) {
@@ -80,7 +91,38 @@ export class TaskMessagesService {
     // Broadcast to the task socket room
     this.eventsGateway.emitChatMessage(taskId, response);
 
+    // Send push notifications to offline recipients (non-fatal)
+    this.sendPushToRecipients(recipients, populated.sender.name, dto.content, taskId, task.title ?? 'Task').catch(() => {});
+
     return response;
+  }
+
+  /**
+   * 6.1 — Insert an automated system message on status changes.
+   * Uses actorId as senderId so the FK constraint is satisfied;
+   * isSystemMessage=true means the frontend renders it as a centred pill.
+   */
+  async sendSystemMessage(
+    taskId: string,
+    content: string,
+    actorId: string,
+  ): Promise<void> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId },
+      select: ['id'],
+    });
+    if (!task) return; // task may have been deleted race-condition-safe
+
+    const message = this.messageRepository.create({
+      taskId,
+      senderId: actorId,
+      content,
+      isSystemMessage: true,
+    });
+    await this.messageRepository.save(message);
+
+    const populated = await this.loadMessage(message.id);
+    this.eventsGateway.emitChatMessage(taskId, this.toDto(populated));
   }
 
   async getMessages(
@@ -111,27 +153,29 @@ export class TaskMessagesService {
 
     const messages = await qb.getMany();
 
-    // Load read receipts for all returned messages
+    // Load read receipts and reactions for all returned messages
     const messageIds = messages.map((m) => m.id);
-    const reads =
+    const [reads, reactions] =
       messageIds.length > 0
-        ? await this.readRepository.find({
-            where: { messageId: In(messageIds) },
-          })
-        : [];
+        ? await Promise.all([
+            this.readRepository.find({ where: { messageId: In(messageIds) } }),
+            this.reactionRepository.find({ where: { messageId: In(messageIds) } }),
+          ])
+        : [[], []];
 
-    const readsByMessageId = new Map<string, MessageRead[]>();
-    for (const read of reads) {
-      if (!readsByMessageId.has(read.messageId)) {
-        readsByMessageId.set(read.messageId, []);
-      }
-      readsByMessageId.get(read.messageId)!.push(read);
-    }
+    const readsByMessageId = this.groupBy(reads, (r) => r.messageId);
+    const reactionsByMessageId = this.groupBy(reactions, (r) => r.messageId);
 
     // Return chronological order (oldest first)
     return messages
       .reverse()
-      .map((msg) => this.toDto(msg, readsByMessageId.get(msg.id) ?? []));
+      .map((msg) =>
+        this.toDto(
+          msg,
+          readsByMessageId.get(msg.id) ?? [],
+          reactionsByMessageId.get(msg.id) ?? [],
+        ),
+      );
   }
 
   async markRead(
@@ -229,6 +273,105 @@ export class TaskMessagesService {
     return result;
   }
 
+  // ─── 6.2 Message Search ───────────────────────────────────────────────────
+
+  async searchMessages(
+    taskId: string,
+    q: string,
+  ): Promise<MessageResponseDto[]> {
+    if (!q || q.trim().length === 0) return [];
+
+    const messages = await this.messageRepository
+      .createQueryBuilder('msg')
+      .leftJoinAndSelect('msg.sender', 'sender')
+      .where('msg.task_id = :taskId', { taskId })
+      .andWhere('msg.is_system_message = false')
+      .andWhere('msg.content ILIKE :q', { q: `%${q.trim()}%` })
+      .orderBy('msg.created_at', 'DESC')
+      .limit(50)
+      .getMany();
+
+    if (messages.length === 0) return [];
+
+    const messageIds = messages.map((m) => m.id);
+    const [reads, reactions] = await Promise.all([
+      this.readRepository.find({ where: { messageId: In(messageIds) } }),
+      this.reactionRepository.find({ where: { messageId: In(messageIds) } }),
+    ]);
+
+    const readsByMessageId = this.groupBy(reads, (r) => r.messageId);
+    const reactionsByMessageId = this.groupBy(reactions, (r) => r.messageId);
+
+    return messages
+      .reverse()
+      .map((msg) =>
+        this.toDto(
+          msg,
+          readsByMessageId.get(msg.id) ?? [],
+          reactionsByMessageId.get(msg.id) ?? [],
+        ),
+      );
+  }
+
+  // ─── 6.3 Message Reactions ────────────────────────────────────────────────
+
+  async toggleReaction(
+    taskId: string,
+    messageId: string,
+    userId: string,
+    emoji: string,
+  ): Promise<{ action: 'added' | 'removed'; reactions: MessageResponseDto['reactions'] }> {
+    if (!ALLOWED_EMOJIS.has(emoji)) {
+      emoji = '👍'; // fallback to thumbs-up for unknown emoji
+    }
+
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId, taskId },
+      select: ['id', 'taskId'],
+    });
+    if (!message) throw new NotFoundException(`Message ${messageId} not found`);
+
+    const existing = await this.reactionRepository.findOne({
+      where: { messageId, userId, emoji },
+    });
+
+    let action: 'added' | 'removed';
+    if (existing) {
+      await this.reactionRepository.remove(existing);
+      action = 'removed';
+    } else {
+      await this.reactionRepository.save(
+        this.reactionRepository.create({ messageId, userId, emoji }),
+      );
+      action = 'added';
+    }
+
+    // Reload all reactions for this message to broadcast the full updated set
+    const allReactions = await this.reactionRepository.find({
+      where: { messageId },
+    });
+    const reactionDtos = allReactions.map((r) => ({ emoji: r.emoji, userId: r.userId }));
+
+    this.eventsGateway.emitChatReaction(taskId, messageId, userId, emoji, action, reactionDtos);
+
+    return { action, reactions: reactionDtos };
+  }
+
+  // ─── 6.5 Supervisor Broadcast ─────────────────────────────────────────────
+
+  async broadcastToDistrict(
+    districtName: string,
+    content: string,
+    senderName: string,
+  ): Promise<void> {
+    this.eventsGateway.emitBroadcast(districtName, {
+      content,
+      senderName,
+      districtName,
+      sentAt: new Date(),
+    });
+  }
+
   // ─── Private helpers ─────────────────────────────────────────────────────
 
   private async queryUnreadFromDb(
@@ -266,6 +409,35 @@ export class TaskMessagesService {
     }
   }
 
+  private async sendPushToRecipients(
+    recipientIds: string[],
+    senderName: string,
+    content: string,
+    taskId: string,
+    taskTitle: string,
+  ): Promise<void> {
+    if (recipientIds.length === 0) return;
+
+    const users = await this.userRepository.find({
+      where: { id: In(recipientIds) },
+      select: ['id', 'fcmToken'],
+    });
+
+    await Promise.all(
+      users
+        .filter((u): u is typeof u & { fcmToken: string } => !!u.fcmToken)
+        .map((u) =>
+          this.pushNotification.sendChatNotification({
+            fcmToken: u.fcmToken,
+            senderName,
+            content,
+            taskId,
+            taskTitle,
+          }),
+        ),
+    );
+  }
+
   private async loadMessage(id: string): Promise<TaskMessage> {
     return this.messageRepository.findOneOrFail({
       where: { id },
@@ -273,9 +445,23 @@ export class TaskMessagesService {
     });
   }
 
+  private groupBy<T>(
+    items: T[],
+    keyFn: (item: T) => string,
+  ): Map<string, T[]> {
+    const map = new Map<string, T[]>();
+    for (const item of items) {
+      const key = keyFn(item);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return map;
+  }
+
   private toDto(
     message: TaskMessage,
     reads: MessageRead[] = [],
+    reactions: MessageReaction[] = [],
   ): MessageResponseDto {
     return {
       id: message.id,
@@ -291,6 +477,7 @@ export class TaskMessagesService {
       isSystemMessage: message.isSystemMessage,
       createdAt: message.createdAt,
       readBy: reads.map((r) => ({ userId: r.userId, readAt: r.readAt })),
+      reactions: reactions.map((r) => ({ emoji: r.emoji, userId: r.userId })),
     };
   }
 }

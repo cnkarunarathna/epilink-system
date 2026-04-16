@@ -13,6 +13,7 @@ interface MessageListProps {
   currentUserId: string;
   onLoadMore: () => void;
   onVisibleMessages: (ids: string[]) => void;
+  onReact?: (messageId: string, emoji: string) => void;
 }
 
 function isSameDay(a: string, b: string) {
@@ -42,6 +43,7 @@ export function MessageList({
   currentUserId,
   onLoadMore,
   onVisibleMessages,
+  onReact,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -165,6 +167,7 @@ export function MessageList({
                 isOwn={msg.sender.id === currentUserId}
                 showSenderName={showSenderName}
                 currentUserId={currentUserId}
+                onReact={onReact}
               />
             </div>
           </React.Fragment>

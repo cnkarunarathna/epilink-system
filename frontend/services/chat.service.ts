@@ -18,6 +18,11 @@ export interface MessageReadDto {
   readAt: string;
 }
 
+export interface MessageReactionDto {
+  emoji: string;
+  userId: string;
+}
+
 export interface MessageResponseDto {
   id: string;
   taskId: string;
@@ -28,6 +33,7 @@ export interface MessageResponseDto {
   isSystemMessage: boolean;
   createdAt: string;
   readBy: MessageReadDto[];
+  reactions: MessageReactionDto[];
 }
 
 export interface CreateMessageDto {
@@ -114,4 +120,48 @@ export async function uploadChatAttachment(
     },
   );
   return res.data;
+}
+
+// ─── 6.2 Message Search ───────────────────────────────────────────────────────
+
+export async function searchMessages(
+  taskId: string,
+  q: string,
+): Promise<MessageResponseDto[]> {
+  const res = await axios.get<MessageResponseDto[]>(
+    `${API_BASE}/tasks/${taskId}/messages/search`,
+    { params: { q }, withCredentials: true },
+  );
+  return res.data;
+}
+
+// ─── 6.3 Message Reactions ────────────────────────────────────────────────────
+
+export async function toggleReaction(
+  taskId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ action: "added" | "removed"; reactions: MessageReactionDto[] }> {
+  const res = await axios.post<{
+    action: "added" | "removed";
+    reactions: MessageReactionDto[];
+  }>(
+    `${API_BASE}/tasks/${taskId}/messages/${messageId}/reactions`,
+    { emoji },
+    { withCredentials: true },
+  );
+  return res.data;
+}
+
+// ─── 6.5 Supervisor Broadcast ─────────────────────────────────────────────────
+
+export async function broadcastToDistrict(
+  districtName: string,
+  content: string,
+): Promise<void> {
+  await axios.post(
+    `${API_BASE}/tasks/messages/broadcast`,
+    { districtName, content },
+    { withCredentials: true },
+  );
 }
