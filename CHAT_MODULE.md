@@ -444,7 +444,7 @@ export const UnreadContext = createContext<{
 
 ---
 
-## Phase 4 — UI Components
+## Phase 4 — UI Components ✅ DONE
 
 **Goal:** Task-embedded chat panel with full messaging UX, unread badges in task lists.
 
@@ -670,12 +670,12 @@ Week 4 │ Phase 6 (select enhancements)
 - [x] `services/chat.service.ts`
 - [x] `hooks/useTaskChat.ts`
 - [x] `contexts/UnreadContext.tsx`
-- [ ] `components/chat/ChatPanel.tsx`
-- [ ] `components/chat/MessageList.tsx`
-- [ ] `components/chat/MessageBubble.tsx`
-- [ ] `components/chat/MessageInput.tsx`
-- [ ] `components/chat/AttachmentPicker.tsx`
-- [ ] `components/chat/TypingIndicator.tsx`
+- [x] `components/chat/ChatPanel.tsx`
+- [x] `components/chat/MessageList.tsx`
+- [x] `components/chat/MessageBubble.tsx`
+- [x] `components/chat/MessageInput.tsx`
+- [x] `components/chat/AttachmentPicker.tsx`
+- [x] `components/chat/TypingIndicator.tsx`
 - [ ] Update supervisor task detail page/modal
 - [ ] Update PHI task detail page/card
 - [ ] Update task list rows (unread badge)
