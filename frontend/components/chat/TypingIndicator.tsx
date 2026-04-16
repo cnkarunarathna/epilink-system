@@ -17,8 +17,8 @@ export function TypingIndicator({ typingUsers }: TypingIndicatorProps) {
         : "Several people are typing";
 
   return (
-    <div className="flex items-center gap-2 px-4 py-1 text-xs text-muted-foreground">
-      <span className="flex gap-0.5">
+    <div className="mx-3 mb-1 flex items-center gap-2 rounded-full border border-border/70 bg-muted/35 px-3 py-1 text-xs text-muted-foreground">
+      <span className="flex gap-1">
         <span className="typing-dot" />
         <span className="typing-dot animation-delay-150" />
         <span className="typing-dot animation-delay-300" />
@@ -28,8 +28,8 @@ export function TypingIndicator({ typingUsers }: TypingIndicatorProps) {
       <style>{`
         .typing-dot {
           display: inline-block;
-          width: 5px;
-          height: 5px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
           background-color: currentColor;
           animation: typingBounce 1.2s ease-in-out infinite;

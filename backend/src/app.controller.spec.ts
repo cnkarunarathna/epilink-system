@@ -58,6 +58,7 @@ describe('AppController', () => {
 
 describe('AppService', () => {
   let appService: AppService;
+  const originalFetch = global.fetch;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -71,6 +72,12 @@ describe('AppService', () => {
     }).compile();
 
     appService = module.get<AppService>(AppService);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    delete process.env.ML_SERVICE_URL;
+    jest.clearAllMocks();
   });
 
   describe('getHello', () => {
@@ -110,16 +117,88 @@ describe('AppService', () => {
       expect(result.status).toBe('DISCONNECTED');
       expect(result.connected).toBe(false);
     });
+
+    it('should return ERROR status when datasource throws unexpectedly', async () => {
+      const throwingDataSource = {
+        get isInitialized() {
+          throw new Error('boom');
+        },
+        options: {},
+      };
+
+      const moduleWithError: TestingModule = await Test.createTestingModule({
+        providers: [
+          AppService,
+          {
+            provide: DataSource,
+            useValue: throwingDataSource,
+          },
+        ],
+      }).compile();
+
+      const service = moduleWithError.get<AppService>(AppService);
+      const result = await service.checkDatabaseConnection();
+
+      expect(result).toEqual({
+        status: 'ERROR',
+        database: 'unknown',
+        connected: false,
+      });
+    });
   });
 
   describe('checkPredictionService', () => {
-    it('should return DISCONNECTED when prediction service is unavailable', async () => {
+    it('should return OK when ML service health endpoint is healthy', async () => {
+      process.env.ML_SERVICE_URL = 'http://ml-service:8000';
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          status: 'healthy',
+          service: 'ml-model',
+          version: '1.0.0',
+          model_loaded: true,
+        }),
+      } as unknown as Response);
+
       const result = await appService.checkPredictionService();
 
-      // In test environment, the prediction service won't be running
-      expect(result).toHaveProperty('status');
-      expect(result).toHaveProperty('url');
+      expect(result.status).toBe('OK');
+      expect(result.connected).toBe(true);
+      expect(result.url).toBe('http://ml-service:8000');
+      expect(result.service).toBe('ml-model');
+      expect(result.version).toBe('1.0.0');
+      expect(result.modelLoaded).toBe(true);
+    });
+
+    it('should return ERROR for non-200 health response', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+      } as unknown as Response);
+
+      const result = await appService.checkPredictionService();
+
+      expect(result.status).toBe('ERROR');
+      expect(result.connected).toBe(false);
+    });
+
+    it('should return DISCONNECTED when prediction service is unavailable', async () => {
+      const setTimeoutSpy = jest
+        .spyOn(global, 'setTimeout')
+        .mockImplementation((callback: (...args: any[]) => void) => {
+          callback();
+          return 1 as unknown as NodeJS.Timeout;
+        });
+
+      global.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+      const result = await appService.checkPredictionService();
+
+      expect(result.status).toBe('DISCONNECTED');
       expect(result.url).toBe('http://localhost:8000');
+
+      setTimeoutSpy.mockRestore();
     });
   });
 });

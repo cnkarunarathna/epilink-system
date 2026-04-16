@@ -68,6 +68,10 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const handlePress = () => {
+    if (disabled || loading) {
+      return;
+    }
+
     if (haptic) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -174,6 +178,9 @@ export const Button: React.FC<ButtonProps> = ({
         onPressOut={handlePressOut}
         disabled={disabled || loading}
         activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: disabled || loading }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         {buttonContent}
       </TouchableOpacity>
@@ -186,20 +193,22 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 44,
   },
   contentRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 20,
   },
   icon: {
     marginRight: spacing.sm,
   },
   // Sizes
   small: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 1,
     paddingHorizontal: spacing.md,
-    minHeight: 36,
+    minHeight: 44,
   },
   medium: {
     paddingVertical: spacing.md,

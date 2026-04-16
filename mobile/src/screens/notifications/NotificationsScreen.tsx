@@ -47,24 +47,33 @@ interface NotificationItem {
   icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
   title: string;
   body: string;
-  action?: { label: string; screen: keyof MainTabNavigationProp["navigate"] extends never ? any : any };
+  action?: {
+    label: string;
+    screen: keyof MainTabNavigationProp["navigate"] extends never ? any : any;
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function severityColor(s: AlertSeverity): string {
   switch (s) {
-    case "critical": return colors.destructive;
-    case "warning":  return colors.warning;
-    case "info":     return colors.primary;
+    case "critical":
+      return colors.destructive;
+    case "warning":
+      return colors.warning;
+    case "info":
+      return colors.primary;
   }
 }
 
 function severityBg(s: AlertSeverity): string {
   switch (s) {
-    case "critical": return colors.destructive + "12";
-    case "warning":  return colors.warning + "12";
-    case "info":     return colors.primary + "10";
+    case "critical":
+      return colors.destructive + "12";
+    case "warning":
+      return colors.warning + "12";
+    case "info":
+      return colors.primary + "10";
   }
 }
 
@@ -82,83 +91,94 @@ export const NotificationsScreen: React.FC = () => {
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(20)).current;
 
-  const buildAlerts = useCallback(async (refresh = false) => {
-    refresh ? setIsRefreshing(true) : setIsLoading(true);
-    const items: NotificationItem[] = [];
+  const buildAlerts = useCallback(
+    async (refresh = false) => {
+      refresh ? setIsRefreshing(true) : setIsLoading(true);
+      const items: NotificationItem[] = [];
 
-    try {
-      const [statsResult, districtResult] = await Promise.allSettled([
-        getTaskStats(),
-        getDistrictLatest(),
-      ]);
+      try {
+        const [statsResult, districtResult] = await Promise.allSettled([
+          getTaskStats(),
+          getDistrictLatest(),
+        ]);
 
-      if (statsResult.status === "fulfilled") {
-        const s = statsResult.value;
+        if (statsResult.status === "fulfilled") {
+          const s = statsResult.value;
 
-        if (s.overdueCount > 0) {
-          items.push({
-            id: "overdue",
-            severity: s.overdueCount >= 5 ? "critical" : "warning",
-            icon: "clock-alert",
-            title: `${s.overdueCount} Overdue Task${s.overdueCount !== 1 ? "s" : ""}`,
-            body: "These tasks have passed their due date. Review and take action as soon as possible.",
-            action: { label: "View Tasks", screen: "Tasks" },
-          });
-        }
-
-        if (s.rejected > 0) {
-          items.push({
-            id: "rejected",
-            severity: "warning",
-            icon: "close-circle-outline",
-            title: `${s.rejected} Rejected Task${s.rejected !== 1 ? "s" : ""}`,
-            body: "Some of your submitted tasks were rejected. Open them to view the reason and resubmit.",
-            action: { label: "View Tasks", screen: "Tasks" },
-          });
-        }
-      }
-
-      if (districtResult.status === "fulfilled" && user?.district) {
-        const match = districtResult.value.find(
-          (d) => d.district.toLowerCase() === user.district?.toLowerCase(),
-        );
-        if (match) {
-          const cases = match.predicted_cases;
-          if (cases >= 50) {
+          if (s.overdueCount > 0) {
             items.push({
-              id: "risk-high",
-              severity: cases >= 100 ? "critical" : "warning",
-              icon: cases >= 100 ? "alert-octagon" : "alert",
-              title: `${cases >= 100 ? "Very High" : "High"} Disease Risk — ${match.district}`,
-              body: `Predicted ${cases} cases for Week ${match.week}, ${match.year}. Prioritise inspections in high-density areas.`,
-              action: { label: "View Risk Map", screen: "RiskMap" },
+              id: "overdue",
+              severity: s.overdueCount >= 5 ? "critical" : "warning",
+              icon: "clock-alert",
+              title: `${s.overdueCount} Overdue Task${s.overdueCount !== 1 ? "s" : ""}`,
+              body: "These tasks have passed their due date. Review and take action as soon as possible.",
+              action: { label: "View Tasks", screen: "Tasks" },
+            });
+          }
+
+          if (s.rejected > 0) {
+            items.push({
+              id: "rejected",
+              severity: "warning",
+              icon: "close-circle-outline",
+              title: `${s.rejected} Rejected Task${s.rejected !== 1 ? "s" : ""}`,
+              body: "Some of your submitted tasks were rejected. Open them to view the reason and resubmit.",
+              action: { label: "View Tasks", screen: "Tasks" },
             });
           }
         }
+
+        if (districtResult.status === "fulfilled" && user?.district) {
+          const match = districtResult.value.find(
+            (d) => d.district.toLowerCase() === user.district?.toLowerCase(),
+          );
+          if (match) {
+            const cases = match.predicted_cases;
+            if (cases >= 50) {
+              items.push({
+                id: "risk-high",
+                severity: cases >= 100 ? "critical" : "warning",
+                icon: cases >= 100 ? "alert-octagon" : "alert",
+                title: `${cases >= 100 ? "Very High" : "High"} Disease Risk — ${match.district}`,
+                body: `Predicted ${cases} cases for Week ${match.week}, ${match.year}. Prioritise inspections in high-density areas.`,
+                action: { label: "View Risk Map", screen: "RiskMap" },
+              });
+            }
+          }
+        }
+      } catch {
+        // Partial failure is fine — show whatever was collected
+      } finally {
+        refresh ? setIsRefreshing(false) : setIsLoading(false);
       }
-    } catch {
-      // Partial failure is fine — show whatever was collected
-    } finally {
-      refresh ? setIsRefreshing(false) : setIsLoading(false);
-    }
 
-    if (items.length === 0) {
-      items.push({
-        id: "all-clear",
-        severity: "info",
-        icon: "check-circle-outline",
-        title: "All Clear",
-        body: "No overdue tasks, rejections, or high-risk alerts right now. Keep up the great work!",
-      });
-    }
+      if (items.length === 0) {
+        items.push({
+          id: "all-clear",
+          severity: "info",
+          icon: "check-circle-outline",
+          title: "All Clear",
+          body: "No overdue tasks, rejections, or high-risk alerts right now. Keep up the great work!",
+        });
+      }
 
-    setAlerts(items);
+      setAlerts(items);
 
-    Animated.parallel([
-      Animated.timing(fadeIn, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.spring(slideUp, { toValue: 0, ...animation.spring.gentle, useNativeDriver: true }),
-    ]).start();
-  }, [user?.district, fadeIn, slideUp]);
+      Animated.parallel([
+        Animated.timing(fadeIn, {
+          toValue: 1,
+          duration: 350,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideUp, {
+          toValue: 0,
+          ...animation.spring.gentle,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+    [user?.district, fadeIn, slideUp],
+  );
 
   useEffect(() => {
     buildAlerts();
@@ -169,7 +189,13 @@ export const NotificationsScreen: React.FC = () => {
     navigation.navigate(screen as any);
   };
 
-  const renderItem = ({ item, index }: { item: NotificationItem; index: number }) => {
+  const renderItem = ({
+    item,
+    index,
+  }: {
+    item: NotificationItem;
+    index: number;
+  }) => {
     const accent = severityColor(item.severity);
     const bg = severityBg(item.severity);
 
@@ -188,7 +214,11 @@ export const NotificationsScreen: React.FC = () => {
             {/* Icon + title row */}
             <View style={styles.cardHeader}>
               <View style={[styles.iconCircle, { backgroundColor: bg }]}>
-                <MaterialCommunityIcons name={item.icon} size={20} color={accent} />
+                <MaterialCommunityIcons
+                  name={item.icon}
+                  size={20}
+                  color={accent}
+                />
               </View>
               <Text style={styles.cardTitle} numberOfLines={2}>
                 {item.title}
@@ -201,12 +231,21 @@ export const NotificationsScreen: React.FC = () => {
             {/* Action */}
             {item.action && (
               <TouchableOpacity
-                style={[styles.actionBtn, { borderColor: accent + "50", backgroundColor: bg }]}
+                style={[
+                  styles.actionBtn,
+                  { borderColor: accent + "50", backgroundColor: bg },
+                ]}
                 onPress={() => handleAction(item.action!.screen)}
                 activeOpacity={0.75}
               >
-                <Text style={[styles.actionText, { color: accent }]}>{item.action.label}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={14} color={accent} />
+                <Text style={[styles.actionText, { color: accent }]}>
+                  {item.action.label}
+                </Text>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={14}
+                  color={accent}
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -231,7 +270,11 @@ export const NotificationsScreen: React.FC = () => {
             style={styles.backBtn}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name="arrow-left" size={22} color={colors.primaryForeground} />
+            <MaterialCommunityIcons
+              name="arrow-left"
+              size={22}
+              color={colors.primaryForeground}
+            />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Notifications</Text>
@@ -262,7 +305,11 @@ export const NotificationsScreen: React.FC = () => {
         ListEmptyComponent={
           isLoading ? null : (
             <View style={styles.emptyWrap}>
-              <MaterialCommunityIcons name="bell-sleep-outline" size={48} color={colors.border} />
+              <MaterialCommunityIcons
+                name="bell-sleep-outline"
+                size={48}
+                color={colors.border}
+              />
               <Text style={styles.emptyText}>No alerts right now</Text>
             </View>
           )
@@ -301,6 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+    flexWrap: "wrap",
   },
   backBtn: {
     width: 36,
@@ -312,6 +360,7 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
     fontSize: typography.fontSize.xl,
@@ -348,6 +397,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.xl,
     borderWidth: 1,
     overflow: "hidden",
+    minHeight: 96,
   },
   cardAccent: {
     width: 4,
@@ -387,13 +437,15 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
+    justifyContent: "space-between",
     gap: spacing.xs,
     paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     marginTop: spacing.xs,
+    minHeight: 44,
   },
   actionText: {
     fontSize: typography.fontSize.sm,

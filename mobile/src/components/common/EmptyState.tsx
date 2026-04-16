@@ -33,7 +33,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       >
         <MaterialCommunityIcons
           name={icon as any}
-          size={48}
+          size={44}
           color={colors.textSecondary}
         />
       </LinearGradient>
@@ -56,11 +56,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: spacing.xxl,
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    maxWidth: 360,
+    alignSelf: "center",
   },
   iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -71,6 +74,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
     textAlign: "center",
+    lineHeight: 22,
   },
   subtitle: {
     fontSize: typography.fontSize.sm,
@@ -78,5 +82,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     textAlign: "center",
     lineHeight: 20,
+    maxWidth: 320,
   },
 });

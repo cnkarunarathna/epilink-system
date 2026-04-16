@@ -25,4 +25,9 @@ export class CreateMessageDto {
   @IsString()
   @MaxLength(64)
   clientId?: string;
+
+  /** ISO 8601 timestamp from the client when the message was created. Used to ensure UI consistency for optimistic updates. */
+  @IsOptional()
+  @IsString()
+  createdAt?: string;
 }

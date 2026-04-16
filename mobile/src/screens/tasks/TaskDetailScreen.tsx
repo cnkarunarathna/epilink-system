@@ -13,6 +13,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -35,6 +36,7 @@ import {
   TaskType,
   TaskPriority,
 } from "../../types/task.types";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 import { Evidence } from "../../types/evidence.types";
 import {
   TASK_STATUS_LABELS,
@@ -88,6 +90,7 @@ export const TaskDetailScreen: React.FC = () => {
   const { taskId } = route.params;
   const { showToast } = useToast();
 
+  const insets = useSafeAreaInsets();
   const [task, setTask] = useState<Task | null>(null);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -289,6 +292,7 @@ export const TaskDetailScreen: React.FC = () => {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT + insets.bottom }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
