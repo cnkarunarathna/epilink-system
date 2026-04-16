@@ -75,14 +75,27 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
     if ((!trimmed && !attachment) || sending || disabled) return;
 
     stopTyping();
+
+    // Snapshot content + attachment before clearing so the async call has them
+    const pendingContent = trimmed;
+    const pendingAttachment = attachment;
+
+    // Clear immediately — the optimistic message in useTaskChat gives instant
+    // visual feedback, so the user can start typing their next message right away.
+    setValue("");
+    setAttachment(null);
+    textareaRef.current?.focus();
+
     setSending(true);
     try {
-      await onSend(trimmed, attachment ?? undefined);
-      setValue("");
-      setAttachment(null);
+      await onSend(pendingContent, pendingAttachment ?? undefined);
+    } catch {
+      // useTaskChat.send() removes the optimistic entry on failure;
+      // toast the error here so the user knows the message didn't send.
+      const { toast } = await import("sonner");
+      toast.error("Message failed to send. Please try again.");
     } finally {
       setSending(false);
-      textareaRef.current?.focus();
     }
   };
 
@@ -110,7 +123,7 @@ export function MessageInput({ onSend, onTyping, disabled }: MessageInputProps) 
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder={disabled ? "Chat is read-only for closed tasks." : "Type a message…"}
-          disabled={disabled || sending}
+          disabled={disabled}
           className={cn(
             "flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
             "py-1 leading-7",

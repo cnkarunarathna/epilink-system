@@ -25,4 +25,6 @@ export interface MessageResponseDto {
   createdAt: Date;
   readBy: MessageReadDto[];
   reactions: MessageReactionDto[];
+  /** Echoed back from the sender's CreateMessageDto so the client can match and replace its optimistic entry. */
+  clientId?: string;
 }

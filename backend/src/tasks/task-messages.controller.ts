@@ -32,7 +32,15 @@ export class TaskMessagesController {
     @Body() dto: CreateMessageDto,
     @Request() req,
   ) {
-    return this.messagesService.sendMessage(taskId, req.user.id, dto);
+    // req.task is attached by TaskParticipantGuard — avoids a duplicate DB fetch
+    return this.messagesService.sendMessage(
+      taskId,
+      req.user.id,
+      req.user.name ?? req.user.email,
+      req.user.role,
+      dto,
+      req.task,
+    );
   }
 
   /** GET /tasks/:taskId/messages — paginated message history */

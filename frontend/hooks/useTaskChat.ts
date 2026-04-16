@@ -101,11 +101,21 @@ export function useTaskChat(taskId: string, panelVisible = false) {
     (msg) => {
       if (msg.taskId !== taskId) return;
       setMessages((prev) => {
-        // Avoid duplicate if REST response already added it
+        // Replace the sender's optimistic entry when the confirmed message arrives
+        if (msg.clientId) {
+          const optimisticId = `opt_${msg.clientId}`;
+          const idx = prev.findIndex((m) => m.id === optimisticId);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = msg;
+            return updated;
+          }
+        }
+        // Avoid duplicate if the HTTP response already resolved first
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
-      // Auto-mark as read if the panel is open
+      // Auto-mark as read if the panel is open and message is from someone else
       if (panelVisible && user && msg.sender.id !== user.id) {
         markMessagesRead(taskId, [msg.id]).catch(() => {});
       }
@@ -194,17 +204,56 @@ export function useTaskChat(taskId: string, panelVisible = false) {
       content: string,
       attachment?: { url: string; type: "image" | "document" },
     ): Promise<void> => {
+      if (!user) return;
+
+      // Generate a client-side ID to correlate the optimistic entry with the
+      // confirmed message that arrives via the chat:message socket event.
+      const clientId = crypto.randomUUID();
+      const optimisticId = `opt_${clientId}`;
+
+      // Add an optimistic message immediately so the sender sees instant feedback
+      const optimistic: MessageResponseDto = {
+        id: optimisticId,
+        clientId,
+        taskId,
+        content,
+        attachmentUrl: attachment?.url ?? null,
+        attachmentType: attachment?.type ?? null,
+        sender: { id: user.id, name: user.name, role: user.role },
+        isSystemMessage: false,
+        createdAt: new Date().toISOString(),
+        readBy: [],
+        reactions: [],
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
       const dto: CreateMessageDto = {
         content,
+        clientId,
         ...(attachment && {
           attachmentUrl: attachment.url,
           attachmentType: attachment.type,
         }),
       };
-      await sendMessage(taskId, dto);
-      // Socket broadcast will add the message via chat:message handler
+
+      try {
+        const confirmed = await sendMessage(taskId, dto);
+        // If the socket event arrived first it already replaced the optimistic
+        // entry; if not, swap it now using the HTTP response.
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === optimisticId);
+          if (idx < 0) return prev; // already replaced by socket event
+          const updated = [...prev];
+          updated[idx] = confirmed;
+          return updated;
+        });
+      } catch (err) {
+        // Remove the optimistic entry so the user knows the send failed
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        throw err; // propagate so MessageInput can display an error toast
+      }
     },
-    [taskId],
+    [taskId, user],
   );
 
   const loadMore = useCallback(async (): Promise<void> => {

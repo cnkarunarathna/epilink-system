@@ -34,12 +34,16 @@ export interface MessageResponseDto {
   createdAt: string;
   readBy: MessageReadDto[];
   reactions: MessageReactionDto[];
+  /** Present when this message originated from an optimistic send; used to replace the temp entry. */
+  clientId?: string;
 }
 
 export interface CreateMessageDto {
   content: string;
   attachmentUrl?: string;
   attachmentType?: "image" | "document";
+  /** Client-generated UUID sent with each message so the sender can match and replace its optimistic entry. */
+  clientId?: string;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

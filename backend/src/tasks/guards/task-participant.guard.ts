@@ -29,7 +29,7 @@ export class TaskParticipantGuard implements CanActivate {
 
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
-      select: ['id', 'createdById', 'assignedPhiId'],
+      select: ['id', 'createdById', 'assignedPhiId', 'title'],
     });
 
     if (!task) {
@@ -42,6 +42,10 @@ export class TaskParticipantGuard implements CanActivate {
     if (!isParticipant) {
       throw new ForbiddenException('You are not a participant of this task');
     }
+
+    // Attach task to the request so downstream handlers can reuse it
+    // without issuing a second DB query for the same row.
+    request.task = task;
 
     return true;
   }

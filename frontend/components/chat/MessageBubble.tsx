@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, CheckCheck, FileText, Smile } from "lucide-react";
+import { Check, CheckCheck, Clock, FileText, Smile } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageResponseDto } from "@/services/chat.service";
 
@@ -58,7 +58,8 @@ export function MessageBubble({
     );
   }
 
-  const readByOthers = message.readBy.some((r) => r.userId !== currentUserId);
+  const isPending = message.id.startsWith("opt_");
+  const readByOthers = !isPending && message.readBy.some((r) => r.userId !== currentUserId);
   const groupedReactions = groupReactions(message.reactions ?? []);
 
   const handleReact = (emoji: string) => {
@@ -71,6 +72,7 @@ export function MessageBubble({
       className={cn(
         "group flex flex-col gap-0.5",
         isOwn ? "items-end" : "items-start",
+        isPending && "opacity-60",
       )}
     >
       {/* Sender name */}
@@ -135,12 +137,13 @@ export function MessageBubble({
             )}
           >
             <span>{formatTime(message.createdAt)}</span>
-            {isOwn &&
-              (readByOthers ? (
-                <CheckCheck className="h-3 w-3" />
-              ) : (
-                <Check className="h-3 w-3" />
-              ))}
+            {isOwn && (
+              isPending
+                ? <Clock className="h-3 w-3 animate-pulse" />
+                : readByOthers
+                  ? <CheckCheck className="h-3 w-3" />
+                  : <Check className="h-3 w-3" />
+            )}
           </div>
         </div>
 

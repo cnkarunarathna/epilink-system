@@ -45,12 +45,28 @@ export class TaskMessagesService {
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
+  /**
+   * Send a user message.
+   *
+   * Performance notes:
+   *  - `preloadedTask` comes from TaskParticipantGuard (already fetched for
+   *    authorization), so we never issue a second DB query for the same row.
+   *  - Message save + auto-read insert + unread cache increments all happen in
+   *    a single parallel round-trip after the message is persisted.
+   *  - The DTO is built from in-memory data; there is no second "reload" query.
+   *  - Push notifications are fire-and-forget and never block the response.
+   */
   async sendMessage(
     taskId: string,
     senderId: string,
+    senderName: string,
+    senderRole: string,
     dto: CreateMessageDto,
+    preloadedTask?: Pick<Task, 'id' | 'createdById' | 'assignedPhiId' | 'title'>,
   ): Promise<MessageResponseDto> {
-    const task = await this.taskRepository.findOne({
+    // Use the guard-provided task when available; only fall back to DB if needed
+    // (e.g. when called programmatically without a request context).
+    const task = preloadedTask ?? await this.taskRepository.findOne({
       where: { id: taskId },
       select: ['id', 'createdById', 'assignedPhiId', 'title'],
     });
@@ -60,39 +76,51 @@ export class TaskMessagesService {
     }
 
     // Persist the message
-    const message = this.messageRepository.create({
-      taskId,
-      senderId,
-      content: dto.content,
-      attachmentUrl: dto.attachmentUrl ?? null,
-      attachmentType: (dto.attachmentType as string | null) ?? null,
-    });
-    await this.messageRepository.save(message);
-
-    // Auto-mark as read for the sender
-    await this.readRepository.save(
-      this.readRepository.create({ messageId: message.id, userId: senderId }),
+    const message = await this.messageRepository.save(
+      this.messageRepository.create({
+        taskId,
+        senderId,
+        content: dto.content,
+        attachmentUrl: dto.attachmentUrl ?? null,
+        attachmentType: (dto.attachmentType as string | null) ?? null,
+      }),
     );
 
-    // Increment unread count cache for each recipient (everyone except sender)
+    // Recipients = every participant except the sender
     const recipients = [task.createdById, task.assignedPhiId].filter(
       (id): id is string => !!id && id !== senderId,
     );
-    await Promise.all(
-      recipients.map((recipientId) =>
+
+    // Parallel: auto-read for sender + atomic unread increments for recipients
+    await Promise.all([
+      this.readRepository.save(
+        this.readRepository.create({ messageId: message.id, userId: senderId }),
+      ),
+      ...recipients.map((recipientId) =>
         this.incrUnreadCount(recipientId, taskId),
       ),
-    );
+    ]);
 
-    // Reload with sender relation for the response
-    const populated = await this.loadMessage(message.id);
-    const response = this.toDto(populated);
+    // Build DTO from already-available data — no second DB round-trip
+    const response: MessageResponseDto = {
+      id: message.id,
+      taskId: message.taskId,
+      content: message.content,
+      attachmentUrl: message.attachmentUrl ?? null,
+      attachmentType: message.attachmentType ?? null,
+      sender: { id: senderId, name: senderName, role: senderRole },
+      isSystemMessage: false,
+      createdAt: message.createdAt,
+      readBy: [{ userId: senderId, readAt: new Date() }],
+      reactions: [],
+      clientId: dto.clientId,
+    };
 
     // Broadcast to the task socket room
     this.eventsGateway.emitChatMessage(taskId, response);
 
-    // Send push notifications to offline recipients (non-fatal)
-    this.sendPushToRecipients(recipients, populated.sender.name, dto.content, taskId, task.title ?? 'Task').catch(() => {});
+    // Push notifications — fire-and-forget, never blocks the response
+    this.sendPushToRecipients(recipients, senderName, dto.content, taskId, task.title ?? 'Task').catch(() => {});
 
     return response;
   }
@@ -398,11 +426,8 @@ export class TaskMessagesService {
     taskId: string,
   ): Promise<void> {
     try {
-      const key = `unread:${userId}:${taskId}`;
-      const current = (await this.cacheHelper.get<number>(key)) ?? 0;
-      await this.cacheHelper.set(key, current + 1, UNREAD_CACHE_TTL_MS);
+      await this.cacheHelper.incr(`unread:${userId}:${taskId}`, UNREAD_CACHE_TTL_MS);
     } catch (err) {
-      // Non-fatal: cache update failure should never break message send
       this.logger.warn(
         `Failed to increment unread count for user ${userId}, task ${taskId}: ${err instanceof Error ? err.message : err}`,
       );
