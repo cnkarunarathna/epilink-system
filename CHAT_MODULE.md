@@ -537,7 +537,7 @@ Consumed from `UnreadContext`.
 
 ---
 
-## Phase 5 — Integration & Wiring
+## Phase 5 — Integration & Wiring ✅ DONE
 
 **Goal:** Connect all pieces; gate feature by task status; handle edge cases.
 
@@ -676,10 +676,10 @@ Week 4 │ Phase 6 (select enhancements)
 - [x] `components/chat/MessageInput.tsx`
 - [x] `components/chat/AttachmentPicker.tsx`
 - [x] `components/chat/TypingIndicator.tsx`
-- [ ] Update supervisor task detail page/modal
-- [ ] Update PHI task detail page/card
-- [ ] Update task list rows (unread badge)
-- [ ] Wrap app with `UnreadProvider`
+- [x] Update supervisor task detail page/modal
+- [x] Update PHI task detail page/card
+- [x] Update task list rows (unread badge)
+- [x] Wrap app with `UnreadProvider`
 
 ---
 

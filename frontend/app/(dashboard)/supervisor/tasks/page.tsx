@@ -68,11 +68,13 @@ import TasksMap from "@/components/tasks/TasksMap";
 import { RouteMap } from "@/components/tasks/RouteMap";
 import { useSocketEvent } from "@/hooks/useSocket";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUnread } from "@/contexts/UnreadContext";
 
 type PhiOption = { id: string; name: string; email: string; isActive: boolean };
 
 export default function TasksListPage() {
   const { user } = useAuth();
+  const { counts, refreshCounts } = useUnread();
 
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -102,13 +104,16 @@ export default function TasksListPage() {
         type: typeFilter !== "all" ? typeFilter : undefined,
       });
       setTasks(data);
+      if (data.length > 0) {
+        refreshCounts(data.map((t) => t.id));
+      }
     } catch (error) {
       console.error("Failed to load tasks:", error);
       toast.error("Failed to load tasks");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, typeFilter]);
+  }, [statusFilter, typeFilter, refreshCounts]);
 
   useEffect(() => {
     loadTasks();
@@ -583,7 +588,14 @@ export default function TasksListPage() {
                         </TableCell>
                       )}
                       <TableCell className="font-medium">
-                        {task.title}
+                        <div className="flex items-center gap-2">
+                          {task.title}
+                          {(counts[task.id] ?? 0) > 0 && (
+                            <Badge variant="destructive" className="text-xs px-1.5 py-0">
+                              {(counts[task.id] ?? 0) > 99 ? "99+" : counts[task.id]}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="capitalize">{task.type}</TableCell>
                       <TableCell>

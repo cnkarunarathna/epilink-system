@@ -41,10 +41,12 @@ import {
 } from "@/services/tasks.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSocketEvent } from "@/hooks/useSocket";
+import { useUnread } from "@/contexts/UnreadContext";
 import { toast } from "sonner";
 
 export default function PHITasksPage() {
   const { user } = useAuth();
+  const { counts, refreshCounts } = useUnread();
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,13 +59,16 @@ export default function PHITasksPage() {
       setLoading(true);
       const data = await fetchTasks({ assignedPhiId: user.id });
       setTasks(data);
+      if (data.length > 0) {
+        refreshCounts(data.map((t) => t.id));
+      }
     } catch (error) {
       console.error("Failed to load tasks:", error);
       toast.error("Failed to load tasks");
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, refreshCounts]);
 
   useEffect(() => {
     loadTasks();
@@ -284,6 +289,11 @@ export default function PHITasksPage() {
                           >
                             {task.priority}
                           </span>
+                          {(counts[task.id] ?? 0) > 0 && (
+                            <Badge variant="destructive" className="text-xs px-1.5 py-0">
+                              {(counts[task.id] ?? 0) > 99 ? "99+" : counts[task.id]}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {task.type.charAt(0).toUpperCase() +
