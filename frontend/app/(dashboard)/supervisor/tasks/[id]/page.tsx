@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/map";
 import { useSocketEvent } from "@/hooks/useSocket";
 import { useUnread } from "@/contexts/UnreadContext";
-import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ChatPopup } from "@/components/chat/ChatPopup";
 
 export default function TaskDetailPage() {
   const params = useParams();
@@ -457,23 +457,14 @@ export default function TaskDetailPage() {
         </Card>
       )}
 
-      {/* Chat Section */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 px-1">
-          <h3 className="text-base font-semibold">Messages</h3>
-          {unreadCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
-              {unreadCount > 99 ? "99+" : unreadCount} unread
-            </Badge>
-          )}
-        </div>
-        <ChatPanel
-          taskId={taskId}
-          visible={true}
-          hasAssignedPhi={!!task.assignedPhiId}
-          readOnly={isTerminal}
-        />
-      </div>
+      {/* Floating chat popup */}
+      <ChatPopup
+        taskId={taskId}
+        taskTitle={task.title}
+        hasAssignedPhi={!!task.assignedPhiId}
+        readOnly={isTerminal}
+        unreadCount={unreadCount}
+      />
 
       {/* Evidence Section */}
       <Card>

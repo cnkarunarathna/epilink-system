@@ -20,6 +20,18 @@ interface ChatPanelProps {
   /** If true, input is disabled (task COMPLETED / CANCELLED) */
   readOnly?: boolean;
   className?: string;
+  /**
+   * Popup mode — hide the built-in header row.
+   * The parent (ChatPopup) renders its own titlebar and search UI instead.
+   */
+  hideHeader?: boolean;
+  /**
+   * When the parent controls search, pass the results here to replace the
+   * normal message list.  `undefined` means "use local messages".
+   */
+  overrideMessages?: MessageResponseDto[];
+  overrideLoading?: boolean;
+  overrideHasMore?: boolean;
 }
 
 export function ChatPanel({
@@ -28,6 +40,10 @@ export function ChatPanel({
   hasAssignedPhi = true,
   readOnly = false,
   className,
+  hideHeader = false,
+  overrideMessages,
+  overrideLoading,
+  overrideHasMore,
 }: ChatPanelProps) {
   const { user } = useAuth();
   const { clearCount, refreshCounts } = useUnread();
@@ -106,9 +122,11 @@ export function ChatPanel({
     );
   }
 
-  const displayMessages = searchOpen ? searchResults : messages;
-  const displayLoading = searchOpen ? searchLoading : loading;
-  const displayHasMore = searchOpen ? false : hasMore;
+  // When a parent (ChatPopup) provides overrides, use them; otherwise use local state
+  const hasOverride = overrideMessages !== undefined;
+  const displayMessages = hasOverride ? overrideMessages! : searchOpen ? searchResults : messages;
+  const displayLoading = hasOverride ? (overrideLoading ?? false) : searchOpen ? searchLoading : loading;
+  const displayHasMore = hasOverride ? (overrideHasMore ?? false) : searchOpen ? false : hasMore;
 
   return (
     <div
@@ -117,42 +135,44 @@ export function ChatPanel({
         className,
       )}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium flex-1">Messages</span>
+      {/* Header — hidden when the parent popup renders its own titlebar */}
+      {!hideHeader && (
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium flex-1">Messages</span>
 
-        {/* Search toggle */}
-        {searchOpen ? (
-          <>
-            <input
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search messages…"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {searchLoading && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            )}
+          {/* Search toggle */}
+          {searchOpen ? (
+            <>
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search messages…"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+              {searchLoading && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
+              <button
+                onClick={closeSearch}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
             <button
-              onClick={closeSearch}
+              onClick={() => setSearchOpen(true)}
               className="text-muted-foreground hover:text-foreground"
-              aria-label="Close search"
+              aria-label="Search messages"
             >
-              <X className="h-4 w-4" />
+              <Search className="h-4 w-4" />
             </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Search messages"
-          >
-            <Search className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Read-only banner */}
       {readOnly && (
