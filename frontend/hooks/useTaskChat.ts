@@ -1,0 +1,330 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSocket } from "@/contexts/SocketContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSocketEvent } from "@/hooks/useSocket";
+import {
+  fetchMessages,
+  sendMessage,
+  markMessagesRead,
+  toggleReaction,
+  MessageResponseDto,
+  MessageReactionDto,
+  CreateMessageDto,
+} from "@/services/chat.service";
+
+interface TypingUser {
+  userId: string;
+  userName: string;
+}
+
+interface ChatReadEvent {
+  taskId: string;
+  userId: string;
+  messageIds: string[];
+  readAt: string;
+}
+
+interface ChatTypingEvent {
+  taskId: string;
+  userId: string;
+  userName: string;
+  isTyping: boolean;
+}
+
+interface ChatReactionEvent {
+  taskId: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  action: "added" | "removed";
+  reactions: MessageReactionDto[];
+}
+
+export function useTaskChat(taskId: string, panelVisible = false) {
+  const [messages, setMessages] = useState<MessageResponseDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const { socket } = useSocket();
+  const { user } = useAuth();
+
+  // Track typing timeout handles for auto-clear
+  const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  // ─── Initial load ────────────────────────────────────────────────────────────
+
+  const loadMessages = useCallback(
+    async (before?: string) => {
+      try {
+        const data = await fetchMessages(taskId, { limit: 50, before });
+        if (before) {
+          // Prepend older messages
+          setMessages((prev) => [...data, ...prev]);
+        } else {
+          setMessages(data);
+        }
+        setHasMore(data.length === 50);
+      } catch (err) {
+        console.error("[useTaskChat] loadMessages error:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [taskId],
+  );
+
+  useEffect(() => {
+    setLoading(true);
+    setMessages([]);
+    setHasMore(true);
+    loadMessages();
+  }, [taskId, loadMessages]);
+
+  // ─── Join / leave task socket room ───────────────────────────────────────────
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.emit("chat:join", { taskId });
+    return () => {
+      socket.emit("chat:leave", { taskId });
+    };
+  }, [socket, taskId]);
+
+  // ─── Real-time: new message ───────────────────────────────────────────────────
+
+  useSocketEvent<MessageResponseDto>(
+    "chat:message",
+    (msg) => {
+      if (msg.taskId !== taskId) return;
+      setMessages((prev) => {
+        // Replace the sender's optimistic entry when the confirmed message arrives
+        if (msg.clientId) {
+          const optimisticId = `opt_${msg.clientId}`;
+          const idx = prev.findIndex((m) => m.id === optimisticId);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = msg;
+            return updated;
+          }
+        }
+        // Avoid duplicate if the HTTP response already resolved first
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      // Auto-mark as read if the panel is open and message is from someone else
+      if (panelVisible && user && msg.sender.id !== user.id) {
+        markMessagesRead(taskId, [msg.id]).catch(() => {});
+      }
+    },
+    [taskId, panelVisible, user],
+  );
+
+  // ─── Real-time: read receipts ─────────────────────────────────────────────────
+
+  useSocketEvent<ChatReadEvent>(
+    "chat:read",
+    (data) => {
+      if (data.taskId !== taskId) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!data.messageIds.includes(m.id)) return m;
+          const alreadyRead = m.readBy.some((r) => r.userId === data.userId);
+          if (alreadyRead) return m;
+          return {
+            ...m,
+            readBy: [...m.readBy, { userId: data.userId, readAt: data.readAt }],
+          };
+        }),
+      );
+    },
+    [taskId],
+  );
+
+  // ─── Real-time: typing indicator ──────────────────────────────────────────────
+
+  useSocketEvent<ChatTypingEvent>(
+    "chat:typing",
+    (data) => {
+      if (data.taskId !== taskId) return;
+
+      setTypingUsers((prev) => {
+        const filtered = prev.filter((u) => u.userId !== data.userId);
+        return data.isTyping
+          ? [...filtered, { userId: data.userId, userName: data.userName }]
+          : filtered;
+      });
+
+      // Auto-clear after 3 s if no further typing event
+      const existingTimer = typingTimers.current.get(data.userId);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      if (data.isTyping) {
+        const timer = setTimeout(() => {
+          setTypingUsers((prev) =>
+            prev.filter((u) => u.userId !== data.userId),
+          );
+          typingTimers.current.delete(data.userId);
+        }, 3000);
+        typingTimers.current.set(data.userId, timer);
+      }
+    },
+    [taskId],
+  );
+
+  // ─── 6.3 Real-time: reactions ─────────────────────────────────────────────────
+
+  useSocketEvent<ChatReactionEvent>(
+    "chat:reaction",
+    (data) => {
+      if (data.taskId !== taskId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.messageId ? { ...m, reactions: data.reactions } : m,
+        ),
+      );
+    },
+    [taskId],
+  );
+
+  // Cleanup typing timers on unmount
+  useEffect(() => {
+    return () => {
+      typingTimers.current.forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
+
+  // ─── Actions ──────────────────────────────────────────────────────────────────
+
+  const send = useCallback(
+    async (
+      content: string,
+      attachment?: { url: string; type: "image" | "document" },
+    ): Promise<void> => {
+      if (!user) return;
+
+      // Generate a client-side ID to correlate the optimistic entry with the
+      // confirmed message that arrives via the chat:message socket event.
+      const clientId = crypto.randomUUID();
+      const optimisticId = `opt_${clientId}`;
+
+      // Add an optimistic message immediately so the sender sees instant feedback
+      const optimistic: MessageResponseDto = {
+        id: optimisticId,
+        clientId,
+        taskId,
+        content,
+        attachmentUrl: attachment?.url ?? null,
+        attachmentType: attachment?.type ?? null,
+        sender: { id: user.id, name: user.name, role: user.role },
+        isSystemMessage: false,
+        createdAt: new Date().toISOString(),
+        readBy: [],
+        reactions: [],
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      const dto: CreateMessageDto = {
+        content,
+        clientId,
+        ...(attachment && {
+          attachmentUrl: attachment.url,
+          attachmentType: attachment.type,
+        }),
+      };
+
+      try {
+        const confirmed = await sendMessage(taskId, dto);
+        // If the socket event arrived first it already replaced the optimistic
+        // entry; if not, swap it now using the HTTP response.
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === optimisticId);
+          if (idx < 0) return prev; // already replaced by socket event
+          const updated = [...prev];
+          updated[idx] = confirmed;
+          return updated;
+        });
+      } catch (err) {
+        // Remove the optimistic entry so the user knows the send failed
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        throw err; // propagate so MessageInput can display an error toast
+      }
+    },
+    [taskId, user],
+  );
+
+  const loadMore = useCallback(async (): Promise<void> => {
+    if (!hasMore || loading) return;
+    const oldest = messages[0];
+    if (!oldest) return;
+    await loadMessages(oldest.id);
+  }, [hasMore, loading, messages, loadMessages]);
+
+  const markVisible = useCallback(
+    async (visibleMessageIds: string[]): Promise<void> => {
+      if (!user || visibleMessageIds.length === 0) return;
+      const unread = visibleMessageIds.filter(
+        (id) =>
+          messages
+            .find((m) => m.id === id)
+            ?.readBy.every((r) => r.userId !== user.id) ?? false,
+      );
+      if (unread.length === 0) return;
+      await markMessagesRead(taskId, unread).catch(() => {});
+    },
+    [taskId, messages, user],
+  );
+
+  const emitTyping = useCallback(
+    (isTyping: boolean): void => {
+      socket?.emit("chat:typing", { taskId, isTyping });
+    },
+    [socket, taskId],
+  );
+
+  // ─── 6.3 React to a message ───────────────────────────────────────────────────
+
+  const reactToMessage = useCallback(
+    async (messageId: string, emoji: string): Promise<void> => {
+      // Optimistic update
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !user) return m;
+          const hasReaction = m.reactions.some(
+            (r) => r.emoji === emoji && r.userId === user.id,
+          );
+          const reactions = hasReaction
+            ? m.reactions.filter(
+                (r) => !(r.emoji === emoji && r.userId === user.id),
+              )
+            : [...m.reactions, { emoji, userId: user.id }];
+          return { ...m, reactions };
+        }),
+      );
+
+      try {
+        await toggleReaction(taskId, messageId, emoji);
+        // Socket broadcast (chat:reaction) will reconcile the final state
+      } catch {
+        // Revert optimistic update on failure
+        await loadMessages();
+      }
+    },
+    [taskId, user, loadMessages],
+  );
+
+  return {
+    messages,
+    loading,
+    hasMore,
+    typingUsers,
+    send,
+    loadMore,
+    markVisible,
+    emitTyping,
+    reactToMessage,
+  };
+}

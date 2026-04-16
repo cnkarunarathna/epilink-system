@@ -55,6 +55,26 @@ export class CacheHelperService {
     await this.cacheManager.set(key, value, ttlMs);
   }
 
+  /**
+   * Atomically increment an integer counter and (re-)set its TTL.
+   * Uses a Redis pipeline so both INCR and PEXPIRE go in a single round-trip.
+   * Falls back to a non-atomic get-increment-set when Redis is unavailable.
+   */
+  async incr(key: string, ttlMs: number): Promise<number> {
+    if (this.redisClient) {
+      const results = await this.redisClient
+        .pipeline()
+        .incr(key)
+        .pexpire(key, ttlMs)
+        .exec();
+      return (results[0][1] as number);
+    }
+    const current = (await this.cacheManager.get<number>(key)) ?? 0;
+    const next = current + 1;
+    await this.cacheManager.set(key, next, ttlMs);
+    return next;
+  }
+
   async del(key: string): Promise<void> {
     if (this.redisClient) {
       await this.redisClient.del(key);

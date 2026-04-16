@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { SeedService } from './seed/seed.service';
+import { RedisIoAdapter } from './events/redis-io.adapter';
 
 dotenv.config();
 
@@ -47,6 +48,11 @@ async function bootstrap() {
         : true, // Allow all origins in development for mobile testing
     credentials: true,
   });
+
+  // Wire Redis adapter for Socket.io cross-instance pub/sub.
+  const redisIoAdapter = new RedisIoAdapter(app);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   // Run database seed
   const seedService = app.get(SeedService);

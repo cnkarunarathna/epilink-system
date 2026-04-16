@@ -46,6 +46,8 @@ import {
   MapControls,
 } from "@/components/ui/map";
 import { useSocketEvent } from "@/hooks/useSocket";
+import { useUnread } from "@/contexts/UnreadContext";
+import { ChatPopup } from "@/components/chat/ChatPopup";
 
 export default function TaskDetailPage() {
   const params = useParams();
@@ -57,6 +59,9 @@ export default function TaskDetailPage() {
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const { counts, refreshCounts } = useUnread();
+  const unreadCount = counts[taskId] ?? 0;
+
   const loadTaskData = useCallback(async () => {
     try {
       setLoading(true);
@@ -66,6 +71,7 @@ export default function TaskDetailPage() {
       ]);
       setTask(taskData);
       setEvidence(evidenceData);
+      refreshCounts([taskId]);
     } catch (error) {
       console.error("Failed to load task:", error);
       toast.error("Failed to load task details");
@@ -73,7 +79,7 @@ export default function TaskDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, router]);
+  }, [taskId, router, refreshCounts]);
 
   useEffect(() => {
     loadTaskData();
@@ -450,6 +456,15 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Floating chat popup */}
+      <ChatPopup
+        taskId={taskId}
+        taskTitle={task.title}
+        hasAssignedPhi={!!task.assignedPhiId}
+        readOnly={isTerminal}
+        unreadCount={unreadCount}
+      />
 
       {/* Evidence Section */}
       <Card>

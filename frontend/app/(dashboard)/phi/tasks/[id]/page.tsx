@@ -54,6 +54,8 @@ import {
 } from "@/components/ui/map";
 import { useSocketEvent } from "@/hooks/useSocket";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUnread } from "@/contexts/UnreadContext";
+import { ChatPopup } from "@/components/chat/ChatPopup";
 
 export default function PHITaskDetailPage() {
   const params = useParams();
@@ -74,6 +76,9 @@ export default function PHITaskDetailPage() {
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  const { counts, refreshCounts } = useUnread();
+  const unreadCount = counts[taskId] ?? 0;
+
   const loadTaskData = useCallback(async () => {
     try {
       setLoading(true);
@@ -83,6 +88,7 @@ export default function PHITaskDetailPage() {
       ]);
       setTask(taskData);
       setEvidence(evidenceData);
+      refreshCounts([taskId]);
     } catch (error) {
       console.error("Failed to load task:", error);
       toast.error("Failed to load task details");
@@ -90,7 +96,7 @@ export default function PHITaskDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, router]);
+  }, [taskId, router, refreshCounts]);
 
   useEffect(() => {
     loadTaskData();
@@ -652,6 +658,15 @@ export default function PHITaskDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Floating chat popup */}
+      <ChatPopup
+        taskId={taskId}
+        taskTitle={task.title}
+        hasAssignedPhi={!!task.assignedPhiId}
+        readOnly={isFinished}
+        unreadCount={unreadCount}
+      />
     </div>
   );
 }

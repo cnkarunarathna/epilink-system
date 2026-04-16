@@ -120,8 +120,9 @@ export class TasksController {
   assignTask(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignTaskDto,
+    @Request() req,
   ) {
-    return this.tasksService.assignTask(id, dto);
+    return this.tasksService.assignTask(id, dto, req.user.id);
   }
 
   @Delete(':id')
