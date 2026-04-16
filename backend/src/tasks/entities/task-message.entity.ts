@@ -18,10 +18,10 @@ export class TaskMessage {
   @Column({ type: 'text' })
   content: string;
 
-  @Column({ name: 'attachment_url', nullable: true })
+  @Column({ type: 'varchar', name: 'attachment_url', nullable: true })
   attachmentUrl: string | null;
 
-  @Column({ name: 'attachment_type', nullable: true })
+  @Column({ type: 'varchar', name: 'attachment_type', nullable: true })
   attachmentType: string | null;
 
   @ManyToOne(() => Task, { onDelete: 'CASCADE' })
