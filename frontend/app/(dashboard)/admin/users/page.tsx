@@ -96,10 +96,31 @@ const ROLE_CONFIG: Record<
   Role,
   { label: string; color: string; avatarBg: string; avatarText: string }
 > = {
-  admin:      { label: "Admin",      color: "bg-destructive/10 text-destructive border-destructive/20",        avatarBg: "bg-destructive/15",  avatarText: "text-destructive"  },
-  supervisor: { label: "Supervisor", color: "bg-sky-500/10 text-sky-600 border-sky-500/20 dark:text-sky-400",  avatarBg: "bg-sky-500/15",      avatarText: "text-sky-600"      },
-  phi:        { label: "PHI",        color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400", avatarBg: "bg-emerald-500/15", avatarText: "text-emerald-600" },
-  viewer:     { label: "Viewer",     color: "bg-muted text-muted-foreground border-border",                    avatarBg: "bg-muted",           avatarText: "text-muted-foreground" },
+  admin: {
+    label: "Admin",
+    color: "bg-destructive/10 text-destructive border-destructive/20",
+    avatarBg: "bg-destructive/15",
+    avatarText: "text-destructive",
+  },
+  supervisor: {
+    label: "Supervisor",
+    color: "bg-sky-500/10 text-sky-600 border-sky-500/20 dark:text-sky-400",
+    avatarBg: "bg-sky-500/15",
+    avatarText: "text-sky-600",
+  },
+  phi: {
+    label: "PHI",
+    color:
+      "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400",
+    avatarBg: "bg-emerald-500/15",
+    avatarText: "text-emerald-600",
+  },
+  viewer: {
+    label: "Viewer",
+    color: "bg-muted text-muted-foreground border-border",
+    avatarBg: "bg-muted",
+    avatarText: "text-muted-foreground",
+  },
 };
 
 const ROLE_FILTERS = ["all", "admin", "supervisor", "phi", "viewer"] as const;
@@ -132,10 +153,18 @@ function TableSkeletonRows() {
               </div>
             </div>
           </TableCell>
-          <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-10 rounded-full" /></TableCell>
-          <TableCell className="text-right"><Skeleton className="h-7 w-7 ml-auto rounded-md" /></TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-20 rounded-full" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-3.5 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-10 rounded-full" />
+          </TableCell>
+          <TableCell className="text-right">
+            <Skeleton className="h-7 w-7 ml-auto rounded-md" />
+          </TableCell>
         </TableRow>
       ))}
     </>
@@ -145,24 +174,31 @@ function TableSkeletonRows() {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function UsersPage() {
-  const [searchQuery, setSearchQuery]         = useState("");
-  const [roleFilter, setRoleFilter]           = useState<RoleFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
-  const [openEditDialog, setOpenEditDialog]   = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-  const [selectedUser, setSelectedUser]       = useState<User | null>(null);
-  const [users, setUsers]                     = useState<User[]>([]);
-  const [stats, setStats]                     = useState<UserStats | null>(null);
-  const [loading, setLoading]                 = useState(true);
-  const [submitting, setSubmitting]           = useState(false);
-  const [districts, setDistricts]             = useState<string[]>([]);
-  const [togglingId, setTogglingId]           = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<CreateUserData>({
-    name: "", email: "", password: "", role: "viewer", district: "",
+    name: "",
+    email: "",
+    password: "",
+    role: "viewer",
+    district: "",
   });
   const [editFormData, setEditFormData] = useState<UpdateUserData>({
-    name: "", email: "", role: "viewer", district: "",
+    name: "",
+    email: "",
+    role: "viewer",
+    district: "",
   });
 
   useEffect(() => {
@@ -186,19 +222,28 @@ export default function UsersPage() {
         ? {
             ...prev,
             totalUsers: prev.totalUsers + 1,
-            activeUsers: newUser.isActive ? prev.activeUsers + 1 : prev.activeUsers,
+            activeUsers: newUser.isActive
+              ? prev.activeUsers + 1
+              : prev.activeUsers,
             usersByRole: {
               ...prev.usersByRole,
-              [newUser.role]: (prev.usersByRole[newUser.role as keyof typeof prev.usersByRole] || 0) + 1,
+              [newUser.role]:
+                (prev.usersByRole[
+                  newUser.role as keyof typeof prev.usersByRole
+                ] || 0) + 1,
             },
           }
         : null,
     );
-    toast.success("New user added", { description: `${newUser.name} has been created` });
+    toast.success("New user added", {
+      description: `${newUser.name} has been created`,
+    });
   }, []);
 
   const handleUserUpdated = useCallback((updatedUser: User) => {
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    setUsers((prev) =>
+      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
+    );
   }, []);
 
   const handleUserDeleted = useCallback(({ id }: { id: string }) => {
@@ -206,23 +251,34 @@ export default function UsersPage() {
     usersService.getStats().then(setStats).catch(console.error);
   }, []);
 
-  const handleUserStatusChanged = useCallback(({ id, isActive }: { id: string; isActive: boolean }) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isActive } : u)));
-    setStats((prev) =>
-      prev
-        ? {
-            ...prev,
-            activeUsers:   isActive ? prev.activeUsers + 1   : prev.activeUsers - 1,
-            inactiveUsers: isActive ? prev.inactiveUsers - 1 : prev.inactiveUsers + 1,
-          }
-        : null,
-    );
-  }, []);
+  const handleUserStatusChanged = useCallback(
+    ({ id, isActive }: { id: string; isActive: boolean }) => {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, isActive } : u)),
+      );
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeUsers: isActive
+                ? prev.activeUsers + 1
+                : prev.activeUsers - 1,
+              inactiveUsers: isActive
+                ? prev.inactiveUsers - 1
+                : prev.inactiveUsers + 1,
+            }
+          : null,
+      );
+    },
+    [],
+  );
 
-  useSocketEvent("user:created",       handleUserCreated,       [handleUserCreated]);
-  useSocketEvent("user:updated",       handleUserUpdated,       [handleUserUpdated]);
-  useSocketEvent("user:deleted",       handleUserDeleted,       [handleUserDeleted]);
-  useSocketEvent("user:status-changed",handleUserStatusChanged, [handleUserStatusChanged]);
+  useSocketEvent("user:created", handleUserCreated, [handleUserCreated]);
+  useSocketEvent("user:updated", handleUserUpdated, [handleUserUpdated]);
+  useSocketEvent("user:deleted", handleUserDeleted, [handleUserDeleted]);
+  useSocketEvent("user:status-changed", handleUserStatusChanged, [
+    handleUserStatusChanged,
+  ]);
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -249,8 +305,13 @@ export default function UsersPage() {
       toast.error("Please fill in all required fields");
       return;
     }
-    if ((formData.role === "supervisor" || formData.role === "phi") && !formData.district) {
-      toast.error(`District is required for ${formData.role.toUpperCase()} accounts`);
+    if (
+      (formData.role === "supervisor" || formData.role === "phi") &&
+      !formData.district
+    ) {
+      toast.error(
+        `District is required for ${formData.role.toUpperCase()} accounts`,
+      );
       return;
     }
     try {
@@ -258,10 +319,18 @@ export default function UsersPage() {
       await usersService.create(formData);
       toast.success("User created successfully");
       setOpenCreateDialog(false);
-      setFormData({ name: "", email: "", password: "", role: "viewer", district: "" });
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        role: "viewer",
+        district: "",
+      });
       loadData();
     } catch (error: any) {
-      toast.error("Failed to create user", { description: error.response?.data?.message || error.message });
+      toast.error("Failed to create user", {
+        description: error.response?.data?.message || error.message,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -277,7 +346,9 @@ export default function UsersPage() {
       setSelectedUser(null);
       loadData();
     } catch (error: any) {
-      toast.error("Failed to update user", { description: error.response?.data?.message || error.message });
+      toast.error("Failed to update user", {
+        description: error.response?.data?.message || error.message,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -293,36 +364,65 @@ export default function UsersPage() {
       setSelectedUser(null);
       loadData();
     } catch (error: any) {
-      toast.error("Failed to delete user", { description: error.response?.data?.message || error.message });
+      toast.error("Failed to delete user", {
+        description: error.response?.data?.message || error.message,
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleToggleStatus = async (user: User) => {
+  const handleToggleStatus = async (user: User, nextIsActive?: boolean) => {
+    const previousIsActive = user.isActive;
+    const optimisticIsActive =
+      typeof nextIsActive === "boolean" ? nextIsActive : !previousIsActive;
+
     setTogglingId(user.id);
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === user.id ? { ...u, isActive: optimisticIsActive } : u,
+      ),
+    );
+
     try {
-      await usersService.toggleStatus(user.id);
-      toast.success(`User ${user.isActive ? "deactivated" : "activated"} successfully`);
-      loadData();
+      const updatedUser = await usersService.toggleStatus(user.id);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, ...updatedUser } : u)),
+      );
+      toast.success(
+        `User ${updatedUser.isActive ? "activated" : "deactivated"} successfully`,
+      );
     } catch (error: any) {
-      toast.error("Failed to update user status", { description: error.response?.data?.message || error.message });
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id ? { ...u, isActive: previousIsActive } : u,
+        ),
+      );
+      toast.error("Failed to update user status", {
+        description: error.response?.data?.message || error.message,
+      });
     } finally {
       setTogglingId(null);
+      usersService.getStats().then(setStats).catch(console.error);
     }
   };
 
   const openEditUserDialog = (user: User) => {
     setSelectedUser(user);
-    setEditFormData({ name: user.name, email: user.email, role: user.role, district: user.district || "" });
+    setEditFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      district: user.district || "",
+    });
     setOpenEditDialog(true);
   };
 
   // ── Filtered list ─────────────────────────────────────────────────────────
 
   const filteredUsers = users.filter((user) => {
-    const matchesRole   = roleFilter === "all" || user.role === roleFilter;
-    const q             = searchQuery.toLowerCase();
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
       !q ||
       user.name.toLowerCase().includes(q) ||
@@ -344,7 +444,9 @@ export default function UsersPage() {
         {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
+            <h2 className="text-2xl font-bold tracking-tight">
+              User Management
+            </h2>
             <p className="text-sm text-muted-foreground">
               Create and manage system users with role-based access
             </p>
@@ -357,7 +459,9 @@ export default function UsersPage() {
               disabled={loading}
               className="gap-2"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
 
@@ -383,11 +487,17 @@ export default function UsersPage() {
                   showPassword
                 />
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setOpenCreateDialog(false)} disabled={submitting}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setOpenCreateDialog(false)}
+                    disabled={submitting}
+                  >
                     Cancel
                   </Button>
                   <Button onClick={handleCreateUser} disabled={submitting}>
-                    {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {submitting && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Create User
                   </Button>
                 </DialogFooter>
@@ -536,7 +646,10 @@ export default function UsersPage() {
                             variant="ghost"
                             size="sm"
                             className="mt-1 text-xs"
-                            onClick={() => { setSearchQuery(""); setRoleFilter("all"); }}
+                            onClick={() => {
+                              setSearchQuery("");
+                              setRoleFilter("all");
+                            }}
                           >
                             Clear filters
                           </Button>
@@ -546,7 +659,8 @@ export default function UsersPage() {
                   </TableRow>
                 ) : (
                   filteredUsers.map((user) => {
-                    const roleCfg = ROLE_CONFIG[user.role as Role] ?? ROLE_CONFIG.viewer;
+                    const roleCfg =
+                      ROLE_CONFIG[user.role as Role] ?? ROLE_CONFIG.viewer;
                     const isToggling = togglingId === user.id;
                     return (
                       <TableRow key={user.id} className="group">
@@ -554,7 +668,9 @@ export default function UsersPage() {
                         <TableCell className="pl-6">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-9 w-9 shrink-0">
-                              <AvatarFallback className={`text-xs font-semibold ${roleCfg.avatarBg} ${roleCfg.avatarText}`}>
+                              <AvatarFallback
+                                className={`text-xs font-semibold ${roleCfg.avatarBg} ${roleCfg.avatarText}`}
+                              >
                                 {getInitials(user.name)}
                               </AvatarFallback>
                             </Avatar>
@@ -587,7 +703,9 @@ export default function UsersPage() {
                               {user.district}
                             </span>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
                           )}
                         </TableCell>
 
@@ -598,15 +716,23 @@ export default function UsersPage() {
                               <span className="inline-flex items-center">
                                 <Switch
                                   checked={user.isActive}
-                                  onCheckedChange={() => handleToggleStatus(user)}
+                                  onCheckedChange={(checked) =>
+                                    handleToggleStatus(user, checked)
+                                  }
                                   disabled={isToggling}
-                                  aria-label={user.isActive ? "Deactivate user" : "Activate user"}
+                                  aria-label={
+                                    user.isActive
+                                      ? "Deactivate user"
+                                      : "Activate user"
+                                  }
                                   className="scale-90"
                                 />
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              {user.isActive ? "Click to deactivate" : "Click to activate"}
+                              {user.isActive
+                                ? "Click to deactivate"
+                                : "Click to activate"}
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
@@ -629,18 +755,26 @@ export default function UsersPage() {
                                 {user.name}
                               </DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
+                              <DropdownMenuItem
+                                onClick={() => openEditUserDialog(user)}
+                              >
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                              <DropdownMenuItem
+                                onClick={() => handleToggleStatus(user)}
+                                disabled={isToggling}
+                              >
                                 <RefreshCw className="mr-2 h-4 w-4" />
                                 {user.isActive ? "Deactivate" : "Activate"}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
-                                onClick={() => { setSelectedUser(user); setOpenDeleteDialog(true); }}
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setOpenDeleteDialog(true);
+                                }}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete
@@ -662,7 +796,9 @@ export default function UsersPage() {
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>Edit User</DialogTitle>
-              <DialogDescription>Update information and permissions</DialogDescription>
+              <DialogDescription>
+                Update information and permissions
+              </DialogDescription>
             </DialogHeader>
             <UserForm
               data={editFormData}
@@ -672,11 +808,17 @@ export default function UsersPage() {
               passwordOptional
             />
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpenEditDialog(false)} disabled={submitting}>
+              <Button
+                variant="outline"
+                onClick={() => setOpenEditDialog(false)}
+                disabled={submitting}
+              >
                 Cancel
               </Button>
               <Button onClick={handleEditUser} disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Save Changes
               </Button>
             </DialogFooter>
@@ -697,13 +839,17 @@ export default function UsersPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={submitting}>
+                Cancel
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteUser}
                 disabled={submitting}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -724,13 +870,21 @@ interface UserFormProps {
   passwordOptional?: boolean;
 }
 
-function UserForm({ data, onChange, districts, showPassword, passwordOptional }: UserFormProps) {
+function UserForm({
+  data,
+  onChange,
+  districts,
+  showPassword,
+  passwordOptional,
+}: UserFormProps) {
   const needsDistrict = data.role === "supervisor" || data.role === "phi";
 
   return (
     <div className="grid gap-4 py-2">
       <div className="grid gap-1.5">
-        <Label htmlFor="uf-name">Full Name <span className="text-destructive">*</span></Label>
+        <Label htmlFor="uf-name">
+          Full Name <span className="text-destructive">*</span>
+        </Label>
         <Input
           id="uf-name"
           placeholder="John Doe"
@@ -740,7 +894,9 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
       </div>
 
       <div className="grid gap-1.5">
-        <Label htmlFor="uf-email">Email <span className="text-destructive">*</span></Label>
+        <Label htmlFor="uf-email">
+          Email <span className="text-destructive">*</span>
+        </Label>
         <Input
           id="uf-email"
           type="email"
@@ -755,7 +911,9 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
           <Label htmlFor="uf-password">
             Password{" "}
             {passwordOptional ? (
-              <span className="text-muted-foreground font-normal">(leave blank to keep current)</span>
+              <span className="text-muted-foreground font-normal">
+                (leave blank to keep current)
+              </span>
             ) : (
               <span className="text-destructive">*</span>
             )}
@@ -763,7 +921,11 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
           <Input
             id="uf-password"
             type="password"
-            placeholder={passwordOptional ? "Leave blank to keep current" : "Min. 6 characters"}
+            placeholder={
+              passwordOptional
+                ? "Leave blank to keep current"
+                : "Min. 6 characters"
+            }
             value={(data as any).password ?? ""}
             onChange={(e) => onChange({ password: e.target.value } as any)}
           />
@@ -772,7 +934,9 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="uf-role">Role <span className="text-destructive">*</span></Label>
+          <Label htmlFor="uf-role">
+            Role <span className="text-destructive">*</span>
+          </Label>
           <Select
             value={data.role ?? "viewer"}
             onValueChange={(v) => onChange({ role: v as any })}
@@ -795,7 +959,9 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
             {needsDistrict ? (
               <span className="text-destructive">*</span>
             ) : (
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             )}
           </Label>
           <Select
@@ -808,7 +974,9 @@ function UserForm({ data, onChange, districts, showPassword, passwordOptional }:
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
               {districts.map((d) => (
-                <SelectItem key={d} value={d}>{d}</SelectItem>
+                <SelectItem key={d} value={d}>
+                  {d}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
