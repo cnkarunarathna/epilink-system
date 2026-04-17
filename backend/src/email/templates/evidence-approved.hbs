@@ -1,0 +1,44 @@
+<h1>Evidence Approved</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  Your evidence submission has been reviewed and approved by your supervisor.
+</p>
+
+<div class="success-box">
+  <p>&#10003; Evidence status: <strong>Approved</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{#if verifiedBy}}
+  <tr>
+    <td>Approved By</td>
+    <td>{{verifiedBy}}</td>
+  </tr>
+  {{/if}}
+  {{#if verifiedAt}}
+  <tr>
+    <td>Approved At</td>
+    <td>{{verifiedAt}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">View Task</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Thank you for your contribution to public health in the {{district}} district.
+</p>

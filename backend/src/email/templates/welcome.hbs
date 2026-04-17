@@ -1,0 +1,44 @@
+<h1>Welcome to Epilink, {{name}}!</h1>
+
+<p>
+  Your account has been created. Below are your login credentials —
+  please keep them safe and change your password after your first login.
+</p>
+
+<div class="info-box">
+  <p>
+    <strong>Role:</strong> {{roleLabel}}{{#if district}}&nbsp;&middot;&nbsp;<strong>District:</strong> {{district}}{{/if}}
+  </p>
+</div>
+
+<hr class="divider" />
+
+<h2>Your Login Credentials</h2>
+<table class="detail-list">
+  <tr>
+    <td>Email address</td>
+    <td><strong>{{email}}</strong></td>
+  </tr>
+  <tr>
+    <td>Temporary password</td>
+    <td><strong>{{tempPassword}}</strong></td>
+  </tr>
+</table>
+
+<div class="btn-wrap">
+  <a href="{{loginUrl}}" class="btn">Login to Epilink</a>
+</div>
+
+<div class="warning-box">
+  <p>
+    For your security, please change this password immediately after your first login.
+    Do not share your credentials with anyone.
+  </p>
+</div>
+
+<hr class="divider" />
+
+<p style="font-size: 13px; color: #90a4ae;">
+  If you did not expect this account or believe it was created in error,
+  please contact your system administrator immediately.
+</p>

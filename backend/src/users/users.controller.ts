@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -11,6 +12,7 @@ import {
   HttpStatus,
   Request,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -134,5 +136,44 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  @Get(':id/notification-preferences')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.PHI)
+  async getNotificationPreferences(
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    if (req.user.role !== UserRole.ADMIN && req.user.id !== id) {
+      throw new ForbiddenException(
+        'You can only view your own notification preferences',
+      );
+    }
+    return this.usersService.getNotificationPreferences(id);
+  }
+
+  @Put(':id/notification-preferences')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.PHI)
+  async updateNotificationPreferences(
+    @Param('id') id: string,
+    @Request() req,
+    @Body()
+    dto: {
+      taskAssigned?: boolean;
+      taskStatusChanged?: boolean;
+      taskReminder?: boolean;
+      taskOverdue?: boolean;
+      evidenceReview?: boolean;
+      reportReady?: boolean;
+      weeklyDigest?: boolean;
+      riskAlerts?: boolean;
+    },
+  ) {
+    if (req.user.role !== UserRole.ADMIN && req.user.id !== id) {
+      throw new ForbiddenException(
+        'You can only update your own notification preferences',
+      );
+    }
+    return this.usersService.updateNotificationPreferences(id, dto);
   }
 }

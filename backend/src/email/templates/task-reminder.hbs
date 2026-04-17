@@ -1,0 +1,50 @@
+<h1>Reminder: Task Due Tomorrow</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  This is a reminder that one of your assigned tasks is due <strong>tomorrow</strong>. Please ensure it is completed and submitted on time.
+</p>
+
+<div class="warning-box">
+  <p>&#8987; Due date: <strong>{{dueDate}}</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  <tr>
+    <td>Priority</td>
+    <td><span class="badge-{{priority}}">{{uppercase priority}}</span></td>
+  </tr>
+  <tr>
+    <td>Status</td>
+    <td>{{status}}</td>
+  </tr>
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{#if address}}
+  <tr>
+    <td>Address</td>
+    <td>{{address}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">Open Task</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  If you are unable to complete this task by the due date, please contact your supervisor immediately.
+</p>
