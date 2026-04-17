@@ -1,0 +1,49 @@
+<h1>&#9888; High Dengue Risk Detected</h1>
+
+<p>Hi {{recipientName}},</p>
+
+<p>
+  Epidemiological surveillance data has identified an elevated dengue risk level in <strong>{{district}}</strong> district that requires immediate attention.
+</p>
+
+<div class="alert-box">
+  <p>&#9888; Alert Level: <strong>{{alertLevel}}</strong> &mdash; {{description}}</p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{district}} District — Week {{weekNumber}}, {{year}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Current Cases</td>
+    <td><strong>{{currentCases}}</strong></td>
+  </tr>
+  <tr>
+    <td>4-Week Average</td>
+    <td>{{avgCases}}</td>
+  </tr>
+  <tr>
+    <td>Alert Level</td>
+    <td>{{alertLevel}}</td>
+  </tr>
+  <tr>
+    <td>Surveillance Week</td>
+    <td>Week {{weekNumber}}, {{year}}</td>
+  </tr>
+</table>
+
+<div class="warning-box">
+  <p><strong>Recommended Actions:</strong></p>
+  <p>Deploy field PHI teams to affected areas, increase surveillance frequency, and coordinate with the district medical officer for immediate response.</p>
+</div>
+
+{{#if dashboardUrl}}
+<div class="btn-wrap">
+  <a href="{{dashboardUrl}}" class="btn">View Analytics Dashboard</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  This alert is generated automatically by the Epilink epidemiological surveillance system. Contact your district medical officer or system administrator for guidance.
+</p>

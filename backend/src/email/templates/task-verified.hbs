@@ -1,0 +1,48 @@
+<h1>Task Verified</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  Great work! Your task has been reviewed and verified by your supervisor.
+</p>
+
+<div class="success-box">
+  <p>&#10003; Task status: <strong>Verified</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{#if verifiedBy}}
+  <tr>
+    <td>Verified By</td>
+    <td>{{verifiedBy}}</td>
+  </tr>
+  {{/if}}
+  {{#if completedAt}}
+  <tr>
+    <td>Completed At</td>
+    <td>{{completedAt}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">View Task</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Thank you for your contribution to public health in the {{district}} district.
+</p>

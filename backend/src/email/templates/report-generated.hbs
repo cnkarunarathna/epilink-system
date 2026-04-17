@@ -1,0 +1,48 @@
+<h1>Weekly Epidemiological Report Ready</h1>
+
+<p>Hi {{recipientName}},</p>
+
+<p>
+  The weekly epidemiological surveillance report for <strong>Week {{weekNumber}}, {{year}}</strong> has been generated and is ready for your review.
+</p>
+
+<div class="info-box">
+  <p>&#128203; Report type: <strong>{{reportType}}</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{reportTitle}}</h2>
+
+<table class="detail-list">
+  {{#if totalPredictedCases}}
+  <tr>
+    <td>Predicted Cases</td>
+    <td><strong>{{totalPredictedCases}}</strong></td>
+  </tr>
+  {{/if}}
+  {{#if totalCurrentCases}}
+  <tr>
+    <td>Current Week Cases</td>
+    <td><strong>{{totalCurrentCases}}</strong></td>
+  </tr>
+  {{/if}}
+  <tr>
+    <td>High-Risk Districts</td>
+    <td><strong>{{highRiskDistricts}}</strong> of {{totalDistricts}}</td>
+  </tr>
+  <tr>
+    <td>Week</td>
+    <td>Week {{weekNumber}}, {{year}}</td>
+  </tr>
+</table>
+
+{{#if reportUrl}}
+<div class="btn-wrap">
+  <a href="{{reportUrl}}" class="btn">View &amp; Download Report</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  This report requires review and approval before it is distributed. Please log in to the Epilink system to approve or annotate the report.
+</p>

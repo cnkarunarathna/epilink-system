@@ -1,0 +1,128 @@
+<h1>Weekly Activity Summary</h1>
+
+<p>Hi {{recipientName}},</p>
+
+{{#if isAdmin}}
+<p>
+  Here is your system-wide activity summary for <strong>Week {{weekNumber}}, {{year}}</strong>.
+</p>
+{{else}}
+<p>
+  Here is your district activity summary for <strong>{{district}}</strong> — Week {{weekNumber}}, {{year}}.
+</p>
+{{/if}}
+
+<hr class="divider" />
+
+<h2>Task Overview</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Total Tasks</td>
+    <td><strong>{{taskStats.total}}</strong></td>
+  </tr>
+  <tr>
+    <td>Pending</td>
+    <td>{{taskStats.pending}}</td>
+  </tr>
+  <tr>
+    <td>In Progress</td>
+    <td>{{taskStats.inProgress}}</td>
+  </tr>
+  <tr>
+    <td>Submitted</td>
+    <td>{{taskStats.submitted}}</td>
+  </tr>
+  <tr>
+    <td>Completed</td>
+    <td>{{taskStats.completed}}</td>
+  </tr>
+  {{#if taskStats.overdue}}
+  <tr>
+    <td>Overdue</td>
+    <td><strong style="color:#c0392b;">{{taskStats.overdue}}</strong></td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if isAdmin}}
+
+{{#if topDistricts.length}}
+<hr class="divider" />
+<h2>Top Active Districts</h2>
+<table class="detail-list">
+  {{#each topDistricts}}
+  <tr>
+    <td>{{this.name}}</td>
+    <td>{{this.taskCount}} tasks</td>
+  </tr>
+  {{/each}}
+</table>
+{{/if}}
+
+<hr class="divider" />
+<h2>System Stats</h2>
+<table class="detail-list">
+  <tr>
+    <td>Active Users</td>
+    <td>{{activeUsers}}</td>
+  </tr>
+  <tr>
+    <td>Reports Generated</td>
+    <td>{{reportsGenerated}}</td>
+  </tr>
+  <tr>
+    <td>Reports Approved</td>
+    <td>{{reportsApproved}}</td>
+  </tr>
+  {{#if activeAlerts}}
+  <tr>
+    <td>Active Risk Alerts</td>
+    <td><strong style="color:#c0392b;">{{activeAlerts}}</strong></td>
+  </tr>
+  {{/if}}
+</table>
+
+{{else}}
+
+{{#if phiActivity.length}}
+<hr class="divider" />
+<h2>PHI Activity</h2>
+<table class="detail-list">
+  {{#each phiActivity}}
+  <tr>
+    <td>{{this.name}}</td>
+    <td>{{this.completed}} completed &nbsp;&middot;&nbsp; {{this.pending}} pending</td>
+  </tr>
+  {{/each}}
+</table>
+{{/if}}
+
+{{#if evidencePending}}
+<div class="warning-box">
+  <p>&#9881; <strong>{{evidencePending}} evidence item{{#if evidencePendingPlural}}s{{/if}}</strong> awaiting your review.</p>
+</div>
+{{/if}}
+
+{{#if districtCases}}
+<hr class="divider" />
+<h2>Dengue Surveillance</h2>
+<table class="detail-list">
+  <tr>
+    <td>Cases This Week</td>
+    <td><strong>{{districtCases}}</strong></td>
+  </tr>
+</table>
+{{/if}}
+
+{{/if}}
+
+{{#if dashboardUrl}}
+<div class="btn-wrap">
+  <a href="{{dashboardUrl}}" class="btn">Open Dashboard</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  This is your automated weekly summary from the Epilink surveillance system. You can adjust your notification preferences in your account settings.
+</p>

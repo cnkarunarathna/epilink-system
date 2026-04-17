@@ -1,0 +1,51 @@
+<h1>Weekly Report Approved</h1>
+
+<p>Hi {{recipientName}},</p>
+
+<p>
+  The weekly epidemiological surveillance report for <strong>Week {{weekNumber}}, {{year}}</strong> has been officially approved.
+</p>
+
+<div class="success-box">
+  <p>&#10003; Report status: <strong>Approved</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{reportTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Week</td>
+    <td>Week {{weekNumber}}, {{year}}</td>
+  </tr>
+  {{#if approvedBy}}
+  <tr>
+    <td>Approved By</td>
+    <td>{{approvedBy}}</td>
+  </tr>
+  {{/if}}
+  {{#if approvedAt}}
+  <tr>
+    <td>Approved At</td>
+    <td>{{approvedAt}}</td>
+  </tr>
+  {{/if}}
+  <tr>
+    <td>High-Risk Districts</td>
+    <td>{{highRiskDistricts}} of {{totalDistricts}}</td>
+  </tr>
+</table>
+
+{{#if downloadUrl}}
+<div class="btn-wrap">
+  <a href="{{downloadUrl}}" class="btn">Download PDF Report</a>
+</div>
+<p style="font-size: 13px; color: #90a4ae; text-align: center;">
+  &#128274; This download link expires in 7 days.
+</p>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  The approved report is now available in the Epilink system for distribution and archival.
+</p>

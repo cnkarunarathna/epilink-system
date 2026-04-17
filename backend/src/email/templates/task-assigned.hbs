@@ -1,0 +1,61 @@
+<h1>New Task Assigned</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  A new task has been assigned to you. Please review the details below and begin work before the due date.
+</p>
+
+<div class="info-box">
+  <p>
+    <strong>Priority:</strong>
+    <span class="badge-{{priority}}">{{uppercase priority}}</span>
+    &nbsp;&middot;&nbsp;
+    <strong>District:</strong> {{district}}
+  </p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  {{#if description}}
+  <tr>
+    <td>Description</td>
+    <td>{{description}}</td>
+  </tr>
+  {{/if}}
+  {{#if address}}
+  <tr>
+    <td>Address</td>
+    <td>{{address}}</td>
+  </tr>
+  {{/if}}
+  {{#if dueDate}}
+  <tr>
+    <td>Due Date</td>
+    <td>{{dueDate}}</td>
+  </tr>
+  {{/if}}
+  {{#if assignedBy}}
+  <tr>
+    <td>Assigned By</td>
+    <td>{{assignedBy}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">View Task</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Please log in to the Epilink system to update your progress. If you have any questions, contact your supervisor.
+</p>

@@ -1,0 +1,55 @@
+<h1>Task Returned — Action Required</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  Your task submission has been returned for revision. Please review the feedback below, make the necessary corrections, and resubmit.
+</p>
+
+<div class="alert-box">
+  <p>&#9888; Task status: <strong>Returned for Revision</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+{{#if rejectionReason}}
+<div class="warning-box">
+  <p><strong>Reason for return:</strong></p>
+  <p>{{rejectionReason}}</p>
+</div>
+{{/if}}
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{#if rejectedBy}}
+  <tr>
+    <td>Returned By</td>
+    <td>{{rejectedBy}}</td>
+  </tr>
+  {{/if}}
+  {{#if dueDate}}
+  <tr>
+    <td>Due Date</td>
+    <td>{{dueDate}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">Update &amp; Resubmit</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Please address the feedback and resubmit as soon as possible. Contact your supervisor if you need clarification.
+</p>

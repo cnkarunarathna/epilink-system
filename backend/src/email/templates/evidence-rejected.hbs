@@ -1,0 +1,44 @@
+<h1>Evidence Returned — Action Required</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  Your evidence submission has been reviewed and returned. Please address the feedback below and resubmit.
+</p>
+
+<div class="alert-box">
+  <p>&#9888; Evidence status: <strong>Returned for revision</strong></p>
+</div>
+
+{{#if rejectionReason}}
+<div class="warning-box">
+  <p><strong>Reason:</strong> {{rejectionReason}}</p>
+</div>
+{{/if}}
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{#if rejectedBy}}
+  <tr>
+    <td>Returned By</td>
+    <td>{{rejectedBy}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">Resubmit Evidence</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Please update your evidence and resubmit via the task page. Contact your supervisor if you need further clarification.
+</p>
