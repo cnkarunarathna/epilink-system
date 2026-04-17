@@ -4,8 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   Bot,
   User,
@@ -19,6 +19,7 @@ import {
   Trash2,
   Copy,
   Check,
+  RotateCcw,
 } from "lucide-react";
 import { chatWithAgent, deleteChatSession } from "@/services/analytics.service";
 
@@ -38,7 +39,56 @@ const PRESET_QUESTIONS = [
   "Which districts have the fastest case growth?",
 ];
 
+function normalizeMarkdown(content: string) {
+  let normalized = content;
+
+  // Some responses can be escaped multiple times (e.g., "\\n" or "\\*\\*").
+  // Run a few decode passes so markdown reliably renders in the UI.
+  for (let i = 0; i < 3; i += 1) {
+    const prev = normalized;
+    const trimmed = normalized.trim();
+
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === "string") {
+          normalized = parsed;
+        }
+      } catch {
+        // Ignore parse failures and continue fallback normalization.
+      }
+    }
+
+    normalized = normalized
+      .replace(/\\\\r\\\\n/g, "\n")
+      .replace(/\\\\n/g, "\n")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\\\t/g, "\t")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\\*/g, "*")
+      .replace(/\\\*/g, "*")
+      .replace(/\\\\_/g, "_")
+      .replace(/\\_/g, "_")
+      .replace(/\\\\`/g, "`")
+      .replace(/\\`/g, "`")
+      .replace(/\\\\\"/g, '"')
+      .replace(/\\\"/g, '"');
+
+    if (normalized === prev) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
 function MarkdownContent({ content }: { content: string }) {
+  const normalizedContent = normalizeMarkdown(content);
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -47,22 +97,36 @@ function MarkdownContent({ content }: { content: string }) {
           <p className="text-sm mb-1.5 last:mb-0 leading-relaxed">{children}</p>
         ),
         ul: ({ children }) => (
-          <ul className="list-disc pl-4 mb-1.5 space-y-0.5 text-sm">{children}</ul>
+          <ul className="list-disc pl-4 mb-1.5 space-y-0.5 text-sm">
+            {children}
+          </ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5 text-sm">{children}</ol>
+          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5 text-sm">
+            {children}
+          </ol>
         ),
-        li: ({ children }) => (
-          <li className="leading-relaxed">{children}</li>
-        ),
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
         strong: ({ children }) => (
-          <strong className="font-semibold text-purple-700 dark:text-purple-300">{children}</strong>
+          <strong className="font-semibold text-purple-700 dark:text-purple-300">
+            {children}
+          </strong>
         ),
         em: ({ children }) => <em className="italic">{children}</em>,
         code: ({ children }) => (
           <code className="bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 text-xs font-mono">
             {children}
           </code>
+        ),
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 text-purple-700 dark:text-purple-300 hover:text-purple-800 dark:hover:text-purple-200"
+          >
+            {children}
+          </a>
         ),
         blockquote: ({ children }) => (
           <blockquote className="border-l-2 border-purple-300 dark:border-purple-700 pl-3 opacity-80 my-1 text-sm">
@@ -71,7 +135,7 @@ function MarkdownContent({ content }: { content: string }) {
         ),
       }}
     >
-      {content}
+      {normalizedContent}
     </ReactMarkdown>
   );
 }
@@ -98,11 +162,39 @@ function CopyButton({ content }: { content: string }) {
   );
 }
 
+function TypingIndicator() {
+  return (
+    <div className="flex gap-3 items-start animate-in fade-in-50">
+      <div className="p-1.5 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow">
+        <Bot className="h-4 w-4 text-white" />
+      </div>
+      <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
+          <span className="ml-1">Analyzing with tools...</span>
+          <Sparkles className="h-3 w-3 text-purple-400 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatMessageTime(date: Date) {
+  return new Intl.DateTimeFormat("en-LK", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 interface ChatEntry {
+  id: string;
   role: "user" | "assistant";
   content: string;
   toolCalls?: string[];
   timestamp: Date;
+  isError?: boolean;
 }
 
 interface Props {
@@ -116,8 +208,19 @@ export default function InsightChatPanel({ district }: Props) {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [turnCount, setTurnCount] = useState(0);
   const [expanded, setExpanded] = useState(true);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastPromptRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }, [input]);
 
   // Clear server session and local state when district changes
   const clearSession = useCallback(async (sid?: string) => {
@@ -132,6 +235,8 @@ export default function InsightChatPanel({ district }: Props) {
     setSessionId(undefined);
     setTurnCount(0);
     setInput("");
+    setUserScrolledUp(false);
+    lastPromptRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -145,24 +250,47 @@ export default function InsightChatPanel({ district }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district]);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // Smart scroll to latest unless user has intentionally scrolled up
+  const scrollToBottom = useCallback(() => {
+    if (!userScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, loading]);
+  }, [userScrolledUp]);
 
-  const sendMessage = async (text?: string) => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading, scrollToBottom]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setUserScrolledUp(distanceFromBottom > 80);
+  };
+
+  const sendMessage = async ({
+    text,
+    appendUser = true,
+  }: {
+    text?: string;
+    appendUser?: boolean;
+  } = {}) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
 
-    const userEntry: ChatEntry = {
-      role: "user",
-      content: msg,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userEntry]);
+    if (appendUser) {
+      const userEntry: ChatEntry = {
+        id: `${Date.now()}-user`,
+        role: "user",
+        content: msg,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userEntry]);
+      lastPromptRef.current = msg;
+    }
+
     setInput("");
+    setUserScrolledUp(false);
 
     setLoading(true);
     try {
@@ -174,6 +302,7 @@ export default function InsightChatPanel({ district }: Props) {
       setMessages((prev) => [
         ...prev,
         {
+          id: `${Date.now()}-assistant`,
           role: "assistant",
           content: resp.reply,
           toolCalls: resp.tool_calls_used,
@@ -184,9 +313,11 @@ export default function InsightChatPanel({ district }: Props) {
       setMessages((prev) => [
         ...prev,
         {
+          id: `${Date.now()}-assistant-error`,
           role: "assistant",
           content: "Failed to get a response. Please try again.",
           timestamp: new Date(),
+          isError: true,
         },
       ]);
     } finally {
@@ -194,15 +325,22 @@ export default function InsightChatPanel({ district }: Props) {
     }
   };
 
+  const handleRetry = (messageId: string) => {
+    const lastPrompt = lastPromptRef.current;
+    if (!lastPrompt) return;
+    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    sendMessage({ text: lastPrompt, appendUser: false });
+  };
+
   return (
     <div className="rounded-xl border-2 border-purple-200 dark:border-purple-800/50 overflow-hidden shadow-lg">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/50 dark:to-indigo-950/50 hover:from-purple-100 hover:to-indigo-100 dark:hover:from-purple-900/50 dark:hover:to-indigo-900/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 bg-linear-to-r from-purple-50 to-indigo-50 dark:from-purple-950/50 dark:to-indigo-950/50 hover:from-purple-100 hover:to-indigo-100 dark:hover:from-purple-900/50 dark:hover:to-indigo-900/50 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg shadow">
+          <div className="p-1.5 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow">
             <MessageSquare className="h-4 w-4 text-white" />
           </div>
           <span className="text-sm font-semibold text-purple-900 dark:text-purple-200">
@@ -236,10 +374,11 @@ export default function InsightChatPanel({ district }: Props) {
       </button>
 
       {expanded && (
-        <div className="bg-white dark:bg-slate-900">
+        <div className="bg-white dark:bg-slate-900 relative">
           {/* Messages */}
           <div
             ref={scrollRef}
+            onScroll={handleScroll}
             className="max-h-[400px] min-h-[120px] overflow-y-auto p-4 space-y-4"
           >
             {messages.length === 0 && !loading && (
@@ -262,7 +401,7 @@ export default function InsightChatPanel({ district }: Props) {
                   {PRESET_QUESTIONS.slice(0, 3).map((q) => (
                     <button
                       key={q}
-                      onClick={() => sendMessage(q)}
+                      onClick={() => sendMessage({ text: q })}
                       className="text-xs px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
                     >
                       {q}
@@ -272,51 +411,81 @@ export default function InsightChatPanel({ district }: Props) {
               </div>
             )}
 
-            {messages.map((msg, idx) => (
+            {messages.map((msg) => (
               <div
-                key={idx}
+                key={msg.id}
                 className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in-50 slide-in-from-bottom-2`}
               >
                 {msg.role === "assistant" && (
-                  <div className="p-1.5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg h-fit shadow">
+                  <div className="p-1.5 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg h-fit shadow">
                     <Bot className="h-4 w-4 text-white" />
                   </div>
                 )}
-                <div className={`max-w-[80%] space-y-2 ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
-                    : "bg-slate-50 dark:bg-slate-800 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-200 dark:border-slate-700"
-                }`}>
-                  {/* Tool calls badge */}
-                  {msg.toolCalls && msg.toolCalls.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {msg.toolCalls.map((tool, i) => (
-                        <Badge
-                          key={i}
-                          variant="outline"
-                          className="text-[10px] px-2 py-0.5 bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400"
-                        >
-                          <Wrench className="h-3 w-3 mr-1" />
-                          {TOOL_LABELS[tool] || tool}
-                        </Badge>
-                      ))}
-                    </div>
+                <div
+                  className={cn(
+                    "max-w-[85%] space-y-1",
+                    msg.role === "user" && "items-end",
                   )}
-                  {msg.role === "user" ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {msg.content}
-                    </p>
-                  ) : (
-                    <div className="text-slate-700 dark:text-slate-300">
-                      <MarkdownContent content={msg.content} />
-                    </div>
-                  )}
-                </div>
-                {msg.role === "assistant" && (
-                  <div className="h-fit self-end pb-1">
-                    <CopyButton content={msg.content} />
+                >
+                  <div
+                    className={cn(
+                      "rounded-2xl px-4 py-2.5",
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : msg.isError
+                          ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-bl-md"
+                          : "bg-slate-50 dark:bg-slate-800 rounded-bl-md border border-slate-200 dark:border-slate-700",
+                    )}
+                  >
+                    {msg.role === "user" ? (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                    ) : (
+                      <div className="text-slate-700 dark:text-slate-300">
+                        <MarkdownContent content={msg.content} />
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 px-1 text-[11px] text-muted-foreground",
+                      msg.role === "user" ? "justify-end" : "justify-start",
+                    )}
+                  >
+                    <span>{formatMessageTime(msg.timestamp)}</span>
+                    {msg.role === "assistant" && (
+                      <CopyButton content={msg.content} />
+                    )}
+                    {msg.role === "assistant" && msg.isError && (
+                      <button
+                        onClick={() => handleRetry(msg.id)}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Retry
+                      </button>
+                    )}
+                  </div>
+
+                  {msg.role === "assistant" &&
+                    msg.toolCalls &&
+                    msg.toolCalls.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 px-1">
+                        {msg.toolCalls.map((tool, i) => (
+                          <Badge
+                            key={`${tool}-${i}`}
+                            variant="outline"
+                            className="text-[10px] px-2 py-0.5 bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400"
+                          >
+                            <Wrench className="h-3 w-3 mr-1" />
+                            {TOOL_LABELS[tool] || tool}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                </div>
                 {msg.role === "user" && (
                   <div className="p-1.5 bg-primary rounded-lg h-fit shadow">
                     <User className="h-4 w-4 text-primary-foreground" />
@@ -326,21 +495,27 @@ export default function InsightChatPanel({ district }: Props) {
             ))}
 
             {/* Typing indicator */}
-            {loading && (
-              <div className="flex gap-3 items-start animate-in fade-in-50">
-                <div className="p-1.5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg shadow">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-                    <span>Analyzing with tools...</span>
-                    <Sparkles className="h-3 w-3 text-purple-400 animate-pulse" />
-                  </div>
-                </div>
-              </div>
-            )}
+            {loading && <TypingIndicator />}
+
+            <div ref={messagesEndRef} />
           </div>
+
+          {userScrolledUp && (
+            <div className="absolute bottom-[74px] left-1/2 -translate-x-1/2 z-10">
+              <button
+                onClick={() => {
+                  setUserScrolledUp(false);
+                  messagesEndRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  });
+                }}
+                className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 shadow-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <ChevronDown className="h-3 w-3" />
+                Scroll to latest
+              </button>
+            </div>
+          )}
 
           {/* Preset questions (when there are messages) */}
           {messages.length > 0 && !loading && (
@@ -352,7 +527,7 @@ export default function InsightChatPanel({ district }: Props) {
                 .map((q) => (
                   <button
                     key={q}
-                    onClick={() => sendMessage(q)}
+                    onClick={() => sendMessage({ text: q })}
                     className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
                     {q}
@@ -362,13 +537,14 @@ export default function InsightChatPanel({ district }: Props) {
           )}
 
           {/* Input */}
-          <div className="flex gap-2 p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
-            <Input
-              ref={inputRef}
+          <div className="flex gap-2 p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 items-end">
+            <textarea
+              ref={textareaRef}
+              rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask about ${district}...`}
-              className="flex-1 bg-white dark:bg-slate-800 border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500 text-sm"
+              placeholder={`Ask about ${district}... (Shift+Enter for newline)`}
+              className="flex-1 resize-none rounded-2xl border bg-white dark:bg-slate-800 border-purple-200 dark:border-purple-800 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 max-h-24 overflow-y-auto"
               disabled={loading}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -380,8 +556,8 @@ export default function InsightChatPanel({ district }: Props) {
             <Button
               onClick={() => sendMessage()}
               disabled={loading || !input.trim()}
-              size="sm"
-              className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg px-4"
+              size="icon"
+              className="h-10 w-10 rounded-full shrink-0 bg-linear-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +18,7 @@ import {
   MessageSquare,
   Minimize2,
 } from "lucide-react";
-import {
-  chatWithAgent,
-  deleteChatSession,
-} from "@/services/analytics.service";
+import { chatWithAgent, deleteChatSession } from "@/services/analytics.service";
 
 const TOOL_LABELS: Record<string, string> = {
   compare_districts: "District Comparison",
@@ -48,6 +47,92 @@ const PRESETS = [
   "How accurate are the model predictions?",
   "Which zones within the district need urgent action?",
 ];
+
+function normalizeMarkdown(content: string) {
+  let normalized = content;
+
+  for (let i = 0; i < 3; i += 1) {
+    const prev = normalized;
+    const trimmed = normalized.trim();
+
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === "string") {
+          normalized = parsed;
+        }
+      } catch {
+        // Ignore parse failures and keep normalizing.
+      }
+    }
+
+    normalized = normalized
+      .replace(/\\\\r\\\\n/g, "\n")
+      .replace(/\\\\n/g, "\n")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\\\t/g, "\t")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\\*/g, "*")
+      .replace(/\\\*/g, "*")
+      .replace(/\\\\_/g, "_")
+      .replace(/\\_/g, "_")
+      .replace(/\\\\`/g, "`")
+      .replace(/\\`/g, "`")
+      .replace(/\\\\\"/g, '"')
+      .replace(/\\\"/g, '"');
+
+    if (normalized === prev) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const normalized = normalizeMarkdown(content);
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => (
+          <p className="text-[13px] mb-1.5 last:mb-0 leading-relaxed">
+            {children}
+          </p>
+        ),
+        ul: ({ children }) => (
+          <ul className="list-disc pl-4 mb-1.5 space-y-0.5 text-[13px]">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5 text-[13px]">
+            {children}
+          </ol>
+        ),
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        strong: ({ children }) => (
+          <strong className="font-semibold text-purple-700 dark:text-purple-300">
+            {children}
+          </strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 text-[11px] font-mono">
+            {children}
+          </code>
+        ),
+      }}
+    >
+      {normalized}
+    </ReactMarkdown>
+  );
+}
 
 interface ChatEntry {
   id: string;
@@ -107,7 +192,11 @@ export default function FloatingChatBubble({
 
   const clearSession = useCallback(async (sid?: string) => {
     if (sid) {
-      try { await deleteChatSession(sid); } catch { /* best-effort */ }
+      try {
+        await deleteChatSession(sid);
+      } catch {
+        /* best-effort */
+      }
     }
     setMessages([]);
     sessionIdRef.current = undefined;
@@ -135,7 +224,7 @@ export default function FloatingChatBubble({
       const prev = sessionIdRef.current;
       clearSession(prev);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district]);
 
   const sendMessage = useCallback(
@@ -200,9 +289,7 @@ export default function FloatingChatBubble({
           <div>
             <h3 className="text-sm font-semibold">EpiLink AI Analyst</h3>
             <p className="text-[11px] text-purple-200">
-              {district
-                ? `Analyzing ${district}`
-                : "National dengue analytics"}
+              {district ? `Analyzing ${district}` : "National dengue analytics"}
             </p>
           </div>
         </div>
@@ -273,8 +360,8 @@ export default function FloatingChatBubble({
                 How can I help?
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                I can analyze trends, compare districts, and provide
-                actionable insights
+                I can analyze trends, compare districts, and provide actionable
+                insights
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-1.5 mt-2">
@@ -322,15 +409,15 @@ export default function FloatingChatBubble({
                   ))}
                 </div>
               )}
-              <p
-                className={`text-[13px] leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? ""
-                    : "text-slate-700 dark:text-slate-300"
-                }`}
-              >
-                {msg.content}
-              </p>
+              {msg.role === "user" ? (
+                <p className="text-[13px] leading-relaxed whitespace-pre-wrap">
+                  {msg.content}
+                </p>
+              ) : (
+                <div className="text-slate-700 dark:text-slate-300">
+                  <MarkdownContent content={msg.content} />
+                </div>
+              )}
             </div>
             {msg.role === "user" && (
               <div className="p-1 bg-primary rounded-lg h-fit shadow shrink-0 mt-0.5">
@@ -350,9 +437,18 @@ export default function FloatingChatBubble({
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
                 <span>Analyzing data...</span>
                 <span className="flex gap-0.5">
-                  <span className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <span
+                    className="w-1 h-1 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <span
+                    className="w-1 h-1 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <span
+                    className="w-1 h-1 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
                 </span>
               </div>
             </div>
@@ -363,9 +459,7 @@ export default function FloatingChatBubble({
       {/* Quick presets after first response */}
       {messages.length > 0 && messages.length < 6 && !loading && (
         <div className="px-3 pb-1.5 flex flex-wrap gap-1 shrink-0">
-          {PRESETS.filter(
-            (q) => !messages.some((m) => m.content === q),
-          )
+          {PRESETS.filter((q) => !messages.some((m) => m.content === q))
             .slice(0, 2)
             .map((q) => (
               <button
