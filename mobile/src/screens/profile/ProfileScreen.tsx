@@ -14,7 +14,10 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -38,7 +41,11 @@ import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 const ProfileScreenSkeleton: React.FC = () => (
   <View style={profileSkeletonStyles.container}>
     {/* Gradient header area */}
-    <ShimmerPlaceholder height={180} borderRadiusValue={0} style={profileSkeletonStyles.headerBlock} />
+    <ShimmerPlaceholder
+      height={180}
+      borderRadiusValue={0}
+      style={profileSkeletonStyles.headerBlock}
+    />
 
     {/* Avatar circle placeholder — centred, overlaps the header bottom */}
     <View style={profileSkeletonStyles.avatarWrap}>
@@ -48,7 +55,12 @@ const ProfileScreenSkeleton: React.FC = () => (
     {/* Name + role labels */}
     <View style={profileSkeletonStyles.labelGroup}>
       <ShimmerPlaceholder width={160} height={18} borderRadiusValue={9} />
-      <ShimmerPlaceholder width={120} height={13} borderRadiusValue={7} style={{ marginTop: 8 }} />
+      <ShimmerPlaceholder
+        width={120}
+        height={13}
+        borderRadiusValue={7}
+        style={{ marginTop: 8 }}
+      />
     </View>
 
     {/* Stat row */}
@@ -59,8 +71,16 @@ const ProfileScreenSkeleton: React.FC = () => (
     </View>
 
     {/* Two info cards */}
-    <ShimmerPlaceholder height={72} borderRadiusValue={16} style={profileSkeletonStyles.card} />
-    <ShimmerPlaceholder height={72} borderRadiusValue={16} style={profileSkeletonStyles.card} />
+    <ShimmerPlaceholder
+      height={72}
+      borderRadiusValue={16}
+      style={profileSkeletonStyles.card}
+    />
+    <ShimmerPlaceholder
+      height={72}
+      borderRadiusValue={16}
+      style={profileSkeletonStyles.card}
+    />
   </View>
 );
 
@@ -239,7 +259,10 @@ export const ProfileScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollPaddingBottom }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: scrollPaddingBottom },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -783,10 +806,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     backgroundColor: colors.card,
-    padding: spacing.md,
+    paddingVertical: spacing.md + 1,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.destructive + "25",
+    minHeight: 48,
   },
   logoutText: {
     fontSize: typography.fontSize.base,

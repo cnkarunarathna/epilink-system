@@ -29,15 +29,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
   },
   container: {
     justifyContent: "center",
     alignItems: "center",
     padding: spacing.xl,
+    minHeight: 120,
   },
   message: {
     marginTop: spacing.md,
     fontSize: typography.fontSize.base,
     color: colors.textSecondary,
+    textAlign: "center",
   },
 });

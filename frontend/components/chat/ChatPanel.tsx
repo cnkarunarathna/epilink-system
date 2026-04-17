@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { MessageSquare, AlertCircle, Search, X, Loader2 } from "lucide-react";
+import {
+  MessageSquare,
+  AlertCircle,
+  Search,
+  X,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUnread } from "@/contexts/UnreadContext";
@@ -112,32 +119,46 @@ export function ChatPanel({
     return (
       <div
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-lg border bg-muted/30 p-6 text-center text-muted-foreground",
+          "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/30 p-6 text-center text-muted-foreground",
           className,
         )}
       >
         <AlertCircle className="h-6 w-6 opacity-50" />
-        <p className="text-sm">Assign a PHI to this task to enable messaging.</p>
+        <p className="text-sm">
+          Assign a PHI to this task to enable messaging.
+        </p>
       </div>
     );
   }
 
   // When a parent (ChatPopup) provides overrides, use them; otherwise use local state
   const hasOverride = overrideMessages !== undefined;
-  const displayMessages = hasOverride ? overrideMessages! : searchOpen ? searchResults : messages;
-  const displayLoading = hasOverride ? (overrideLoading ?? false) : searchOpen ? searchLoading : loading;
-  const displayHasMore = hasOverride ? (overrideHasMore ?? false) : searchOpen ? false : hasMore;
+  const displayMessages = hasOverride
+    ? overrideMessages!
+    : searchOpen
+      ? searchResults
+      : messages;
+  const displayLoading = hasOverride
+    ? (overrideLoading ?? false)
+    : searchOpen
+      ? searchLoading
+      : loading;
+  const displayHasMore = hasOverride
+    ? (overrideHasMore ?? false)
+    : searchOpen
+      ? false
+      : hasMore;
 
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-lg border bg-background",
+        "flex flex-col overflow-hidden rounded-xl border border-border/80 bg-background",
         className,
       )}
     >
       {/* Header — hidden when the parent popup renders its own titlebar */}
       {!hideHeader && (
-        <div className="flex items-center gap-2 border-b px-3 py-2">
+        <div className="flex items-center gap-2 border-b bg-muted/24 px-3 py-2">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium flex-1">Messages</span>
 
@@ -149,7 +170,7 @@ export function ChatPanel({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search messages…"
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="flex-1 rounded-md border border-border/70 bg-background px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
               />
               {searchLoading && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
@@ -176,7 +197,8 @@ export function ChatPanel({
 
       {/* Read-only banner */}
       {readOnly && (
-        <div className="border-b bg-muted/60 px-3 py-1.5 text-center text-xs text-muted-foreground">
+        <div className="flex items-center justify-center gap-1.5 border-b bg-muted/55 px-3 py-1.5 text-center text-xs text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5" />
           This task is closed. Chat is read-only.
         </div>
       )}
@@ -206,11 +228,7 @@ export function ChatPanel({
 
       {/* Input */}
       {!readOnly && !searchOpen && (
-        <MessageInput
-          onSend={send}
-          onTyping={emitTyping}
-          disabled={readOnly}
-        />
+        <MessageInput onSend={send} onTyping={emitTyping} disabled={readOnly} />
       )}
     </div>
   );

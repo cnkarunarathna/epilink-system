@@ -10,11 +10,16 @@ interface AttachmentPickerProps {
   disabled?: boolean;
 }
 
-export function AttachmentPicker({ onAttached, disabled }: AttachmentPickerProps) {
+export function AttachmentPicker({
+  onAttached,
+  disabled,
+}: AttachmentPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [preview, setPreview] = useState<{ src: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<{ src: string; name: string } | null>(
+    null,
+  );
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,16 +59,22 @@ export function AttachmentPicker({ onAttached, disabled }: AttachmentPickerProps
     <div className="flex flex-col gap-1">
       {/* Preview */}
       {preview && (
-        <div className="relative inline-flex items-center gap-2 rounded-md border bg-muted px-2 py-1 text-xs">
+        <div className="relative inline-flex max-w-[220px] items-center gap-2 rounded-lg border border-border/80 bg-background px-2 py-1 text-xs shadow-sm">
           {preview.src ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview.src} alt="preview" className="h-8 w-8 rounded object-cover" />
+            <img
+              src={preview.src}
+              alt="preview"
+              className="h-8 w-8 rounded object-cover"
+            />
           ) : (
             <FileText className="h-4 w-4 text-muted-foreground" />
           )}
-          <span className="max-w-[120px] truncate text-muted-foreground">{preview.name}</span>
+          <span className="max-w-[120px] truncate text-muted-foreground">
+            {preview.name}
+          </span>
           {uploading && (
-            <span className="ml-1 text-muted-foreground">
+            <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {progress}%
             </span>
           )}
@@ -93,7 +104,7 @@ export function AttachmentPicker({ onAttached, disabled }: AttachmentPickerProps
         type="button"
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-8 w-8 shrink-0 rounded-full"
         disabled={disabled || uploading}
         onClick={() => inputRef.current?.click()}
       >

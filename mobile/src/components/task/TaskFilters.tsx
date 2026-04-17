@@ -63,7 +63,12 @@ const FilterChip: React.FC<{
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
+      <TouchableOpacity
+        onPress={handlePress}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
         {isActive ? (
           <LinearGradient
             colors={colors.gradient.primary}
@@ -86,24 +91,26 @@ const FilterChip: React.FC<{
 };
 
 // Re-renders only when the active filter or the change handler change
-export const TaskFilters = React.memo<TaskFiltersProps>(({ value, onChange }) => {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-    >
-      {FILTERS.map((filter) => (
-        <FilterChip
-          key={filter.value}
-          filter={filter}
-          isActive={value === filter.value}
-          onPress={() => onChange(filter.value)}
-        />
-      ))}
-    </ScrollView>
-  );
-});
+export const TaskFilters = React.memo<TaskFiltersProps>(
+  ({ value, onChange }) => {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+      >
+        {FILTERS.map((filter) => (
+          <FilterChip
+            key={filter.value}
+            filter={filter}
+            isActive={value === filter.value}
+            onPress={() => onChange(filter.value)}
+          />
+        ))}
+      </ScrollView>
+    );
+  },
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -112,17 +119,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    paddingVertical: spacing.sm + 2,
+    minHeight: 40,
+    paddingVertical: spacing.sm + 1,
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.full,
     backgroundColor: colors.muted,
     borderWidth: 1.5,
     borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   chipActive: {
     borderColor: "transparent",
     borderWidth: 0,
-    paddingVertical: spacing.sm + 3.5,
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg + 1.5,
   },
   chipText: {

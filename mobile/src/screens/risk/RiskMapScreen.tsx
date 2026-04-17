@@ -1,16 +1,28 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * Risk Map Screen — Full-screen dengue risk overlay with floating bottom sheet
+ */
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  RefreshControl,
   TouchableOpacity,
   Animated,
+  ScrollView,
+  PanResponder,
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
@@ -27,7 +39,6 @@ import {
   DistrictPrediction,
   DashboardSummary,
 } from "../../api/analyticsService";
-
 import districtGeoJSON from "../../../assets/District_geo.json";
 import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 
@@ -48,7 +59,9 @@ const getRiskColor = (cases: number) => {
   return "#16a34a";
 };
 
-const getRiskIcon = (cases: number) => {
+const getRiskIcon = (
+  cases: number,
+): React.ComponentProps<typeof MaterialCommunityIcons>["name"] => {
   if (cases >= 100) return "alert-octagon";
   if (cases >= 50) return "alert-circle";
   if (cases >= 25) return "alert";
@@ -56,7 +69,7 @@ const getRiskIcon = (cases: number) => {
   return "shield-check-outline";
 };
 
-/* ── District name mapping (GeoJSON ADM2_EN → API name) ──────────────────── */
+/* ── District name mapping ────────────────────────────────────────────────── */
 const districtNameMapping: Record<string, string> = {
   Trincomalee: "Trincomalee",
   Mullaitivu: "Mullaitivu",
@@ -85,7 +98,6 @@ const districtNameMapping: Record<string, string> = {
   Kandy: "Kandy",
 };
 
-// Reverse map: API name → display name (GeoJSON name used as display label)
 const apiToDisplayName: Record<string, string> = Object.entries(
   districtNameMapping,
 ).reduce(
@@ -96,7 +108,7 @@ const apiToDisplayName: Record<string, string> = Object.entries(
   {} as Record<string, string>,
 );
 
-/* ── Map HTML builder ─────────────────────────────────────────────────────── */
+/* ── Map HTML ─────────────────────────────────────────────────────────────── */
 function buildMapHTML(predictions: DistrictPrediction[]): string {
   const colorEntries = Object.entries(districtNameMapping)
     .map(([geoName, apiName]) => {
@@ -120,6 +132,8 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
           temp: d.temperature,
           rain: d.precipitation,
           displayName: apiToDisplayName[d.district] ?? d.district,
+          lat: d.latitude,
+          lng: d.longitude,
         };
         return acc;
       },
@@ -138,117 +152,68 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #f0fdf4; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    html, body { width: 100%; height: 100%; background: linear-gradient(180deg, #f4fbf5 0%, #e8f5e9 100%); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
     #map { width: 100%; height: 100vh; }
 
-    /* Floating legend — bottom-left */
-    #legend {
-      position: fixed;
-      bottom: 44px;
-      left: 10px;
-      background: rgba(255,255,255,0.93);
-      border-radius: 10px;
-      padding: 8px 10px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.14);
-      z-index: 10;
-      border: 1px solid rgba(0,0,0,0.07);
-    }
-    .legend-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
-      font-size: 10px;
-      color: #374151;
-      font-weight: 500;
-    }
-    .legend-row:last-child { margin-bottom: 0; }
-    .legend-swatch {
-      width: 11px;
-      height: 11px;
-      border-radius: 2px;
-      border: 0.5px solid rgba(0,0,0,0.12);
-      flex-shrink: 0;
-    }
+    .maplibregl-ctrl-bottom-right,
+    .maplibregl-ctrl-bottom-left,
+    .maplibregl-ctrl-top-right { display: none !important; }
 
-    /* Tap hint — top center, fades out */
-    #tap-hint {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.62);
-      color: #fff;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 5px 14px;
-      border-radius: 20px;
-      z-index: 10;
-      white-space: nowrap;
-      transition: opacity 0.5s ease;
-      pointer-events: none;
-    }
-    #tap-hint.hidden { opacity: 0; }
-
-    /* Popup */
     .maplibregl-popup-content {
       background: #fff;
-      border-radius: 12px;
+      border-radius: 16px;
       padding: 0;
-      box-shadow: 0 6px 24px rgba(0,0,0,0.16);
-      border: 1px solid #e5e7eb;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      border: 1px solid #f0f0f0;
       overflow: hidden;
-      min-width: 170px;
+      min-width: 190px;
     }
-    .popup-accent { height: 5px; width: 100%; }
-    .popup-body { padding: 12px 14px 14px; }
-    .popup-title { font-weight: 700; font-size: 14px; color: #111827; margin-bottom: 4px; }
-    .popup-cases { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
-    .popup-label { font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+    .maplibregl-popup-tip { display: none; }
+    .maplibregl-popup-close-button {
+      font-size: 20px;
+      padding: 8px 12px;
+      color: #9ca3af;
+    }
+    .popup-header { height: 6px; width: 100%; }
+    .popup-body { padding: 14px 16px 16px; }
+    .popup-name { font-weight: 800; font-size: 15px; color: #111827; margin-bottom: 8px; }
+    .popup-cases-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+    .popup-cases-num { font-size: 28px; font-weight: 900; line-height: 1; }
+    .popup-cases-label { font-size: 12px; color: #6b7280; font-weight: 500; }
     .popup-badge {
-      display: inline-block;
-      padding: 2px 10px;
-      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 12px;
+      border-radius: 24px;
       font-size: 11px;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .popup-bar-track {
-      height: 5px;
+      height: 6px;
       background: #f3f4f6;
-      border-radius: 3px;
+      border-radius: 4px;
       overflow: hidden;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
-    .popup-bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.4s ease;
-    }
-    .popup-meta { font-size: 11px; color: #6b7280; display: flex; gap: 10px; }
-    .maplibregl-popup-close-button {
-      font-size: 18px;
-      padding: 6px 10px;
-      color: #9ca3af;
+    .popup-bar-fill { height: 100%; border-radius: 4px; }
+    .popup-env {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #6b7280;
+      padding-top: 8px;
+      border-top: 1px solid #f3f4f6;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="legend">
-    <div class="legend-row"><div class="legend-swatch" style="background:#7f1d1d"></div>Very High (≥100)</div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#dc2626"></div>High (50–99)</div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#f59e0b"></div>Medium (25–49)</div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#b45309"></div>Low (10–24)</div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#16a34a"></div>Very Low (&lt;10)</div>
-  </div>
-  <div id="tap-hint">Tap a district to explore</div>
 
   <script>
     var districtNameMapping = ${nameMapJSON};
     var districtData = ${districtLookup};
     var geoData = ${geoJSONStr};
-    var hintDismissed = false;
 
     function getRiskLevel(c) {
       if (c >= 100) return "Very High";
@@ -265,49 +230,52 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
       return "#16a34a";
     }
 
-    // Auto-dismiss hint after 4s
-    setTimeout(function() {
-      document.getElementById("tap-hint").classList.add("hidden");
-    }, 4000);
+    function zoomMap(delta) {
+      var nextZoom = Math.max(5.5, Math.min(13, map.getZoom() + delta));
+      map.easeTo({ zoom: nextZoom, duration: 300 });
+    }
 
     var map = new maplibregl.Map({
       container: "map",
       style: {
         version: 8,
+        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
         sources: {
-          "osm-tiles": {
+          "osm": {
             type: "raster",
             tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
             tileSize: 256,
-            attribution: "&copy; OpenStreetMap contributors"
+            attribution: "© OpenStreetMap"
           }
         },
-        layers: [{
-          id: "osm-tiles",
-          type: "raster",
-          source: "osm-tiles",
-          minzoom: 0,
-          maxzoom: 19
-        }]
+        layers: [
+          { id: "background", type: "background", paint: { "background-color": "#e8f5e9" } },
+          { id: "osm-base", type: "raster", source: "osm", paint: { "raster-opacity": 0.18 } }
+        ]
       },
       center: [80.7718, 7.8731],
       zoom: 6.8,
-      minZoom: 6,
-      maxZoom: 12,
-      maxBounds: [[78.5, 5.5], [82.5, 10.5]],
-      attributionControl: false
+      minZoom: 5.5,
+      maxZoom: 13,
+      maxBounds: [[77.5, 4.5], [83.5, 11.5]],
+      attributionControl: false,
+      dragRotate: false,
+      pitchWithRotate: false
     });
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    function resetView() {
+      map.flyTo({ center: [80.7718, 7.8731], zoom: 6.8, duration: 800 });
+    }
 
-    var popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "240px" });
+    var popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: "240px", offset: 10 });
 
-    // Notify native when popup is closed by the user
     popup.on("close", function() {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: "popupClose" }));
       }
     });
+
+    var selectedId = null;
 
     map.on("load", function() {
       geoData.features = geoData.features.map(function(f, i) {
@@ -328,10 +296,10 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
           ],
           "fill-opacity": [
             "case",
-            ["boolean", ["feature-state", "hover"], false], 0.88,
-            0.70
-          ],
-          "fill-opacity-transition": { "duration": 200 }
+            ["boolean", ["feature-state", "selected"], false], 0.92,
+            ["boolean", ["feature-state", "hover"], false], 0.82,
+            0.72
+          ]
         }
       });
 
@@ -342,15 +310,16 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
         paint: {
           "line-color": [
             "case",
-            ["boolean", ["feature-state", "hover"], false],
-            "#1e40af", "#ffffff"
+            ["boolean", ["feature-state", "selected"], false], "#ffffff",
+            ["boolean", ["feature-state", "hover"], false], "rgba(255,255,255,0.9)",
+            "rgba(255,255,255,0.55)"
           ],
           "line-width": [
             "case",
-            ["boolean", ["feature-state", "hover"], false],
-            3, 1.2
-          ],
-          "line-width-transition": { "duration": 150 }
+            ["boolean", ["feature-state", "selected"], false], 2.5,
+            ["boolean", ["feature-state", "hover"], false], 2,
+            1
+          ]
         }
       });
 
@@ -358,16 +327,17 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
         id: "districts-labels",
         type: "symbol",
         source: "districts",
+        minzoom: 7,
         layout: {
           "text-field": ["get", "ADM2_EN"],
-          "text-size": 10,
+          "text-size": ["interpolate", ["linear"], ["zoom"], 7, 9, 10, 12],
           "text-font": ["Open Sans Regular"],
           "text-allow-overlap": false
         },
         paint: {
           "text-color": "#1f2937",
-          "text-halo-color": "rgba(255,255,255,0.9)",
-          "text-halo-width": 1.5
+          "text-halo-color": "rgba(255,255,255,0.95)",
+          "text-halo-width": 2
         }
       });
 
@@ -375,18 +345,14 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
 
       map.on("mousemove", "districts-fill", function(e) {
         if (!e.features || !e.features.length) return;
-        if (hoveredId !== null) {
-          map.setFeatureState({ source: "districts", id: hoveredId }, { hover: false });
-        }
+        if (hoveredId !== null) map.setFeatureState({ source: "districts", id: hoveredId }, { hover: false });
         hoveredId = e.features[0].id;
         map.setFeatureState({ source: "districts", id: hoveredId }, { hover: true });
         map.getCanvas().style.cursor = "pointer";
       });
 
       map.on("mouseleave", "districts-fill", function() {
-        if (hoveredId !== null) {
-          map.setFeatureState({ source: "districts", id: hoveredId }, { hover: false });
-        }
+        if (hoveredId !== null) map.setFeatureState({ source: "districts", id: hoveredId }, { hover: false });
         hoveredId = null;
         map.getCanvas().style.cursor = "";
       });
@@ -394,33 +360,32 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
       map.on("click", "districts-fill", function(e) {
         if (!e.features || !e.features.length) return;
 
-        // Dismiss hint on first tap
-        if (!hintDismissed) {
-          hintDismissed = true;
-          document.getElementById("tap-hint").classList.add("hidden");
-        }
+        if (selectedId !== null) map.setFeatureState({ source: "districts", id: selectedId }, { selected: false });
+        selectedId = e.features[0].id;
+        map.setFeatureState({ source: "districts", id: selectedId }, { selected: true });
 
-        var feat = e.features[0];
-        var geoName = feat.properties.ADM2_EN;
+        var geoName = e.features[0].properties.ADM2_EN;
         var apiName = districtNameMapping[geoName] || geoName;
         var d = districtData[apiName];
         var cases = d ? d.cases : 0;
-        var risk = getRiskLevel(cases);
         var riskColor = getRiskColor(cases);
         var displayName = d ? d.displayName : geoName;
         var barPct = Math.min(cases / 150 * 100, 100);
 
-        var html = '<div class="popup-accent" style="background:' + riskColor + '"></div>';
+        if (d && d.lat && d.lng) {
+          map.flyTo({ center: [d.lng, d.lat], zoom: Math.max(map.getZoom(), 8), duration: 600, essential: true });
+        }
+
+        var html = '<div class="popup-header" style="background:' + riskColor + '"></div>';
         html += '<div class="popup-body">';
-        html += '<div class="popup-title">' + displayName + '</div>';
-        html += '<div class="popup-cases" style="color:' + riskColor + '">' + cases + '</div>';
-        html += '<div class="popup-label">predicted cases this week</div>';
-        html += '<div class="popup-badge" style="background:' + riskColor + '1a;color:' + riskColor + '">' + risk + ' Risk</div>';
+        html += '<div class="popup-name">' + displayName + '</div>';
+        html += '<div class="popup-cases-row"><span class="popup-cases-num" style="color:' + riskColor + '">' + cases + '</span><span class="popup-cases-label">predicted cases</span></div>';
+        html += '<div class="popup-badge" style="background:' + riskColor + '20;color:' + riskColor + '">' + getRiskLevel(cases) + ' Risk</div>';
         html += '<div class="popup-bar-track"><div class="popup-bar-fill" style="width:' + barPct + '%;background:' + riskColor + '"></div></div>';
         if (d && (d.temp != null || d.rain != null)) {
-          html += '<div class="popup-meta">';
-          if (d.temp != null) html += '<span>&#x1F321; ' + d.temp.toFixed(1) + '\u00B0C</span>';
-          if (d.rain != null) html += '<span>&#x1F327; ' + d.rain.toFixed(0) + 'mm</span>';
+          html += '<div class="popup-env">';
+          if (d.temp != null) html += '<span>🌡 ' + d.temp.toFixed(1) + '°C</span>';
+          if (d.rain != null) html += '<span>🌧 ' + d.rain.toFixed(0) + 'mm</span>';
           html += '</div>';
         }
         html += '</div>';
@@ -429,19 +394,47 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
 
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: "districtTap",
-            apiName: apiName,
-            displayName: displayName,
-            cases: cases
+            type: "districtTap", apiName: apiName, displayName: displayName, cases: cases
           }));
         }
       });
 
-      // Signal native that the map is ready
+      map.on("click", function(e) {
+        var features = map.queryRenderedFeatures(e.point, { layers: ["districts-fill"] });
+        if (!features.length) {
+          if (selectedId !== null) {
+            map.setFeatureState({ source: "districts", id: selectedId }, { selected: false });
+            selectedId = null;
+          }
+          popup.remove();
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: "mapBlankTap" }));
+          }
+        }
+      });
+
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: "mapReady" }));
       }
     });
+
+    window.flyToDistrict = function(lat, lng, zoom) {
+      map.flyTo({ center: [lng, lat], zoom: zoom || 9, duration: 700, essential: true });
+    };
+    window.zoomInMap = function() {
+      zoomMap(1);
+    };
+    window.zoomOutMap = function() {
+      zoomMap(-1);
+    };
+    window.resetView = resetView;
+    window.clearSelection = function() {
+      if (selectedId !== null) {
+        map.setFeatureState({ source: "districts", id: selectedId }, { selected: false });
+        selectedId = null;
+      }
+      popup.remove();
+    };
   </script>
 </body>
 </html>`;
@@ -449,99 +442,158 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
 
 /* ── Component ────────────────────────────────────────────────────────────── */
 export const RiskMapScreen: React.FC = () => {
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const scrollPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [predictions, setPredictions] = useState<DistrictPrediction[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [isDataReady, setIsDataReady] = useState(false);
   const [spotlightDistrict, setSpotlightDistrict] =
     useState<DistrictPrediction | null>(null);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+
+  const isLandscape = windowWidth > windowHeight;
+  const sheetHeight = Math.round(
+    Math.min(
+      isLandscape ? 420 : 560,
+      windowHeight * (isLandscape ? 0.72 : 0.58),
+    ),
+  );
+  const peekHeight = Math.round(
+    Math.min(
+      isLandscape ? 150 : 184,
+      Math.max(
+        isLandscape ? 132 : 160,
+        windowHeight * (isLandscape ? 0.24 : 0.2),
+      ),
+    ),
+  );
+  const collapsedY = Math.max(0, sheetHeight - peekHeight);
+
   const webViewRef = useRef<WebView>(null);
+  const sheetExpandedRef = useRef(false);
 
-  /* ── Animation values (all declared individually — no hooks in loops) ── */
+  const sheetAnim = useRef(new Animated.Value(collapsedY)).current;
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const statAnim0 = useRef(new Animated.Value(0)).current;
-  const statAnim1 = useRef(new Animated.Value(0)).current;
-  const statAnim2 = useRef(new Animated.Value(0)).current;
-  const statAnim3 = useRef(new Animated.Value(0)).current;
-  const statsCardAnims = [statAnim0, statAnim1, statAnim2, statAnim3];
-  const mapContainerAnim = useRef(new Animated.Value(0)).current;
+  const statsAnim = useRef(new Animated.Value(0)).current;
   const spotlightAnim = useRef(new Animated.Value(0)).current;
-  const rankingsAnim = useRef(new Animated.Value(0)).current;
+  const loadingOpacity = useRef(new Animated.Value(1)).current;
 
-  /* ── Data fetching ─────────────────────────────────────────────────────── */
+  useEffect(() => {
+    sheetAnim.setValue(sheetExpandedRef.current ? 0 : collapsedY);
+  }, [collapsedY, sheetAnim]);
+
+  /* ── Sheet snap helpers ── */
+  const expandSheet = useCallback(() => {
+    sheetExpandedRef.current = true;
+    setSheetExpanded(true);
+    Animated.spring(sheetAnim, {
+      toValue: 0,
+      ...animation.spring.gentle,
+      useNativeDriver: true,
+    }).start();
+  }, [sheetAnim]);
+
+  const collapseSheet = useCallback(() => {
+    sheetExpandedRef.current = false;
+    setSheetExpanded(false);
+    Animated.spring(sheetAnim, {
+      toValue: collapsedY,
+      ...animation.spring.gentle,
+      useNativeDriver: true,
+    }).start();
+  }, [sheetAnim, collapsedY]);
+
+  /* ── Drag pan responder (handle-only) ── */
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gs) =>
+          Math.abs(gs.dy) > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+        onPanResponderMove: (_, gs) => {
+          const base = sheetExpandedRef.current ? 0 : collapsedY;
+          const next = Math.max(0, Math.min(collapsedY, base + gs.dy));
+          sheetAnim.setValue(next);
+        },
+        onPanResponderRelease: (_, gs) => {
+          if (gs.dy < -50 || gs.vy < -0.5) {
+            sheetExpandedRef.current = true;
+            setSheetExpanded(true);
+            Animated.spring(sheetAnim, {
+              toValue: 0,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }).start();
+          } else if (gs.dy > 50 || gs.vy > 0.5) {
+            sheetExpandedRef.current = false;
+            setSheetExpanded(false);
+            Animated.spring(sheetAnim, {
+              toValue: collapsedY,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }).start();
+          } else {
+            Animated.spring(sheetAnim, {
+              toValue: sheetExpandedRef.current ? 0 : collapsedY,
+              ...animation.spring.gentle,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+      }),
+    [collapsedY, sheetAnim],
+  );
+
+  /* ── Data fetching ── */
   const fetchData = useCallback(
     async (refresh = false) => {
       if (refresh) {
-        // Reset all animation values before re-running entrance animations
-        headerAnim.setValue(0);
-        statsCardAnims.forEach((a) => a.setValue(0));
-        mapContainerAnim.setValue(0);
-        rankingsAnim.setValue(0);
-        setIsMapReady(false);
         setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
+        setIsDataReady(false);
       }
-
       try {
-        const [districtData, summaryData] = await Promise.allSettled([
+        const [districtRes, summaryRes] = await Promise.allSettled([
           getDistrictLatest(),
           getDashboardSummary(),
         ]);
-        if (districtData.status === "fulfilled") {
-          const sorted = [...districtData.value]
-            .filter((d) => d.district && d.district.trim().length > 0)
+        if (districtRes.status === "fulfilled") {
+          const sorted = [...districtRes.value]
+            .filter((d) => d.district?.trim())
             .sort((a, b) => b.predicted_cases - a.predicted_cases);
           setPredictions(sorted);
         }
-        if (summaryData.status === "fulfilled") setSummary(summaryData.value);
+        if (summaryRes.status === "fulfilled") setSummary(summaryRes.value);
       } catch {
         // silently handle
       } finally {
-        refresh ? setIsRefreshing(false) : setIsLoading(false);
-
-        // Staggered entrance animations
-        Animated.stagger(120, [
+        setIsDataReady(true);
+        if (refresh) {
+          setIsRefreshing(false);
+        }
+        Animated.stagger(100, [
           Animated.timing(headerAnim, {
             toValue: 1,
             duration: 450,
             useNativeDriver: true,
           }),
-          Animated.stagger(
-            80,
-            statsCardAnims.map((a) =>
-              Animated.spring(a, {
-                toValue: 1,
-                ...animation.spring.gentle,
-                useNativeDriver: true,
-              }),
-            ),
-          ),
-          Animated.timing(mapContainerAnim, {
+          Animated.timing(statsAnim, {
             toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(rankingsAnim, {
-            toValue: 1,
-            duration: 400,
+            duration: 450,
             useNativeDriver: true,
           }),
         ]).start();
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [headerAnim, statsAnim],
   );
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  /* ── Spotlight card animation ─────────────────────────────────────────── */
+  /* ── Spotlight entrance animation ── */
   useEffect(() => {
     if (spotlightDistrict) {
       spotlightAnim.setValue(0);
@@ -553,218 +605,431 @@ export const RiskMapScreen: React.FC = () => {
     }
   }, [spotlightDistrict, spotlightAnim]);
 
-  /* ── WebView message handler ──────────────────────────────────────────── */
-  const handleWebViewMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "mapReady") {
-        setIsMapReady(true);
-      } else if (data.type === "districtTap") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const match = predictions.find((p) => p.district === data.apiName);
-        if (match) setSpotlightDistrict(match);
-      } else if (data.type === "popupClose") {
-        setSpotlightDistrict(null);
+  /* ── WebView messages ── */
+  const handleWebViewMessage = useCallback(
+    (event: any) => {
+      try {
+        const data = JSON.parse(event.nativeEvent.data);
+        if (data.type === "mapReady") {
+          setIsMapReady(true);
+          Animated.timing(loadingOpacity, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }).start();
+        } else if (data.type === "districtTap") {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          const match = predictions.find((p) => p.district === data.apiName);
+          if (match) {
+            setSpotlightDistrict(match);
+            expandSheet();
+          }
+        } else if (data.type === "popupClose" || data.type === "mapBlankTap") {
+          setSpotlightDistrict(null);
+          collapseSheet();
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore malformed messages
-    }
-  };
+    },
+    [predictions, expandSheet, collapseSheet, loadingOpacity],
+  );
 
-  const dismissSpotlight = () => {
+  const dismissSpotlight = useCallback(() => {
     setSpotlightDistrict(null);
-    // Dismiss the MapLibre popup too
-    webViewRef.current?.injectJavaScript("popup.remove(); null;");
-  };
+    collapseSheet();
+    webViewRef.current?.injectJavaScript(
+      "window.clearSelection && window.clearSelection(); null;",
+    );
+  }, [collapseSheet]);
 
-  /* ── Summary stat cards config ────────────────────────────────────────── */
-  const summaryCards = summary
+  const handleResetMap = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSpotlightDistrict(null);
+    collapseSheet();
+    webViewRef.current?.injectJavaScript(
+      "window.clearSelection && window.clearSelection(); window.resetView && window.resetView(); null;",
+    );
+  }, [collapseSheet]);
+
+  const handleZoomIn = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    webViewRef.current?.injectJavaScript(
+      "window.zoomInMap && window.zoomInMap(); null;",
+    );
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    webViewRef.current?.injectJavaScript(
+      "window.zoomOutMap && window.zoomOutMap(); null;",
+    );
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsMapReady(false);
+    loadingOpacity.setValue(1);
+    await fetchData(true);
+  }, [fetchData, loadingOpacity]);
+
+  const flyToDistrict = useCallback((d: DistrictPrediction) => {
+    if (d.latitude && d.longitude) {
+      webViewRef.current?.injectJavaScript(
+        `window.flyToDistrict && window.flyToDistrict(${d.latitude}, ${d.longitude}, 9); null;`,
+      );
+    }
+  }, []);
+
+  const showLoading = predictions.length > 0 ? !isMapReady : !isDataReady;
+  const showEmptyState = isDataReady && predictions.length === 0;
+
+  /* ── Stat chips ── */
+  const statChips = summary
     ? [
         {
-          label: "Total Cases",
-          value: summary.total_cases?.toLocaleString() ?? "—",
           icon: "virus" as const,
+          value: summary.total_cases?.toLocaleString() ?? "—",
+          label: "Total Cases",
           color: "#3b82f6",
         },
         {
-          label: "High Risk",
-          value: String(summary.high_risk_districts ?? 0),
           icon: "alert-circle" as const,
+          value: String(summary.high_risk_districts ?? 0),
+          label: "High Risk",
           color: "#dc2626",
         },
         {
-          label: "Districts",
-          value: String(summary.district_count ?? 0),
-          icon: "map-marker-multiple" as const,
-          color: colors.primary,
-        },
-        {
-          label: "Change",
+          icon: ((summary.change_percent ?? 0) >= 0
+            ? "trending-up"
+            : "trending-down") as React.ComponentProps<
+            typeof MaterialCommunityIcons
+          >["name"],
           value: `${(summary.change_percent ?? 0) >= 0 ? "+" : ""}${(summary.change_percent ?? 0).toFixed(1)}%`,
-          icon: (
-            (summary.change_percent ?? 0) >= 0 ? "trending-up" : "trending-down"
-          ) as React.ComponentProps<typeof MaterialCommunityIcons>["name"],
+          label: "Change",
           color:
             (summary.change_percent ?? 0) >= 0 ? "#dc2626" : colors.success,
+        },
+        {
+          icon: "map-marker-multiple" as const,
+          value: String(summary.district_count ?? 0),
+          label: "Districts",
+          color: colors.primary,
         },
       ]
     : [];
 
-  /* ── Render ────────────────────────────────────────────────────────────── */
+  const riskLegendItems = [
+    { label: "Very High", color: "#7f1d1d" },
+    { label: "High", color: "#dc2626" },
+    { label: "Medium", color: "#f59e0b" },
+    { label: "Low", color: "#b45309" },
+    { label: "Very Low", color: "#16a34a" },
+  ];
+
+  const sheetBottom = TAB_BAR_HEIGHT + insets.bottom;
+  const headerTop = insets.top + spacing.sm;
+  const chipsTop = headerTop + 52 + spacing.sm;
+  const legendTop = chipsTop + 48;
+  const controlsTop = legendTop + 8;
+  const mapReadyToShow = predictions.length > 0;
+
+  /* ── Render ── */
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: scrollPaddingBottom }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => fetchData(true)}
-            tintColor={colors.primary}
+    <View style={styles.container}>
+      {/* Full-screen map or empty state */}
+      {mapReadyToShow ? (
+        <WebView
+          ref={webViewRef}
+          source={{ html: buildMapHTML(predictions) }}
+          style={StyleSheet.absoluteFill}
+          originWhitelist={["*"]}
+          javaScriptEnabled
+          domStorageEnabled
+          onMessage={handleWebViewMessage}
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : showEmptyState ? (
+        <View style={styles.emptyMapStage}>
+          <LinearGradient
+            colors={["rgba(0,130,60,0.10)", "rgba(255,255,255,0.65)"]}
+            style={styles.emptyMapGlow}
           />
-        }
+          <View style={styles.emptyMapCard}>
+            <View style={styles.emptyMapIconRing}>
+              <MaterialCommunityIcons
+                name="map-outline"
+                size={34}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={styles.emptyMapTitle}>
+              No district predictions yet
+            </Text>
+            <Text style={styles.emptyMapText}>
+              The live map will appear here as soon as the latest weekly
+              district data is available.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyMapButton}
+              onPress={handleRefresh}
+            >
+              <MaterialCommunityIcons
+                name={isRefreshing ? "loading" : "refresh"}
+                size={16}
+                color="#fff"
+              />
+              <Text style={styles.emptyMapButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Loading overlay */}
+      <Animated.View
+        style={[
+          styles.loadingOverlay,
+          { opacity: showLoading ? loadingOpacity : 0 },
+        ]}
+        pointerEvents={showLoading ? "auto" : "none"}
       >
-        {/* ── Gradient Header ── */}
-        <Animated.View
-          style={{
+        <View style={styles.loadingIconRing}>
+          <MaterialCommunityIcons
+            name="map-search-outline"
+            size={42}
+            color={colors.primary}
+          />
+        </View>
+        <Text style={styles.loadingTitle}>Loading Risk Map</Text>
+        <Text style={styles.loadingSubtitle}>
+          Fetching district predictions…
+        </Text>
+        <View style={styles.loadingDots}>
+          {[0, 1, 2].map((i) => (
+            <View
+              key={i}
+              style={[styles.loadingDot, i === 1 && styles.loadingDotActive]}
+            />
+          ))}
+        </View>
+      </Animated.View>
+
+      {/* Compact legend */}
+      {mapReadyToShow && (
+        <View
+          style={[styles.legendRail, { top: legendTop }]}
+          pointerEvents="box-none"
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.legendStrip}
+          >
+            {riskLegendItems.map((item) => (
+              <View key={item.label} style={styles.legendPill}>
+                <View
+                  style={[styles.legendDot, { backgroundColor: item.color }]}
+                />
+                <Text style={styles.legendText}>{item.label}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Map action rail */}
+      {mapReadyToShow && (
+        <View style={[styles.mapActionRail, { top: controlsTop }]}>
+          <TouchableOpacity
+            style={styles.mapActionButton}
+            onPress={handleResetMap}
+            accessibilityLabel="Reset map view"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons
+              name="crosshairs-gps"
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mapActionButton}
+            onPress={handleZoomIn}
+            accessibilityLabel="Zoom in"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons
+              name="plus"
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mapActionButton}
+            onPress={handleZoomOut}
+            accessibilityLabel="Zoom out"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons
+              name="minus"
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Floating header pill */}
+      <Animated.View
+        style={[
+          styles.floatingHeader,
+          { top: headerTop },
+          {
             opacity: headerAnim,
             transform: [
               {
                 translateY: headerAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [16, 0],
+                  outputRange: [-16, 0],
                 }),
               },
             ],
-          }}
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <LinearGradient
+          colors={["rgba(0,130,60,0.96)", "rgba(0,117,89,0.93)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerPill}
         >
-          <LinearGradient
-            colors={colors.gradient.header}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.header}
+          <View style={styles.headerIconWrap}>
+            <MaterialCommunityIcons
+              name="shield-alert"
+              size={18}
+              color="rgba(255,255,255,0.9)"
+            />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>Dengue Risk Map</Text>
+            {summary?.current_week && (
+              <Text style={styles.headerSub}>
+                Week {summary.current_week.week} · {summary.current_week.year}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={styles.refreshBtn}
+            onPress={handleRefresh}
+            disabled={isRefreshing}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            {/* Decorative circles */}
-            <View style={styles.decorCircle1} />
-            <View style={styles.decorCircle2} />
-            <View style={styles.decorCircle3} />
+            <MaterialCommunityIcons
+              name={isRefreshing ? "loading" : "refresh"}
+              size={18}
+              color="rgba(255,255,255,0.9)"
+            />
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
 
-            {/* Title row */}
-            <View style={styles.headerTitleRow}>
-              <View style={styles.headerIconCircle}>
-                <MaterialCommunityIcons
-                  name="shield-alert"
-                  size={20}
-                  color={colors.primaryForeground}
-                />
-              </View>
-              <View style={styles.headerTextBlock}>
-                <Text style={styles.headerTitle}>Dengue Risk Map</Text>
-                <Text style={styles.headerSubtitle}>
-                  AI-powered weekly predictions · 25 districts
-                </Text>
-              </View>
-              {summary?.current_week && (
-                <View style={styles.weekBadge}>
-                  <MaterialCommunityIcons
-                    name="calendar-week"
-                    size={11}
-                    color="rgba(255,255,255,0.8)"
-                  />
-                  <Text style={styles.weekBadgeText}>
-                    W{summary.current_week.week} / {summary.current_week.year}
-                  </Text>
-                </View>
-              )}
+      {/* Floating stat chips */}
+      {statChips.length > 0 && (
+        <Animated.View
+          style={[
+            styles.statChipsRow,
+            { top: chipsTop },
+            {
+              opacity: statsAnim,
+              transform: [
+                {
+                  translateY: statsAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [10, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          {statChips.map((chip) => (
+            <View key={chip.label} style={styles.statChip}>
+              <MaterialCommunityIcons
+                name={chip.icon}
+                size={14}
+                color={chip.color}
+              />
+              <Text style={[styles.statChipValue, { color: chip.color }]}>
+                {chip.value}
+              </Text>
+              <Text style={styles.statChipLabel}>{chip.label}</Text>
             </View>
+          ))}
+        </Animated.View>
+      )}
 
-            {/* Meta info row */}
-            {summary && (
-              <View style={styles.headerMetaRow}>
-                <View style={styles.headerMetaItem}>
-                  <MaterialCommunityIcons
-                    name="virus"
-                    size={13}
-                    color="rgba(255,255,255,0.75)"
-                  />
-                  <Text style={styles.headerMetaText}>
-                    {summary.total_cases?.toLocaleString()} total cases
-                  </Text>
-                </View>
-                <View style={styles.headerMetaDivider} />
-                <View style={styles.headerMetaItem}>
-                  <MaterialCommunityIcons
-                    name="alert-circle-outline"
-                    size={13}
-                    color="rgba(255,255,255,0.75)"
-                  />
-                  <Text style={styles.headerMetaText}>
-                    {summary.high_risk_districts} high-risk districts
-                  </Text>
-                </View>
+      {/* Bottom sheet */}
+      <Animated.View
+        style={[
+          styles.sheet,
+          shadows.lg,
+          {
+            bottom: sheetBottom,
+            height: sheetHeight,
+            transform: [{ translateY: sheetAnim }],
+          },
+        ]}
+      >
+        {/* Drag handle */}
+        <View {...panResponder.panHandlers} style={styles.sheetHandleArea}>
+          <View style={styles.handleBar} />
+        </View>
+
+        {/* Sheet header */}
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetTitleRow}>
+            <View style={styles.sheetAccentBar} />
+            <Text style={styles.sheetTitle} numberOfLines={1}>
+              {spotlightDistrict
+                ? (apiToDisplayName[spotlightDistrict.district] ??
+                  spotlightDistrict.district)
+                : "District Rankings"}
+            </Text>
+            {!spotlightDistrict && predictions.length > 0 && (
+              <View style={styles.countPill}>
+                <Text style={styles.countPillText}>{predictions.length}</Text>
               </View>
             )}
-          </LinearGradient>
-        </Animated.View>
-
-        {/* ── Summary Stat Cards ── */}
-        {summaryCards.length > 0 && (
-          <View style={styles.summaryRow}>
-            {summaryCards.map((card, i) => (
-              <Animated.View
-                key={card.label}
-                style={[
-                  styles.summaryCard,
-                  shadows.sm,
-                  {
-                    opacity: statsCardAnims[i],
-                    transform: [
-                      {
-                        translateY: statsCardAnims[i].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [18, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                {/* Colored left accent border */}
-                <View
-                  style={[
-                    styles.summaryCardAccent,
-                    { backgroundColor: card.color },
-                  ]}
-                />
-                <LinearGradient
-                  colors={[card.color + "1a", card.color + "08"]}
-                  style={styles.summaryIconCircle}
-                >
-                  <MaterialCommunityIcons
-                    name={card.icon}
-                    size={19}
-                    color={card.color}
-                  />
-                </LinearGradient>
-                <Text style={[styles.summaryValue, { color: card.color }]}>
-                  {card.value}
-                </Text>
-                <Text style={styles.summaryLabel}>{card.label}</Text>
-              </Animated.View>
-            ))}
           </View>
-        )}
+          <TouchableOpacity
+            style={styles.sheetToggleBtn}
+            onPress={sheetExpanded ? collapseSheet : expandSheet}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons
+              name={sheetExpanded ? "chevron-down" : "chevron-up"}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
 
-        {/* ── Map Container ── */}
-        {predictions.length > 0 && (
+        {/* Spotlight district banner */}
+        {spotlightDistrict && (
           <Animated.View
             style={[
-              styles.mapWrapper,
+              styles.spotlightCard,
               {
-                opacity: mapContainerAnim,
+                opacity: spotlightAnim,
                 transform: [
                   {
-                    translateY: mapContainerAnim.interpolate({
+                    translateY: spotlightAnim.interpolate({
                       inputRange: [0, 1],
                       outputRange: [12, 0],
                     }),
@@ -773,344 +1038,294 @@ export const RiskMapScreen: React.FC = () => {
               },
             ]}
           >
-            <View style={[styles.mapContainer, shadows.md]}>
-              <WebView
-                ref={webViewRef}
-                source={{ html: buildMapHTML(predictions) }}
-                style={styles.webView}
-                originWhitelist={["*"]}
-                javaScriptEnabled
-                domStorageEnabled
-                onMessage={handleWebViewMessage}
-                scrollEnabled={false}
-                bounces={false}
-                overScrollMode="never"
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-              />
-              {/* Native loading overlay — dismissed only after mapReady postMessage */}
-              {!isMapReady && (
-                <View style={styles.mapLoadingOverlay}>
-                  <View style={styles.mapLoadingCard}>
-                    <MaterialCommunityIcons
-                      name="map-search-outline"
-                      size={36}
-                      color={colors.primary}
-                    />
-                    <Text style={styles.mapLoadingTitle}>
-                      Loading Risk Map
-                    </Text>
-                    <Text style={styles.mapLoadingSubtext}>
-                      Fetching district data…
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          </Animated.View>
-        )}
-
-        {/* ── Selected District Spotlight Card ── */}
-        {spotlightDistrict && (
-          <Animated.View
-            style={[
-              styles.spotlightCard,
-              shadows.md,
-              {
-                opacity: spotlightAnim,
-                transform: [
-                  {
-                    translateY: spotlightAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [20, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            {/* Colored left border */}
-            <View
-              style={[
-                styles.spotlightAccent,
-                {
-                  backgroundColor: getRiskColor(
-                    spotlightDistrict.predicted_cases,
-                  ),
-                },
-              ]}
-            />
-            {/* Risk icon */}
             <LinearGradient
               colors={[
-                getRiskColor(spotlightDistrict.predicted_cases) + "20",
-                getRiskColor(spotlightDistrict.predicted_cases) + "0a",
+                getRiskColor(spotlightDistrict.predicted_cases) + "18",
+                getRiskColor(spotlightDistrict.predicted_cases) + "06",
               ]}
-              style={styles.spotlightIconCircle}
+              style={styles.spotlightInner}
             >
-              <MaterialCommunityIcons
-                name={getRiskIcon(spotlightDistrict.predicted_cases) as any}
-                size={26}
-                color={getRiskColor(spotlightDistrict.predicted_cases)}
-              />
-            </LinearGradient>
-            {/* Text */}
-            <View style={styles.spotlightInfo}>
-              <Text style={styles.spotlightDistrict}>
-                {apiToDisplayName[spotlightDistrict.district] ??
-                  spotlightDistrict.district}
-              </Text>
               <View
                 style={[
-                  styles.spotlightBadge,
+                  styles.spotlightAccentBar,
                   {
-                    backgroundColor:
-                      getRiskColor(spotlightDistrict.predicted_cases) + "18",
+                    backgroundColor: getRiskColor(
+                      spotlightDistrict.predicted_cases,
+                    ),
                   },
                 ]}
-              >
+              />
+              <MaterialCommunityIcons
+                name={getRiskIcon(spotlightDistrict.predicted_cases)}
+                size={30}
+                color={getRiskColor(spotlightDistrict.predicted_cases)}
+                style={{ marginLeft: spacing.xs }}
+              />
+              <View style={styles.spotlightInfo}>
+                <View style={styles.spotlightBadgeRow}>
+                  <View
+                    style={[
+                      styles.spotlightDot,
+                      {
+                        backgroundColor: getRiskColor(
+                          spotlightDistrict.predicted_cases,
+                        ),
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.spotlightBadgeText,
+                      {
+                        color: getRiskColor(spotlightDistrict.predicted_cases),
+                      },
+                    ]}
+                  >
+                    {getRiskLevel(spotlightDistrict.predicted_cases)} Risk
+                  </Text>
+                </View>
+                <View style={styles.spotlightEnvRow}>
+                  {spotlightDistrict.temperature != null && (
+                    <View style={styles.spotlightEnvItem}>
+                      <MaterialCommunityIcons
+                        name="thermometer"
+                        size={12}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.spotlightEnvText}>
+                        {spotlightDistrict.temperature.toFixed(1)}°C
+                      </Text>
+                    </View>
+                  )}
+                  {spotlightDistrict.precipitation != null && (
+                    <View style={styles.spotlightEnvItem}>
+                      <MaterialCommunityIcons
+                        name="water-outline"
+                        size={12}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.spotlightEnvText}>
+                        {spotlightDistrict.precipitation.toFixed(0)}mm
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <View style={styles.spotlightCases}>
                 <Text
                   style={[
-                    styles.spotlightBadgeText,
+                    styles.spotlightCasesNum,
                     {
                       color: getRiskColor(spotlightDistrict.predicted_cases),
                     },
                   ]}
                 >
-                  {getRiskLevel(spotlightDistrict.predicted_cases)} Risk
+                  {spotlightDistrict.predicted_cases}
                 </Text>
+                <Text style={styles.spotlightCasesLabel}>cases</Text>
               </View>
-              <View style={styles.spotlightMeta}>
-                {spotlightDistrict.temperature != null && (
-                  <View style={styles.spotlightMetaItem}>
-                    <MaterialCommunityIcons
-                      name="thermometer"
-                      size={12}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.spotlightMetaText}>
-                      {spotlightDistrict.temperature.toFixed(1)}°C
-                    </Text>
-                  </View>
-                )}
-                {spotlightDistrict.precipitation != null && (
-                  <View style={styles.spotlightMetaItem}>
-                    <MaterialCommunityIcons
-                      name="water-outline"
-                      size={12}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.spotlightMetaText}>
-                      {spotlightDistrict.precipitation.toFixed(0)}mm
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            {/* Cases count */}
-            <View style={styles.spotlightCasesBlock}>
-              <Text
-                style={[
-                  styles.spotlightCasesNum,
-                  { color: getRiskColor(spotlightDistrict.predicted_cases) },
-                ]}
+              <TouchableOpacity
+                style={styles.spotlightDismiss}
+                onPress={dismissSpotlight}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                {spotlightDistrict.predicted_cases}
-              </Text>
-              <Text style={styles.spotlightCasesLabel}>cases</Text>
-            </View>
-            {/* Close */}
+                <MaterialCommunityIcons
+                  name="close"
+                  size={13}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </LinearGradient>
+          </Animated.View>
+        )}
+
+        {predictions.length === 0 ? (
+          <View style={styles.emptySheetState}>
+            <MaterialCommunityIcons
+              name="map-search-outline"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.emptySheetTitle}>
+              Waiting for live district data
+            </Text>
+            <Text style={styles.emptySheetText}>
+              Once the weekly predictions load, rankings and district details
+              will appear here.
+            </Text>
             <TouchableOpacity
-              style={styles.spotlightClose}
-              onPress={dismissSpotlight}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.emptySheetButton}
+              onPress={handleRefresh}
             >
+              <Text style={styles.emptySheetButtonText}>Refresh data</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.rankingsList}
+            contentContainerStyle={styles.rankingsContent}
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={sheetExpanded}
+            nestedScrollEnabled
+          >
+            {predictions.map((d, index) => {
+              const riskColor = getRiskColor(d.predicted_cases);
+              const riskLevel = getRiskLevel(d.predicted_cases);
+              const isSelected = spotlightDistrict?.district === d.district;
+              const displayName = apiToDisplayName[d.district] ?? d.district;
+              const barPct = Math.min((d.predicted_cases / 150) * 100, 100);
+
+              return (
+                <TouchableOpacity
+                  key={d.district}
+                  style={[
+                    styles.rankRow,
+                    isSelected && {
+                      backgroundColor: riskColor + "0d",
+                      borderColor: riskColor + "40",
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (isSelected) {
+                      dismissSpotlight();
+                    } else {
+                      setSpotlightDistrict(d);
+                      flyToDistrict(d);
+                      expandSheet();
+                    }
+                  }}
+                  activeOpacity={0.72}
+                >
+                  {/* Selected left bar */}
+                  {isSelected && (
+                    <View
+                      style={[
+                        styles.rankSelectedBar,
+                        { backgroundColor: riskColor },
+                      ]}
+                    />
+                  )}
+
+                  {/* Rank badge */}
+                  {index < 3 ? (
+                    <LinearGradient
+                      colors={[riskColor, riskColor + "bb"]}
+                      style={styles.rankBadge}
+                    >
+                      <MaterialCommunityIcons
+                        name={
+                          index === 0
+                            ? "medal"
+                            : index === 1
+                              ? "medal-outline"
+                              : "numeric-3-circle-outline"
+                        }
+                        size={14}
+                        color="#fff"
+                      />
+                    </LinearGradient>
+                  ) : (
+                    <View
+                      style={[
+                        styles.rankBadge,
+                        { backgroundColor: colors.muted },
+                      ]}
+                    >
+                      <Text style={styles.rankNumber}>{index + 1}</Text>
+                    </View>
+                  )}
+
+                  {/* District info */}
+                  <View style={styles.rankInfo}>
+                    <Text
+                      style={[
+                        styles.rankName,
+                        isSelected && { color: riskColor },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {displayName}
+                    </Text>
+                    <View style={styles.rankMeta}>
+                      {d.temperature != null && (
+                        <View style={styles.rankMetaItem}>
+                          <MaterialCommunityIcons
+                            name="thermometer"
+                            size={10}
+                            color={colors.textSecondary}
+                          />
+                          <Text style={styles.rankMetaText}>
+                            {d.temperature.toFixed(1)}°C
+                          </Text>
+                        </View>
+                      )}
+                      {d.precipitation != null && (
+                        <View style={styles.rankMetaItem}>
+                          <MaterialCommunityIcons
+                            name="water-outline"
+                            size={10}
+                            color={colors.textSecondary}
+                          />
+                          <Text style={styles.rankMetaText}>
+                            {d.precipitation.toFixed(0)}mm
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Cases + badge */}
+                  <View style={styles.rankRight}>
+                    <Text style={[styles.rankCases, { color: riskColor }]}>
+                      {d.predicted_cases}
+                    </Text>
+                    <View
+                      style={[
+                        styles.riskLabel,
+                        { backgroundColor: riskColor + "18" },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.riskLabelText, { color: riskColor }]}
+                      >
+                        {riskLevel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Progress bar at bottom */}
+                  <View style={styles.rankBarTrack}>
+                    <View
+                      style={[
+                        styles.rankBarFill,
+                        {
+                          width: `${barPct}%` as any,
+                          backgroundColor: riskColor,
+                        },
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Disclaimer */}
+            <View style={styles.disclaimer}>
               <MaterialCommunityIcons
-                name="close"
-                size={16}
+                name="information-outline"
+                size={13}
                 color={colors.textSecondary}
               />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {/* ── District Rankings ── */}
-        {predictions.length > 0 && (
-          <Animated.View
-            style={{
-              opacity: rankingsAnim,
-              transform: [
-                {
-                  translateY: rankingsAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [16, 0],
-                  }),
-                },
-              ],
-            }}
-          >
-            {/* Section header */}
-            <View style={styles.sectionTitleRow}>
-              <View style={styles.sectionAccentBar} />
-              <Text style={styles.sectionTitle}>District Rankings</Text>
-              <View style={styles.countPill}>
-                <Text style={styles.countPillText}>{predictions.length}</Text>
-              </View>
+              <Text style={styles.disclaimerText}>
+                AI-powered weekly predictions. Consult the Ministry of Health
+                for official advisories.
+              </Text>
             </View>
-
-            {/* District rows — individual cards, stagger capped at STAGGER_LIMIT */}
-            <View style={styles.rankingsList}>
-              {predictions.map((d, index) => {
-                const riskColor = getRiskColor(d.predicted_cases);
-                const riskLevel = getRiskLevel(d.predicted_cases);
-                const isSelected = spotlightDistrict?.district === d.district;
-                const displayName =
-                  apiToDisplayName[d.district] ?? d.district;
-
-                return (
-                  <TouchableOpacity
-                    key={d.district}
-                    style={[
-                      styles.districtCard,
-                      shadows.sm,
-                      isSelected && {
-                        borderLeftColor: riskColor,
-                        backgroundColor: riskColor + "0c",
-                      },
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSpotlightDistrict(isSelected ? null : d);
-                    }}
-                    activeOpacity={0.75}
-                  >
-                    {/* Selected left accent */}
-                    {isSelected && (
-                      <View
-                        style={[
-                          styles.districtSelectedBar,
-                          { backgroundColor: riskColor },
-                        ]}
-                      />
-                    )}
-
-                    {/* Rank badge */}
-                    {index < 3 ? (
-                      <LinearGradient
-                        colors={[riskColor, riskColor + "cc"]}
-                        style={styles.rankCircle}
-                      >
-                        <MaterialCommunityIcons
-                          name={
-                            index === 0
-                              ? "medal"
-                              : index === 1
-                                ? "medal-outline"
-                                : "numeric-3-circle-outline"
-                          }
-                          size={16}
-                          color="#fff"
-                        />
-                      </LinearGradient>
-                    ) : (
-                      <View
-                        style={[
-                          styles.rankCircle,
-                          { backgroundColor: colors.muted },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.rankText,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {index + 1}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* District info */}
-                    <View style={styles.districtInfo}>
-                      <Text
-                        style={[
-                          styles.districtName,
-                          isSelected && { color: riskColor },
-                        ]}
-                      >
-                        {displayName}
-                      </Text>
-                      <View style={styles.districtMeta}>
-                        {d.temperature != null && (
-                          <View style={styles.districtMetaItem}>
-                            <MaterialCommunityIcons
-                              name="thermometer"
-                              size={12}
-                              color={colors.textSecondary}
-                            />
-                            <Text style={styles.districtMetaText}>
-                              {d.temperature.toFixed(1)}°C
-                            </Text>
-                          </View>
-                        )}
-                        {d.precipitation != null && (
-                          <View style={styles.districtMetaItem}>
-                            <MaterialCommunityIcons
-                              name="water-outline"
-                              size={12}
-                              color={colors.textSecondary}
-                            />
-                            <Text style={styles.districtMetaText}>
-                              {d.precipitation.toFixed(0)}mm
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-
-                    {/* Cases + risk badge */}
-                    <View style={styles.districtRight}>
-                      <Text
-                        style={[styles.districtCases, { color: riskColor }]}
-                      >
-                        {d.predicted_cases}
-                      </Text>
-                      <View
-                        style={[
-                          styles.riskBadge,
-                          { backgroundColor: riskColor + "18" },
-                        ]}
-                      >
-                        <Text
-                          style={[styles.riskBadgeText, { color: riskColor }]}
-                        >
-                          {riskLevel}
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </Animated.View>
+          </ScrollView>
         )}
-
-        {/* ── Disclaimer ── */}
-        <View style={[styles.disclaimerCard, shadows.sm]}>
-          <MaterialCommunityIcons
-            name="information-outline"
-            size={16}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.disclaimerText}>
-            Predictions are generated by AI/ML models and updated weekly. For
-            official health advisories, consult the Ministry of Health.
-          </Text>
-        </View>
-
-        <View style={{ height: spacing.xl }} />
-      </ScrollView>
-    </SafeAreaView>
+      </Animated.View>
+    </View>
   );
 };
 
@@ -1121,303 +1336,405 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  /* Header */
-  header: {
+  /* Loading */
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  loadingIconRing: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: colors.primary + "12",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  loadingTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+  },
+  loadingSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  loadingDots: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  loadingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.primary + "30",
+  },
+  loadingDotActive: {
+    backgroundColor: colors.primary,
+  },
+
+  /* Empty map stage */
+  emptyMapStage: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    overflow: "hidden",
-    position: "relative",
-    borderBottomLeftRadius: borderRadius["3xl"],
-    borderBottomRightRadius: borderRadius["3xl"],
   },
-  decorCircle1: {
+  emptyMapGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  emptyMapCard: {
+    width: "100%",
+    maxWidth: 360,
+    alignItems: "center",
+    padding: spacing.xl,
+    borderRadius: borderRadius["3xl"],
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 22,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  emptyMapIconRing: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+    backgroundColor: colors.primary + "12",
+  },
+  emptyMapTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+    textAlign: "center",
+  },
+  emptyMapText: {
+    marginTop: spacing.sm,
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  emptyMapButton: {
+    marginTop: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  emptyMapButtonText: {
+    color: "#fff",
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+  },
+
+  /* Map guidance */
+  mapGuideCard: {
     position: "absolute",
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    top: -30,
-    right: -20,
+    left: spacing.md,
+    right: 72,
+    zIndex: 18,
+    padding: spacing.sm,
+    borderRadius: borderRadius["2xl"],
+    backgroundColor: colors.glass.background,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+      },
+      android: { elevation: 4 },
+    }),
   },
-  decorCircle2: {
-    position: "absolute",
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    bottom: -15,
-    left: 30,
-  },
-  decorCircle3: {
-    position: "absolute",
-    width: 45,
-    height: 45,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    top: 20,
-    left: "50%",
-  },
-  headerTitleRow: {
+  mapGuideHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    zIndex: 2,
+    marginBottom: spacing.xs,
   },
-  headerIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.18)",
+  mapGuideIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary + "10",
+  },
+  mapGuideTextWrap: {
+    flex: 1,
+  },
+  mapGuideTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+  },
+  mapGuideText: {
+    marginTop: 1,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  legendStrip: {
+    gap: 6,
+    paddingRight: spacing.xs,
+  },
+  legendRail: {
+    position: "absolute",
+    left: spacing.md,
+    right: 72,
+    zIndex: 18,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.glass.background,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 14,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  legendPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+
+  /* Map controls */
+  mapActionRail: {
+    position: "absolute",
+    right: spacing.md,
+    zIndex: 18,
+    gap: 8,
+  },
+  mapActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.glass.background,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 14,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+
+  /* Empty sheet */
+  emptySheetState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptySheetTitle: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+    textAlign: "center",
+  },
+  emptySheetText: {
+    fontSize: typography.fontSize.sm,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  emptySheetButton: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  emptySheetButtonText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: "#fff",
+  },
+
+  /* Floating header */
+  floatingHeader: {
+    position: "absolute",
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 20,
+  },
+  headerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius["2xl"],
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  headerIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTextBlock: {
-    flex: 1,
-  },
+  headerText: { flex: 1 },
   headerTitle: {
-    fontSize: typography.fontSize.xl,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
-    color: colors.primaryForeground,
+    color: "#fff",
   },
-  headerSubtitle: {
+  headerSub: {
     fontSize: typography.fontSize.xs,
     color: "rgba(255,255,255,0.72)",
     marginTop: 1,
   },
-  weekBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-  },
-  weekBadgeText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primaryForeground,
-  },
-  headerMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: spacing.md,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    zIndex: 2,
-  },
-  headerMetaItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  headerMetaDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    marginHorizontal: spacing.sm,
-  },
-  headerMetaText: {
-    fontSize: typography.fontSize.xs,
-    color: "rgba(255,255,255,0.85)",
-    fontWeight: typography.fontWeight.medium,
-  },
-
-  /* Summary stat cards */
-  summaryRow: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
-    gap: spacing.xs,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.xl,
-    padding: spacing.sm + 2,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 3,
-    overflow: "hidden",
-  },
-  summaryCardAccent: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-  },
-  summaryIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  refreshBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
-    marginTop: 4,
   },
-  summaryValue: {
-    fontSize: typography.fontSize.lg,
+
+  /* Stat chips */
+  statChipsRow: {
+    position: "absolute",
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: "row",
+    gap: spacing.xs,
+    zIndex: 15,
+  },
+  statChip: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 4,
+    backgroundColor: "rgba(255,255,255,0.93)",
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    gap: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+      },
+      android: { elevation: 3 },
+    }),
+  },
+  statChipValue: {
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
+    lineHeight: 16,
   },
-  summaryLabel: {
-    fontSize: typography.fontSize.xs,
+  statChipLabel: {
+    fontSize: 9,
     color: colors.textSecondary,
     fontWeight: typography.fontWeight.medium,
     textAlign: "center",
   },
 
-  /* Map */
-  mapWrapper: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  mapContainer: {
-    borderRadius: borderRadius.xl,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
-    height: 440,
-    position: "relative",
-  },
-  webView: {
-    flex: 1,
-    backgroundColor: "#f0fdf4",
-  },
-  mapLoadingOverlay: {
+  /* Bottom sheet */
+  sheet: {
     position: "absolute",
-    top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f0fdf4",
-  },
-  mapLoadingCard: {
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  mapLoadingTitle: {
-    fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.text,
-    marginTop: spacing.sm,
-  },
-  mapLoadingSubtext: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-  },
-
-  /* Spotlight card */
-  spotlightCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.xl,
+    backgroundColor: "rgba(255,255,255,0.97)",
+    borderTopLeftRadius: borderRadius["3xl"],
+    borderTopRightRadius: borderRadius["3xl"],
     borderWidth: 1,
     borderColor: colors.border,
-    borderLeftWidth: 4,
     overflow: "hidden",
-    padding: spacing.md,
-    gap: spacing.sm,
   },
-  spotlightAccent: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  spotlightIconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  sheetHandleArea: {
     alignItems: "center",
-    justifyContent: "center",
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  spotlightInfo: {
-    flex: 1,
-    gap: 3,
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
   },
-  spotlightDistrict: {
-    fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
-  },
-  spotlightBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-  },
-  spotlightBadgeText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.bold,
-  },
-  spotlightMeta: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: 2,
-  },
-  spotlightMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  spotlightMetaText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-  },
-  spotlightCasesBlock: {
-    alignItems: "center",
-    paddingLeft: spacing.sm,
-  },
-  spotlightCasesNum: {
-    fontSize: typography.fontSize["2xl"],
-    fontWeight: typography.fontWeight.bold,
-  },
-  spotlightCasesLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-  },
-  spotlightClose: {
-    position: "absolute",
-    top: spacing.xs,
-    right: spacing.xs,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.muted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* Section header */
-  sectionTitleRow: {
+  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.md,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  sheetTitleRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
-  sectionAccentBar: {
+  sheetAccentBar: {
     width: 3,
     height: 16,
-    backgroundColor: colors.primary,
     borderRadius: 2,
+    backgroundColor: colors.primary,
   },
-  sectionTitle: {
-    fontSize: typography.fontSize.lg,
+  sheetTitle: {
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     flex: 1,
@@ -1427,101 +1744,188 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: borderRadius.full,
-    minWidth: 28,
-    alignItems: "center",
   },
   countPillText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
     color: colors.primary,
   },
-
-  /* District ranking cards */
-  rankingsList: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.xs,
-    paddingBottom: spacing.sm,
-  },
-  districtCard: {
-    flexDirection: "row",
+  sheetToggleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
     alignItems: "center",
-    backgroundColor: colors.card,
+    justifyContent: "center",
+  },
+
+  /* Spotlight card */
+  spotlightCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     borderRadius: borderRadius.xl,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.border,
-    borderLeftWidth: 1,
+  },
+  spotlightInner: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: spacing.md,
     gap: spacing.sm,
-    overflow: "hidden",
   },
-  districtSelectedBar: {
+  spotlightAccentBar: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
     width: 4,
   },
-  rankCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  spotlightInfo: { flex: 1, gap: 4 },
+  spotlightBadgeRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 5,
   },
-  rankText: {
+  spotlightDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  spotlightBadgeText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
   },
-  districtInfo: {
-    flex: 1,
-  },
-  districtName: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.text,
-  },
-  districtMeta: {
+  spotlightEnvRow: {
     flexDirection: "row",
     gap: spacing.sm,
-    marginTop: 3,
   },
-  districtMetaItem: {
+  spotlightEnvItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
   },
-  districtMetaText: {
+  spotlightEnvText: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
-  districtRight: {
-    alignItems: "flex-end",
-    gap: 4,
+  spotlightCases: { alignItems: "center" },
+  spotlightCasesNum: {
+    fontSize: typography.fontSize["2xl"],
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: 28,
   },
-  districtCases: {
+  spotlightCasesLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  spotlightDismiss: {
+    position: "absolute",
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* Rankings */
+  rankingsList: { flex: 1 },
+  rankingsContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  rankRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.sm + 4,
+    gap: spacing.sm,
+    overflow: "hidden",
+  },
+  rankSelectedBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  rankBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankNumber: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textSecondary,
+  },
+  rankInfo: { flex: 1 },
+  rankName: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.text,
+  },
+  rankMeta: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  rankMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  rankMetaText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  rankRight: { alignItems: "flex-end", gap: 3 },
+  rankCases: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
   },
-  riskBadge: {
+  riskLabel: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: borderRadius.full,
   },
-  riskBadgeText: {
-    fontSize: 10,
+  riskLabelText: {
+    fontSize: 9,
     fontWeight: typography.fontWeight.bold,
+  },
+  rankBarTrack: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: colors.border,
+  },
+  rankBarFill: {
+    height: "100%",
+    borderRadius: 1,
   },
 
   /* Disclaimer */
-  disclaimerCard: {
+  disclaimer: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
+    padding: spacing.md,
     backgroundColor: colors.muted,
     borderRadius: borderRadius.lg,
-    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -1529,7 +1933,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
-    lineHeight: 17,
-    opacity: 0.85,
+    lineHeight: 16,
   },
 });

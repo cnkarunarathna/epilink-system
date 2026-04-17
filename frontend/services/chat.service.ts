@@ -44,6 +44,8 @@ export interface CreateMessageDto {
   attachmentType?: "image" | "document";
   /** Client-generated UUID sent with each message so the sender can match and replace its optimistic entry. */
   clientId?: string;
+  /** ISO 8601 timestamp from the client when the message was created. Ensures UI consistency for optimistic updates. */
+  createdAt?: string;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

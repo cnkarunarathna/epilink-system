@@ -41,6 +41,8 @@ interface TaskCardProps {
   onPress?: (task: Task) => void;
   onMarkInProgress?: (task: Task) => void;
   onViewOnMap?: (task: Task) => void;
+  onOpenChat?: (task: Task) => void;
+  unreadCount?: number;
   index?: number;
 }
 
@@ -49,6 +51,8 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
   onPress,
   onMarkInProgress,
   onViewOnMap,
+  onOpenChat,
+  unreadCount = 0,
   index = 0,
 }) => {
   const [menuVisible, setMenuVisible] = useState(false);
@@ -164,34 +168,108 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
       >
-        <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() => setMenuVisible(false)}
+        >
           <View style={styles.menuSheet}>
             <View style={styles.menuHandle} />
-            <Text style={styles.menuTitle} numberOfLines={1}>{task.title}</Text>
+            <Text style={styles.menuTitle} numberOfLines={1}>
+              {task.title}
+            </Text>
 
             <TouchableOpacity
               style={styles.menuItem}
               activeOpacity={0.7}
-              onPress={() => { setMenuVisible(false); onPress?.(task); }}
+              onPress={() => {
+                setMenuVisible(false);
+                onPress?.(task);
+              }}
             >
-              <View style={[styles.menuItemIcon, { backgroundColor: colors.primary + "15" }]}>
-                <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={colors.primary} />
+              <View
+                style={[
+                  styles.menuItemIcon,
+                  { backgroundColor: colors.primary + "15" },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="clipboard-text-outline"
+                  size={20}
+                  color={colors.primary}
+                />
               </View>
               <Text style={styles.menuItemText}>View Details</Text>
-              <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={18}
+                color={colors.textSecondary}
+              />
             </TouchableOpacity>
+
+            {onOpenChat && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setMenuVisible(false);
+                  onOpenChat(task);
+                }}
+              >
+                <View
+                  style={[
+                    styles.menuItemIcon,
+                    { backgroundColor: colors.primaryLight + "15" },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="chat-processing-outline"
+                    size={20}
+                    color={colors.primaryLight}
+                  />
+                </View>
+                <Text style={styles.menuItemText}>Open Chat</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Text>
+                  </View>
+                )}
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
 
             {task.status === "assigned" && onMarkInProgress ? (
               <TouchableOpacity
                 style={styles.menuItem}
                 activeOpacity={0.7}
-                onPress={() => { setMenuVisible(false); onMarkInProgress(task); }}
+                onPress={() => {
+                  setMenuVisible(false);
+                  onMarkInProgress(task);
+                }}
               >
-                <View style={[styles.menuItemIcon, { backgroundColor: colors.status.in_progress + "15" }]}>
-                  <MaterialCommunityIcons name="progress-clock" size={20} color={colors.status.in_progress} />
+                <View
+                  style={[
+                    styles.menuItemIcon,
+                    { backgroundColor: colors.status.in_progress + "15" },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="progress-clock"
+                    size={20}
+                    color={colors.status.in_progress}
+                  />
                 </View>
                 <Text style={styles.menuItemText}>Mark In Progress</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={18}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
             ) : null}
 
@@ -199,13 +277,29 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
               <TouchableOpacity
                 style={styles.menuItem}
                 activeOpacity={0.7}
-                onPress={() => { setMenuVisible(false); onViewOnMap(task); }}
+                onPress={() => {
+                  setMenuVisible(false);
+                  onViewOnMap(task);
+                }}
               >
-                <View style={[styles.menuItemIcon, { backgroundColor: colors.primaryLight + "15" }]}>
-                  <MaterialCommunityIcons name="map-marker-outline" size={20} color={colors.primaryLight} />
+                <View
+                  style={[
+                    styles.menuItemIcon,
+                    { backgroundColor: colors.primaryLight + "15" },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="map-marker-outline"
+                    size={20}
+                    color={colors.primaryLight}
+                  />
                 </View>
                 <Text style={styles.menuItemText}>View on Map</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={18}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
             ) : null}
 
@@ -242,12 +336,24 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
             <Text style={styles.title} numberOfLines={2}>
               {task.title}
             </Text>
-            <View
-              style={[styles.statusBadge, { backgroundColor: statusColor }]}
-            >
-              <Text style={styles.statusText}>
-                {TASK_STATUS_LABELS[task.status]}
-              </Text>
+            <View style={styles.headerRight}>
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <MaterialCommunityIcons
+                    name="chat-processing"
+                    size={10}
+                    color={colors.primaryForeground}
+                  />
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                <Text style={styles.statusText}>
+                  {TASK_STATUS_LABELS[task.status]}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -334,11 +440,14 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
   );
 };
 
-// Only re-render when the task's own id or status changes — not when other tasks in the list update
-export const TaskCard = React.memo(TaskCardInner, (prev, next) =>
-  prev.task.id === next.task.id &&
-  prev.task.status === next.task.status &&
-  prev.index === next.index
+// Only re-render when the task's own data, unread count, or index changes
+export const TaskCard = React.memo(
+  TaskCardInner,
+  (prev, next) =>
+    prev.task.id === next.task.id &&
+    prev.task.status === next.task.status &&
+    prev.unreadCount === next.unreadCount &&
+    prev.index === next.index,
 );
 
 const styles = StyleSheet.create({
@@ -350,6 +459,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     flexDirection: "row",
     overflow: "hidden",
+    minHeight: 132,
     ...shadows.md,
   },
   cardOverdue: {
@@ -368,6 +478,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.sm,
     marginBottom: spacing.sm,
+    flexWrap: "wrap",
   },
   title: {
     flex: 1,
@@ -375,6 +486,27 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
     lineHeight: 22,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  unreadBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: colors.destructive,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.xs + 1,
+    paddingVertical: 2,
+    minWidth: 20,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryForeground,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm + 2,
@@ -391,6 +523,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.md,
     marginBottom: spacing.sm,
+    flexWrap: "wrap",
   },
   metaItem: {
     flexDirection: "row",
@@ -405,7 +538,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   metaText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: accessibleFontSize(typography.fontSize.sm),
     color: colors.text,
     fontWeight: typography.fontWeight.medium,
   },
@@ -417,7 +550,7 @@ const styles = StyleSheet.create({
   },
   address: {
     flex: 1,
-    fontSize: typography.fontSize.sm,
+    fontSize: accessibleFontSize(typography.fontSize.sm),
     color: colors.textSecondary,
   },
   footer: {
@@ -434,6 +567,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     flex: 1,
+    flexWrap: "wrap",
   },
   footerItem: {
     flexDirection: "row",
@@ -441,7 +575,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   dueDate: {
-    fontSize: typography.fontSize.xs,
+    fontSize: accessibleFontSize(typography.fontSize.xs),
     color: colors.textSecondary,
   },
   overdue: {
@@ -449,7 +583,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
   },
   relativeTime: {
-    fontSize: typography.fontSize.xs,
+    fontSize: accessibleFontSize(typography.fontSize.xs),
     color: colors.textSecondary,
   },
   // ─── Long-press context menu ──────────────────────────────────────────────
@@ -492,6 +626,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.lg,
     gap: spacing.sm,
+    minHeight: 48,
   },
   menuItemIcon: {
     width: 36,

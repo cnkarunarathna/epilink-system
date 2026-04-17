@@ -42,6 +42,15 @@ interface ChatReactionEvent {
   reactions: MessageReactionDto[];
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isPersistedMessageId(id: string): boolean {
+  // Optimistic IDs look like "opt_<client-uuid>" and should never hit the API.
+  if (id.startsWith("opt_")) return false;
+  return UUID_REGEX.test(id);
+}
+
 export function useTaskChat(taskId: string, panelVisible = false) {
   const [messages, setMessages] = useState<MessageResponseDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,6 +219,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
       // confirmed message that arrives via the chat:message socket event.
       const clientId = crypto.randomUUID();
       const optimisticId = `opt_${clientId}`;
+      const createdAtIso = new Date().toISOString(); // Capture timestamp once for consistency
 
       // Add an optimistic message immediately so the sender sees instant feedback
       const optimistic: MessageResponseDto = {
@@ -221,7 +231,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
         attachmentType: attachment?.type ?? null,
         sender: { id: user.id, name: user.name, role: user.role },
         isSystemMessage: false,
-        createdAt: new Date().toISOString(),
+        createdAt: createdAtIso,
         readBy: [],
         reactions: [],
       };
@@ -230,6 +240,7 @@ export function useTaskChat(taskId: string, panelVisible = false) {
       const dto: CreateMessageDto = {
         content,
         clientId,
+        createdAt: createdAtIso, // Include the client timestamp for consistency
         ...(attachment && {
           attachmentUrl: attachment.url,
           attachmentType: attachment.type,
@@ -268,9 +279,11 @@ export function useTaskChat(taskId: string, panelVisible = false) {
       if (!user || visibleMessageIds.length === 0) return;
       const unread = visibleMessageIds.filter(
         (id) =>
-          messages
-            .find((m) => m.id === id)
-            ?.readBy.every((r) => r.userId !== user.id) ?? false,
+          (isPersistedMessageId(id) &&
+            messages
+              .find((m) => m.id === id)
+              ?.readBy.every((r) => r.userId !== user.id)) ??
+          false,
       );
       if (unread.length === 0) return;
       await markMessagesRead(taskId, unread).catch(() => {});

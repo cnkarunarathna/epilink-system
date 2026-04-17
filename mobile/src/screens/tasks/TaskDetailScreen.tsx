@@ -12,7 +12,9 @@ import {
   Image,
   Animated,
   Easing,
+  TouchableOpacity,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -35,7 +37,9 @@ import {
   TaskType,
   TaskPriority,
 } from "../../types/task.types";
+import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 import { Evidence } from "../../types/evidence.types";
+import { chatService } from "../../api/chatService";
 import {
   TASK_STATUS_LABELS,
   TASK_TYPE_LABELS,
@@ -88,12 +92,14 @@ export const TaskDetailScreen: React.FC = () => {
   const { taskId } = route.params;
   const { showToast } = useToast();
 
+  const insets = useSafeAreaInsets();
   const [task, setTask] = useState<Task | null>(null);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Animations
   const fadeHero = useRef(new Animated.Value(0)).current;
@@ -194,6 +200,11 @@ export const TaskDetailScreen: React.FC = () => {
     fetchTask(false);
   }, [fetchTask]);
 
+  // Fetch unread chat count badge
+  useEffect(() => {
+    chatService.getUnreadCount(taskId).then(setUnreadCount).catch(() => {});
+  }, [taskId]);
+
   const STATUS_TOAST_LABELS: Partial<Record<TaskStatus, string>> = {
     [TaskStatus.IN_PROGRESS]: "Task started — good luck!",
     [TaskStatus.SUBMITTED]: "Task submitted for review",
@@ -289,6 +300,7 @@ export const TaskDetailScreen: React.FC = () => {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT + insets.bottom }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -633,6 +645,42 @@ export const TaskDetailScreen: React.FC = () => {
       )}
 
       <View style={styles.actions}>
+        {/* Chat button — always visible when task has an assigned PHI */}
+        <TouchableOpacity
+          style={styles.chatBtn}
+          onPress={() =>
+            (navigation as any).navigate("Chat", {
+              taskId: task.id,
+              taskTitle: task.title,
+              isReadOnly:
+                task.status === TaskStatus.COMPLETED ||
+                task.status === TaskStatus.VERIFIED,
+            })
+          }
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={colors.gradient.accent}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.chatBtnGradient}
+          >
+            <MaterialCommunityIcons
+              name="chat-processing"
+              size={20}
+              color={colors.primaryForeground}
+            />
+            <Text style={styles.chatBtnText}>Chat with Supervisor</Text>
+            {unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Text>
+              </View>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+
         {task.status === TaskStatus.ASSIGNED && (
           <Button
             title="Start Task"
@@ -975,5 +1023,38 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.warning,
     fontWeight: typography.fontWeight.medium,
+  },
+  /* Chat button */
+  chatBtn: {
+    borderRadius: borderRadius.xl,
+    overflow: "hidden",
+  },
+  chatBtnGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
+  },
+  chatBtnText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primaryForeground,
+  },
+  unreadBadge: {
+    backgroundColor: colors.destructive,
+    borderRadius: borderRadius.full,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: spacing.xs,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgeText: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryForeground,
   },
 });

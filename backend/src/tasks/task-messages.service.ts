@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { TaskMessage } from './entities/task-message.entity';
@@ -22,6 +18,8 @@ const UNREAD_CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 
 /** Emojis allowed as reactions */
 const ALLOWED_EMOJIS = new Set(['👍', '✅', '👀', '❤️', '😊', '🙏']);
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class TaskMessagesService {
@@ -62,14 +60,19 @@ export class TaskMessagesService {
     senderName: string,
     senderRole: string,
     dto: CreateMessageDto,
-    preloadedTask?: Pick<Task, 'id' | 'createdById' | 'assignedPhiId' | 'title'>,
+    preloadedTask?: Pick<
+      Task,
+      'id' | 'createdById' | 'assignedPhiId' | 'title'
+    >,
   ): Promise<MessageResponseDto> {
     // Use the guard-provided task when available; only fall back to DB if needed
     // (e.g. when called programmatically without a request context).
-    const task = preloadedTask ?? await this.taskRepository.findOne({
-      where: { id: taskId },
-      select: ['id', 'createdById', 'assignedPhiId', 'title'],
-    });
+    const task =
+      preloadedTask ??
+      (await this.taskRepository.findOne({
+        where: { id: taskId },
+        select: ['id', 'createdById', 'assignedPhiId', 'title'],
+      }));
 
     if (!task) {
       throw new NotFoundException(`Task ${taskId} not found`);
@@ -83,6 +86,9 @@ export class TaskMessagesService {
         content: dto.content,
         attachmentUrl: dto.attachmentUrl ?? null,
         attachmentType: (dto.attachmentType as string | null) ?? null,
+        // Use client-provided createdAt if available to ensure UI consistency.
+        // If not provided, TypeORM's @CreateDateColumn will generate a server timestamp.
+        ...(dto.createdAt && { createdAt: new Date(dto.createdAt) }),
       }),
     );
 
@@ -120,7 +126,13 @@ export class TaskMessagesService {
     this.eventsGateway.emitChatMessage(taskId, response);
 
     // Push notifications — fire-and-forget, never blocks the response
-    this.sendPushToRecipients(recipients, senderName, dto.content, taskId, task.title ?? 'Task').catch(() => {});
+    this.sendPushToRecipients(
+      recipients,
+      senderName,
+      dto.content,
+      taskId,
+      task.title ?? 'Task',
+    ).catch(() => {});
 
     return response;
   }
@@ -187,7 +199,9 @@ export class TaskMessagesService {
       messageIds.length > 0
         ? await Promise.all([
             this.readRepository.find({ where: { messageId: In(messageIds) } }),
-            this.reactionRepository.find({ where: { messageId: In(messageIds) } }),
+            this.reactionRepository.find({
+              where: { messageId: In(messageIds) },
+            }),
           ])
         : [[], []];
 
@@ -213,8 +227,18 @@ export class TaskMessagesService {
   ): Promise<void> {
     if (messageIds.length === 0) return;
 
+    // Defensive guard: ignore any non-UUID IDs (e.g. optimistic client IDs)
+    // so this endpoint never throws Postgres uuid cast errors.
+    const validMessageIds = messageIds.filter((id) => UUID_REGEX.test(id));
+    if (validMessageIds.length === 0) return;
+    if (validMessageIds.length !== messageIds.length) {
+      this.logger.warn(
+        `markRead ignored ${messageIds.length - validMessageIds.length} invalid message IDs for task ${taskId}`,
+      );
+    }
+
     // Upsert read records (ignore duplicates via unique constraint)
-    for (const messageId of messageIds) {
+    for (const messageId of validMessageIds) {
       await this.readRepository
         .createQueryBuilder()
         .insert()
@@ -228,7 +252,7 @@ export class TaskMessagesService {
     await this.cacheHelper.del(`unread:${userId}:${taskId}`);
 
     // Broadcast read receipt to the room
-    this.eventsGateway.emitChatRead(taskId, userId, messageIds);
+    this.eventsGateway.emitChatRead(taskId, userId, validMessageIds);
   }
 
   async getUnreadCount(taskId: string, userId: string): Promise<number> {
@@ -282,7 +306,9 @@ export class TaskMessagesService {
         .groupBy('tm.task_id')
         .getRawMany<{ taskId: string; count: string }>();
 
-      const dbCounts = new Map(rows.map((r) => [r.taskId, parseInt(r.count, 10)]));
+      const dbCounts = new Map(
+        rows.map((r) => [r.taskId, parseInt(r.count, 10)]),
+      );
 
       // Backfill cache and populate result
       await Promise.all(
@@ -348,7 +374,10 @@ export class TaskMessagesService {
     messageId: string,
     userId: string,
     emoji: string,
-  ): Promise<{ action: 'added' | 'removed'; reactions: MessageResponseDto['reactions'] }> {
+  ): Promise<{
+    action: 'added' | 'removed';
+    reactions: MessageResponseDto['reactions'];
+  }> {
     if (!ALLOWED_EMOJIS.has(emoji)) {
       emoji = '👍'; // fallback to thumbs-up for unknown emoji
     }
@@ -378,9 +407,19 @@ export class TaskMessagesService {
     const allReactions = await this.reactionRepository.find({
       where: { messageId },
     });
-    const reactionDtos = allReactions.map((r) => ({ emoji: r.emoji, userId: r.userId }));
+    const reactionDtos = allReactions.map((r) => ({
+      emoji: r.emoji,
+      userId: r.userId,
+    }));
 
-    this.eventsGateway.emitChatReaction(taskId, messageId, userId, emoji, action, reactionDtos);
+    this.eventsGateway.emitChatReaction(
+      taskId,
+      messageId,
+      userId,
+      emoji,
+      action,
+      reactionDtos,
+    );
 
     return { action, reactions: reactionDtos };
   }
@@ -421,12 +460,12 @@ export class TaskMessagesService {
     return result;
   }
 
-  private async incrUnreadCount(
-    userId: string,
-    taskId: string,
-  ): Promise<void> {
+  private async incrUnreadCount(userId: string, taskId: string): Promise<void> {
     try {
-      await this.cacheHelper.incr(`unread:${userId}:${taskId}`, UNREAD_CACHE_TTL_MS);
+      await this.cacheHelper.incr(
+        `unread:${userId}:${taskId}`,
+        UNREAD_CACHE_TTL_MS,
+      );
     } catch (err) {
       this.logger.warn(
         `Failed to increment unread count for user ${userId}, task ${taskId}: ${err instanceof Error ? err.message : err}`,
@@ -470,10 +509,7 @@ export class TaskMessagesService {
     });
   }
 
-  private groupBy<T>(
-    items: T[],
-    keyFn: (item: T) => string,
-  ): Map<string, T[]> {
+  private groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
     const map = new Map<string, T[]>();
     for (const item of items) {
       const key = keyFn(item);

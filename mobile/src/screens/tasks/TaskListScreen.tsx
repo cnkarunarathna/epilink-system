@@ -4,7 +4,7 @@
  * KeyboardAvoidingView and animated search input handling.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -39,10 +42,15 @@ import { TaskCard, TaskFilters, TaskFilterValue } from "../../components/task";
 import { useTasks } from "../../hooks/useTasks";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { Task, TaskStatus, UpdateTaskStatusRequest } from "../../types/task.types";
+import {
+  Task,
+  TaskStatus,
+  UpdateTaskStatusRequest,
+} from "../../types/task.types";
 import { TaskStackNavigationProp } from "../../navigation/types";
 import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 import { updateTaskStatus } from "../../api/taskService";
+import { chatService } from "../../api/chatService";
 
 // Measured height of a single TaskCard (including vertical margins) — used by getItemLayout
 // to skip dynamic measurement and enable scroll-to-index.
@@ -70,6 +78,7 @@ export const TaskListScreen: React.FC = () => {
   const listPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [filter, setFilter] = useState<TaskFilterValue>("all");
   const [search, setSearch] = useState("");
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const { tasks, isLoading, isRefreshing, error, refresh, refetch } = useTasks({
     status: filter,
@@ -83,18 +92,15 @@ export const TaskListScreen: React.FC = () => {
   }, [refresh, showToast]);
 
   // ─── Swipe-to-filter ─────────────────────────────────────────────────────
-  const cycleFilter = useCallback(
-    (direction: 1 | -1) => {
-      setFilter((current) => {
-        const idx = FILTER_CYCLE.indexOf(current);
-        const next =
-          (idx + direction + FILTER_CYCLE.length) % FILTER_CYCLE.length;
-        Haptics.selectionAsync();
-        return FILTER_CYCLE[next];
-      });
-    },
-    [],
-  );
+  const cycleFilter = useCallback((direction: 1 | -1) => {
+    setFilter((current) => {
+      const idx = FILTER_CYCLE.indexOf(current);
+      const next =
+        (idx + direction + FILTER_CYCLE.length) % FILTER_CYCLE.length;
+      Haptics.selectionAsync();
+      return FILTER_CYCLE[next];
+    });
+  }, []);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -102,7 +108,7 @@ export const TaskListScreen: React.FC = () => {
         Math.abs(gs.dx) > 20 && Math.abs(gs.dy) < 15,
       onPanResponderRelease: (_, gs) => {
         if (gs.dx < -50) cycleFilter(+1); // swipe left → next filter
-        if (gs.dx > 50) cycleFilter(-1);  // swipe right → prev filter
+        if (gs.dx > 50) cycleFilter(-1); // swipe right → prev filter
       },
     }),
   ).current;
@@ -113,7 +119,10 @@ export const TaskListScreen: React.FC = () => {
       try {
         const req: UpdateTaskStatusRequest = { status: TaskStatus.IN_PROGRESS };
         await updateTaskStatus(task.id, req);
-        showToast({ message: "Task marked as In Progress.", variant: "success" });
+        showToast({
+          message: "Task marked as In Progress.",
+          variant: "success",
+        });
         await refresh();
       } catch {
         showToast({
@@ -142,9 +151,28 @@ export const TaskListScreen: React.FC = () => {
     return "Try a different filter or pull to refresh";
   }, [filter]);
 
+  // Batch-fetch unread counts whenever the task list changes
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    const ids = tasks.map((t) => t.id);
+    chatService.getUnreadBatch(ids).then(setUnreadCounts).catch(() => {});
+  }, [tasks]);
+
   const handleTaskPress = useCallback(
     (task: Task) => {
       navigation.navigate("TaskDetail", { taskId: task.id });
+    },
+    [navigation],
+  );
+
+  const handleOpenChat = useCallback(
+    (task: Task) => {
+      navigation.navigate("Chat", {
+        taskId: task.id,
+        taskTitle: task.title,
+        isReadOnly:
+          task.status === "completed" || task.status === "verified",
+      });
     },
     [navigation],
   );
@@ -214,11 +242,16 @@ export const TaskListScreen: React.FC = () => {
                 onPress={handleTaskPress}
                 onMarkInProgress={handleMarkInProgress}
                 onViewOnMap={handleViewOnMap}
+                onOpenChat={handleOpenChat}
+                unreadCount={unreadCounts[item.id] ?? 0}
                 index={index}
               />
             )}
             refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+              />
             }
             // Render performance
             removeClippedSubviews={true}
@@ -233,12 +266,17 @@ export const TaskListScreen: React.FC = () => {
                 subtitle={emptySubtitle}
                 action={
                   filter !== "all"
-                    ? { label: "View All Tasks", onPress: () => setFilter("all") }
+                    ? {
+                        label: "View All Tasks",
+                        onPress: () => setFilter("all"),
+                      }
                     : undefined
                 }
               />
             }
-            ListFooterComponent={error ? <ErrorMessage message={error} /> : null}
+            ListFooterComponent={
+              error ? <ErrorMessage message={error} /> : null
+            }
           />
         </KeyboardAvoidingView>
       )}
@@ -293,6 +331,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     zIndex: 2,
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   title: {
     fontSize: typography.fontSize["2xl"],
@@ -312,6 +352,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: borderRadius.full,
+    minHeight: 32,
   },
   countText: {
     fontSize: typography.fontSize.base,
