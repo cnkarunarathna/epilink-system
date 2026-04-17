@@ -31,6 +31,7 @@ import {
   LogOut,
   MapPin,
   FileText,
+  Mail,
   User,
   ChevronLeft,
   ChevronRight,
@@ -104,6 +105,7 @@ function getNavItems(role: string): NavItem[] {
         { label: "Users", href: "/admin/users", icon: Users },
         { label: "Districts", href: "/admin/districts", icon: MapPin },
         { label: "Reports", href: "/admin/reports", icon: FileText },
+        { label: "Email", href: "/admin/email", icon: Mail },
         { label: "Settings", href: "/admin/settings", icon: Settings },
       ];
     case "supervisor":
