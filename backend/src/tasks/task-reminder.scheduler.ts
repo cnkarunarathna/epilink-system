@@ -91,6 +91,7 @@ export class TaskReminderScheduler {
             dueDate: this.formatDate(task.dueDate!),
             taskUrl: this.taskUrl(task.id),
           },
+          notificationCategory: 'taskReminder',
           relatedEntityType: 'task',
           relatedEntityId: task.id,
         })
@@ -158,6 +159,7 @@ export class TaskReminderScheduler {
           subject: `Overdue Task: ${task.title}`,
           template: 'task-overdue',
           context: emailContext,
+          notificationCategory: 'taskOverdue',
           relatedEntityType: 'task',
           relatedEntityId: task.id,
         })
@@ -176,6 +178,7 @@ export class TaskReminderScheduler {
               ...emailContext,
               phiName: `${task.assignedPhi.name} (PHI)`,
             },
+            notificationCategory: 'taskOverdue',
             relatedEntityType: 'task',
             relatedEntityId: task.id,
           })

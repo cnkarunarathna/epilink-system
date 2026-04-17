@@ -417,9 +417,11 @@ Used for report notifications that go to all admins or all supervisors.
 
 ---
 
-## Phase 5 — Alert & Digest System
+## Phase 5 — Alert & Digest System ✅ COMPLETE
 
 > **Goal**: Proactive system-level alerts for dengue risk spikes and a configurable weekly digest email for supervisors and admins summarising activity in their district/system.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 5.1 Risk Spike Alert
 
@@ -495,14 +497,14 @@ export class NotificationPreference {
 `EmailService.send()` checks preference before enqueuing — if user opted out of that category, the job is silently dropped (and noted in `EmailLog` with status `skipped`).
 
 ### Deliverables
-- [ ] `risk-alert.hbs` template
-- [ ] `weekly-digest.hbs` template (supervisor variant)
-- [ ] `weekly-digest.hbs` admin variant (or separate template)
-- [ ] `DigestScheduler` service with two cron jobs
-- [ ] Risk alert hook in `AnalyticsService`
-- [ ] `NotificationPreference` entity + migration
-- [ ] Preference check in `EmailService.send()`
-- [ ] Preference CRUD endpoints (`GET/PUT /users/:id/notification-preferences`)
+- [x] `risk-alert.hbs` template
+- [x] `weekly-digest.hbs` template (supervisor + admin variants via single template with conditionals)
+- [x] `DigestScheduler` service with two cron jobs (Monday 7 AM digest, daily 10 AM risk alert check)
+- [x] Risk alert cron in `DigestScheduler` — queries `AnalyticsService.getOutbreakAlerts()` daily
+- [x] `NotificationPreference` entity + migration (`1780600000000-CreateNotificationPreferences.ts`)
+- [x] Preference check in `EmailService.send()` — silently skips opted-out recipients
+- [x] Preference CRUD endpoints (`GET/PUT /users/:id/notification-preferences`)
+- [x] `notificationCategory` wired into all Phase 3, 4, and 5 email sends
 
 ---
 

@@ -14,6 +14,7 @@ import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
+import { NotificationPreference } from '../email/entities/notification-preference.entity';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrator',
@@ -27,6 +28,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(NotificationPreference)
+    private readonly notifPrefRepo: Repository<NotificationPreference>,
     private readonly eventsGateway: EventsGateway,
     private readonly cacheHelper: CacheHelperService,
     private readonly emailService: EmailService,
@@ -502,5 +505,37 @@ export class UsersService {
     }
 
     return userWithoutPassword as User;
+  }
+
+  async getNotificationPreferences(userId: string): Promise<NotificationPreference> {
+    await this.findOne(userId); // verify user exists
+
+    const existing = await this.notifPrefRepo.findOne({ where: { userId } });
+    if (existing) return existing;
+
+    // Create default all-enabled preferences on first access
+    const defaults = this.notifPrefRepo.create({ userId });
+    return this.notifPrefRepo.save(defaults);
+  }
+
+  async updateNotificationPreferences(
+    userId: string,
+    dto: Partial<
+      Pick<
+        NotificationPreference,
+        | 'taskAssigned'
+        | 'taskStatusChanged'
+        | 'taskReminder'
+        | 'taskOverdue'
+        | 'evidenceReview'
+        | 'reportReady'
+        | 'weeklyDigest'
+        | 'riskAlerts'
+      >
+    >,
+  ): Promise<NotificationPreference> {
+    const pref = await this.getNotificationPreferences(userId);
+    Object.assign(pref, dto);
+    return this.notifPrefRepo.save(pref);
   }
 }

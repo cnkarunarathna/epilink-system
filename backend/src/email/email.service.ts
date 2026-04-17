@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 import { EMAIL_BULL_QUEUE } from './email.constants';
 import { SendEmailOptions, EmailJobPayload } from './email.types';
 import { User, UserRole } from '../entities/user.entity';
+import { NotificationPreference } from './entities/notification-preference.entity';
 
 @Injectable()
 export class EmailService {
@@ -16,6 +17,8 @@ export class EmailService {
     @Inject(EMAIL_BULL_QUEUE) private readonly emailQueue: Queue,
     private readonly configService: ConfigService,
     @InjectRepository(User) private readonly userRepository: Repository<User>,
+    @InjectRepository(NotificationPreference)
+    private readonly notifPrefRepo: Repository<NotificationPreference>,
   ) {
     this.enabled = this.configService.get<string>('EMAIL_ENABLED') !== 'false';
   }
@@ -35,6 +38,15 @@ export class EmailService {
     const recipients = Array.isArray(options.to) ? options.to : [options.to];
 
     for (const recipient of recipients) {
+      // Opt-out check — only when a notification category is specified
+      if (options.notificationCategory) {
+        const skipped = await this.isOptedOut(
+          recipient,
+          options.notificationCategory,
+        );
+        if (skipped) continue;
+      }
+
       const payload: EmailJobPayload = { ...options, to: recipient };
       try {
         await this.emailQueue.add('send', payload, {
@@ -49,6 +61,41 @@ export class EmailService {
         );
       }
     }
+  }
+
+  /**
+   * Returns true if the recipient has opted out of the given notification category.
+   * Non-fatal: if the DB lookup fails the caller proceeds normally.
+   */
+  private async isOptedOut(
+    email: string,
+    category: string,
+  ): Promise<boolean> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { email },
+        select: ['id'],
+      });
+      if (!user) return false;
+
+      const pref = await this.notifPrefRepo.findOne({
+        where: { userId: user.id },
+      });
+      if (!pref) return false;
+
+      const catKey = category as keyof NotificationPreference;
+      if (typeof pref[catKey] === 'boolean' && pref[catKey] === false) {
+        this.logger.debug(
+          `Email skipped (user opted out of "${category}"): ${email}`,
+        );
+        return true;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Preference check failed for ${email}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    return false;
   }
 
   /**
