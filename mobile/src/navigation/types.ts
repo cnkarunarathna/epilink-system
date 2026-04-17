@@ -37,6 +37,7 @@ export type TaskStackParamList = {
   EvidenceReview: { taskId: string };
   EvidenceUpload: { taskId: string };
   TaskMap: undefined;
+  Chat: { taskId: string; taskTitle: string; isReadOnly?: boolean };
 };
 
 // Navigation prop types

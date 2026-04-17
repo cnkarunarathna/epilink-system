@@ -4,7 +4,7 @@
  * KeyboardAvoidingView and animated search input handling.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -50,6 +50,7 @@ import {
 import { TaskStackNavigationProp } from "../../navigation/types";
 import { TAB_BAR_HEIGHT } from "../../utils/responsive";
 import { updateTaskStatus } from "../../api/taskService";
+import { chatService } from "../../api/chatService";
 
 // Measured height of a single TaskCard (including vertical margins) — used by getItemLayout
 // to skip dynamic measurement and enable scroll-to-index.
@@ -77,6 +78,7 @@ export const TaskListScreen: React.FC = () => {
   const listPaddingBottom = TAB_BAR_HEIGHT + insets.bottom + spacing.lg;
   const [filter, setFilter] = useState<TaskFilterValue>("all");
   const [search, setSearch] = useState("");
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const { tasks, isLoading, isRefreshing, error, refresh, refetch } = useTasks({
     status: filter,
@@ -149,9 +151,28 @@ export const TaskListScreen: React.FC = () => {
     return "Try a different filter or pull to refresh";
   }, [filter]);
 
+  // Batch-fetch unread counts whenever the task list changes
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    const ids = tasks.map((t) => t.id);
+    chatService.getUnreadBatch(ids).then(setUnreadCounts).catch(() => {});
+  }, [tasks]);
+
   const handleTaskPress = useCallback(
     (task: Task) => {
       navigation.navigate("TaskDetail", { taskId: task.id });
+    },
+    [navigation],
+  );
+
+  const handleOpenChat = useCallback(
+    (task: Task) => {
+      navigation.navigate("Chat", {
+        taskId: task.id,
+        taskTitle: task.title,
+        isReadOnly:
+          task.status === "completed" || task.status === "verified",
+      });
     },
     [navigation],
   );
@@ -221,6 +242,8 @@ export const TaskListScreen: React.FC = () => {
                 onPress={handleTaskPress}
                 onMarkInProgress={handleMarkInProgress}
                 onViewOnMap={handleViewOnMap}
+                onOpenChat={handleOpenChat}
+                unreadCount={unreadCounts[item.id] ?? 0}
                 index={index}
               />
             )}

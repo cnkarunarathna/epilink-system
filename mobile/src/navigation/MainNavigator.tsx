@@ -85,6 +85,24 @@ interface TabItemProps {
   onPress: () => void;
 }
 
+type NestedRoute = {
+  name: string;
+  state?: {
+    index: number;
+    routes: NestedRoute[];
+  };
+};
+
+const getDeepFocusedRouteName = (route: NestedRoute): string => {
+  let current = route;
+  while (current.state?.routes && typeof current.state.index === "number") {
+    const next = current.state.routes[current.state.index];
+    if (!next) break;
+    current = next;
+  }
+  return current.name;
+};
+
 const TabItem: React.FC<TabItemProps> = ({ config, focused, onPress }) => {
   const scaleAnim = useRef(new Animated.Value(focused ? 1 : 0.92)).current;
   const labelOpacity = useRef(new Animated.Value(focused ? 1 : 0)).current;
@@ -152,10 +170,7 @@ const TabItem: React.FC<TabItemProps> = ({ config, focused, onPress }) => {
 
 // ─── Custom floating tab bar ─────────────────────────────────────────────────
 
-const CustomTabBar: React.FC<BottomTabBarProps> = ({
-  state,
-  navigation,
-}) => {
+const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
   const mountAnim = useRef(new Animated.Value(0)).current;
 
@@ -177,6 +192,13 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
   };
 
   const visibleTabs = TAB_CONFIG; // exactly matches the 5 visible tabs
+  const activeTabRoute = state.routes[state.index] as unknown as NestedRoute;
+  const activeNestedRouteName = getDeepFocusedRouteName(activeTabRoute);
+
+  // Hide bottom bar on full-screen Chat route for focused messaging UX
+  if (activeTabRoute.name === "Tasks" && activeNestedRouteName === "Chat") {
+    return null;
+  }
 
   return (
     <Animated.View
