@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 export interface ValidatedServiceUser {
   id: string;
   email: string;
+  name?: string;
   role: string;
   district?: string | null;
 }

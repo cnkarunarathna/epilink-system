@@ -348,9 +348,11 @@ Used to resolve the supervisor CC address when emailing PHIs about overdue/rejec
 
 ---
 
-## Phase 4 — Evidence & Report Notifications
+## Phase 4 — Evidence & Report Notifications ✅ COMPLETE
 
 > **Goal**: Email notifications for evidence submission/review outcomes and weekly report generation/approval.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 4.1 Evidence Workflow
 
@@ -406,11 +408,11 @@ Used to resolve the supervisor CC address when emailing PHIs about overdue/rejec
 Used for report notifications that go to all admins or all supervisors.
 
 ### Deliverables
-- [ ] Evidence templates (submitted, approved, rejected)
-- [ ] Report templates (generated, approved)
-- [ ] Evidence hooks in `TasksService`
-- [ ] Report hooks in `ReportsService`
-- [ ] `EmailService.sendToRole()` helper
+- [x] Evidence templates (submitted, approved, rejected)
+- [x] Report templates (generated, approved)
+- [x] Evidence hooks in `TasksService`
+- [x] Report hooks in `ReportsService`
+- [x] `EmailService.sendToRole()` helper
 - [ ] End-to-end test: submit evidence → approve → PDF report email
 
 ---

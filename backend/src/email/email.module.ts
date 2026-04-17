@@ -7,6 +7,7 @@ import { EmailService } from './email.service';
 import { EmailProcessor } from './email.processor';
 import { EmailController } from './email.controller';
 import { EmailLog } from './entities/email-log.entity';
+import { User } from '../entities/user.entity';
 import {
   EMAIL_BULL_QUEUE,
   EMAIL_QUEUE,
@@ -15,7 +16,7 @@ import {
 
 @Global()
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([EmailLog])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([EmailLog, User])],
   controllers: [EmailController],
   providers: [
     // BullMQ Queue instance (used by EmailService to enqueue jobs)

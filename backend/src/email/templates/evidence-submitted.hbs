@@ -1,0 +1,56 @@
+<h1>Evidence Ready for Review</h1>
+
+<p>Hi {{supervisorName}},</p>
+
+<p>
+  New evidence has been submitted for a task in your district and is awaiting your review.
+</p>
+
+<div class="info-box">
+  <p>
+    <strong>District:</strong> {{district}}
+    &nbsp;&middot;&nbsp;
+    <strong>Submitted by:</strong> {{phiName}}
+  </p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  <tr>
+    <td>Priority</td>
+    <td><span class="badge-{{priority}}">{{uppercase priority}}</span></td>
+  </tr>
+  {{#if address}}
+  <tr>
+    <td>Address</td>
+    <td>{{address}}</td>
+  </tr>
+  {{/if}}
+  <tr>
+    <td>Submitted At</td>
+    <td>{{submittedAt}}</td>
+  </tr>
+  {{#if notes}}
+  <tr>
+    <td>Notes</td>
+    <td>{{notes}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">Review Evidence</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  You are receiving this because you are the supervisor for the {{district}} district. Please review the evidence and approve or return it.
+</p>

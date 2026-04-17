@@ -563,7 +563,39 @@ export class TasksService {
       submittedById,
     });
 
-    return this.evidenceRepository.save(evidence);
+    const saved = await this.evidenceRepository.save(evidence);
+
+    // Email supervisor — evidence ready for review
+    const districtName = task.district?.name ?? '';
+    const supervisor = await this.userRepository.findOne({
+      where: { district: districtName, role: UserRole.SUPERVISOR, isActive: true },
+    });
+    if (supervisor) {
+      this.emailService
+        .send({
+          to: supervisor.email,
+          subject: `Evidence Ready for Review — ${task.title}`,
+          template: 'evidence-submitted',
+          context: {
+            supervisorName: supervisor.name,
+            phiName: task.assignedPhi?.name ?? 'PHI',
+            taskTitle: task.title,
+            taskType: task.type,
+            priority: task.priority,
+            address: task.address,
+            district: districtName,
+            notes: dto.notes,
+            submittedAt: this.formatDate(new Date()),
+            taskUrl: this.taskUrl(taskId),
+          },
+          relatedEntityType: 'task',
+          relatedEntityId: taskId,
+          triggeredByUserId: submittedById,
+        })
+        .catch(() => {});
+    }
+
+    return saved;
   }
 
   async getEvidence(taskId: string): Promise<Evidence[]> {
@@ -583,6 +615,7 @@ export class TasksService {
   ): Promise<Evidence> {
     const evidence = await this.evidenceRepository.findOne({
       where: { id: evidenceId },
+      relations: ['submittedBy', 'task', 'task.district'],
     });
 
     if (!evidence) {
@@ -599,7 +632,58 @@ export class TasksService {
       evidence.rejectionReason = rejectionReason;
     }
 
-    return this.evidenceRepository.save(evidence);
+    const saved = await this.evidenceRepository.save(evidence);
+
+    // Email PHI with approval or rejection notice
+    if (evidence.submittedBy) {
+      const verifier = await this.userRepository.findOne({
+        where: { id: verifiedById },
+      });
+      const taskUrl = this.taskUrl(evidence.taskId);
+      const district = evidence.task?.district?.name ?? '';
+
+      if (approved) {
+        this.emailService
+          .send({
+            to: evidence.submittedBy.email,
+            subject: `Evidence Approved — ${evidence.task?.title ?? 'Task'}`,
+            template: 'evidence-approved',
+            context: {
+              phiName: evidence.submittedBy.name,
+              taskTitle: evidence.task?.title,
+              district,
+              verifiedBy: verifier?.name,
+              verifiedAt: this.formatDate(new Date()),
+              taskUrl,
+            },
+            relatedEntityType: 'task',
+            relatedEntityId: evidence.taskId,
+            triggeredByUserId: verifiedById,
+          })
+          .catch(() => {});
+      } else {
+        this.emailService
+          .send({
+            to: evidence.submittedBy.email,
+            subject: `Evidence Returned — ${evidence.task?.title ?? 'Task'}`,
+            template: 'evidence-rejected',
+            context: {
+              phiName: evidence.submittedBy.name,
+              taskTitle: evidence.task?.title,
+              district,
+              rejectedBy: verifier?.name,
+              rejectionReason,
+              taskUrl,
+            },
+            relatedEntityType: 'task',
+            relatedEntityId: evidence.taskId,
+            triggeredByUserId: verifiedById,
+          })
+          .catch(() => {});
+      }
+    }
+
+    return saved;
   }
 
   // Get PHIs by district for supervisor (including suspended)

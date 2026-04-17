@@ -17,6 +17,8 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.service';
+import { UserRole } from '../entities/user.entity';
 
 @Injectable()
 export class ReportsService {
@@ -31,6 +33,7 @@ export class ReportsService {
     private readonly storageService: StorageService,
     private readonly pdfGenerator: ReportPdfGenerator,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {
     this.s3 = new S3Client({
       region: this.configService.getOrThrow<string>('AWS_REGION'),
@@ -237,6 +240,42 @@ export class ReportsService {
     saved.s3Key = key;
     const final = await this.repo.save(saved);
 
+    // Email admins and supervisors — report ready for review
+    const reportEmailContext = {
+      reportTitle: final.title,
+      weekNumber: dto.weekNumber,
+      year: dto.year,
+      reportType: final.reportType,
+      totalPredictedCases: final.totalPredictedCases,
+      totalCurrentCases: final.totalCurrentCases,
+      highRiskDistricts: final.highRiskDistricts,
+      totalDistricts: final.totalDistricts,
+      reportUrl: signedUrl,
+    };
+    const reportEmailSubject = `Weekly Epidemiological Report Ready — Week ${dto.weekNumber}, ${dto.year}`;
+
+    this.emailService
+      .sendToRole(UserRole.ADMIN, {
+        subject: reportEmailSubject,
+        template: 'report-generated',
+        context: reportEmailContext,
+        relatedEntityType: 'report',
+        relatedEntityId: final.id,
+        triggeredByUserId: user.id,
+      })
+      .catch(() => {});
+
+    this.emailService
+      .sendToRole(UserRole.SUPERVISOR, {
+        subject: reportEmailSubject,
+        template: 'report-generated',
+        context: reportEmailContext,
+        relatedEntityType: 'report',
+        relatedEntityId: final.id,
+        triggeredByUserId: user.id,
+      })
+      .catch(() => {});
+
     return { ...final, downloadUrl: signedUrl };
   }
 
@@ -248,7 +287,62 @@ export class ReportsService {
     report.status = ReportStatus.APPROVED;
     report.approvedById = user.id;
     report.approvedAt = new Date();
-    return this.repo.save(report);
+    const saved = await this.repo.save(report);
+
+    // Get a fresh signed download URL (7-day expiry from StorageService)
+    let downloadUrl = '';
+    if (saved.s3Key) {
+      try {
+        downloadUrl = await this.storageService.getSignedUrl(saved.s3Key);
+      } catch {
+        // non-fatal — email still goes out without the link
+      }
+    }
+
+    const approvedAtFormatted = new Date(saved.approvedAt!).toLocaleDateString(
+      'en-US',
+      { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' },
+    );
+    const approvalContext = {
+      reportTitle: saved.title,
+      weekNumber: saved.weekNumber,
+      year: saved.year,
+      approvedBy: user.name ?? user.email,
+      approvedAt: approvedAtFormatted,
+      highRiskDistricts: saved.highRiskDistricts,
+      totalDistricts: saved.totalDistricts,
+      downloadUrl,
+    };
+    const approvalSubject = `Weekly Report Approved — Week ${saved.weekNumber}, ${saved.year}`;
+
+    // Notify report creator
+    if (saved.createdBy?.email) {
+      this.emailService
+        .send({
+          to: saved.createdBy.email,
+          subject: approvalSubject,
+          template: 'report-approved',
+          context: { ...approvalContext, recipientName: saved.createdBy.name ?? 'Admin' },
+          relatedEntityType: 'report',
+          relatedEntityId: saved.id,
+          triggeredByUserId: user.id,
+        })
+        .catch(() => {});
+    }
+
+    // Notify all supervisors
+    this.emailService
+      .sendToRole(UserRole.SUPERVISOR, {
+        subject: approvalSubject,
+        template: 'report-approved',
+        context: { ...approvalContext, recipientName: 'Supervisor' },
+        relatedEntityType: 'report',
+        relatedEntityId: saved.id,
+        triggeredByUserId: user.id,
+      })
+      .catch(() => {});
+
+    return saved;
   }
 
   async getDownloadUrl(id: string): Promise<{ url: string }> {
