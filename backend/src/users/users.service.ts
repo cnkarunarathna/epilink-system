@@ -12,6 +12,15 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
+import { EmailService } from '../email/email.service';
+import { ConfigService } from '@nestjs/config';
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.ADMIN]: 'Administrator',
+  [UserRole.SUPERVISOR]: 'Supervisor',
+  [UserRole.PHI]: 'Public Health Inspector',
+  [UserRole.VIEWER]: 'Viewer',
+};
 
 @Injectable()
 export class UsersService {
@@ -20,6 +29,8 @@ export class UsersService {
     private userRepository: Repository<User>,
     private readonly eventsGateway: EventsGateway,
     private readonly cacheHelper: CacheHelperService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
 
   private async invalidateUserCaches(): Promise<void> {
@@ -47,6 +58,9 @@ export class UsersService {
       );
     }
 
+    // Capture plain-text password before hashing (needed for welcome email)
+    const plainPassword = createUserDto.password;
+
     // Hash password
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
@@ -65,6 +79,28 @@ export class UsersService {
     this.eventsGateway.emitUserCreated(userWithoutPassword);
 
     await this.invalidateUserCaches();
+
+    // Send welcome email with login credentials
+    await this.emailService.send({
+      to: savedUser.email,
+      subject: 'Welcome to Epilink — Your Account Details',
+      template: 'welcome',
+      context: {
+        name: savedUser.name,
+        email: savedUser.email,
+        tempPassword: plainPassword,
+        role: savedUser.role,
+        roleLabel: ROLE_LABELS[savedUser.role],
+        district: savedUser.district ?? null,
+        loginUrl: this.configService.get<string>(
+          'NEXT_FRONTEND_URL',
+          'http://localhost:3000',
+        ),
+      },
+      relatedEntityType: 'user',
+      relatedEntityId: savedUser.id,
+    });
+
     return userWithoutPassword as User;
   }
 
@@ -184,6 +220,38 @@ export class UsersService {
     this.eventsGateway.emitUserStatusChanged(id, updatedUser.isActive);
 
     await this.invalidateUserCaches();
+
+    // Send activation / deactivation email
+    const loginUrl = this.configService.get<string>(
+      'NEXT_FRONTEND_URL',
+      'http://localhost:3000',
+    );
+    if (updatedUser.isActive) {
+      await this.emailService.send({
+        to: updatedUser.email,
+        subject: 'Your Epilink Account Has Been Activated',
+        template: 'account-activated',
+        context: {
+          name: updatedUser.name,
+          email: updatedUser.email,
+          roleLabel: ROLE_LABELS[updatedUser.role],
+          district: updatedUser.district ?? null,
+          loginUrl,
+        },
+        relatedEntityType: 'user',
+        relatedEntityId: updatedUser.id,
+      });
+    } else {
+      await this.emailService.send({
+        to: updatedUser.email,
+        subject: 'Your Epilink Account Has Been Deactivated',
+        template: 'account-deactivated',
+        context: { name: updatedUser.name },
+        relatedEntityType: 'user',
+        relatedEntityId: updatedUser.id,
+      });
+    }
+
     return userWithoutPassword as User;
   }
 
@@ -231,6 +299,9 @@ export class UsersService {
       throw new ConflictException('User with this email already exists');
     }
 
+    // Capture plain-text password before hashing (needed for welcome email)
+    const plainPassword = phiData.password;
+
     // Hash password
     const hashedPassword = await bcrypt.hash(phiData.password, 10);
 
@@ -253,6 +324,28 @@ export class UsersService {
     this.eventsGateway.emitUserCreated(userWithoutPassword);
 
     await this.invalidateUserCaches();
+
+    // Send welcome email with login credentials
+    await this.emailService.send({
+      to: savedUser.email,
+      subject: 'Welcome to Epilink — Your Account Details',
+      template: 'welcome',
+      context: {
+        name: savedUser.name,
+        email: savedUser.email,
+        tempPassword: plainPassword,
+        role: savedUser.role,
+        roleLabel: ROLE_LABELS[savedUser.role],
+        district: savedUser.district ?? null,
+        loginUrl: this.configService.get<string>(
+          'NEXT_FRONTEND_URL',
+          'http://localhost:3000',
+        ),
+      },
+      relatedEntityType: 'user',
+      relatedEntityId: savedUser.id,
+    });
+
     return userWithoutPassword as User;
   }
 
@@ -370,6 +463,38 @@ export class UsersService {
     this.eventsGateway.emitUserStatusChanged(phiId, updatedUser.isActive);
 
     await this.invalidateUserCaches();
+
+    // Send activation / deactivation email
+    const loginUrl = this.configService.get<string>(
+      'NEXT_FRONTEND_URL',
+      'http://localhost:3000',
+    );
+    if (updatedUser.isActive) {
+      await this.emailService.send({
+        to: updatedUser.email,
+        subject: 'Your Epilink Account Has Been Activated',
+        template: 'account-activated',
+        context: {
+          name: updatedUser.name,
+          email: updatedUser.email,
+          roleLabel: ROLE_LABELS[updatedUser.role],
+          district: updatedUser.district ?? null,
+          loginUrl,
+        },
+        relatedEntityType: 'user',
+        relatedEntityId: updatedUser.id,
+      });
+    } else {
+      await this.emailService.send({
+        to: updatedUser.email,
+        subject: 'Your Epilink Account Has Been Deactivated',
+        template: 'account-deactivated',
+        context: { name: updatedUser.name },
+        relatedEntityType: 'user',
+        relatedEntityId: updatedUser.id,
+      });
+    }
+
     return userWithoutPassword as User;
   }
 }

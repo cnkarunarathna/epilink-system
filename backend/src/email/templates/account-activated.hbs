@@ -1,0 +1,33 @@
+<h1>Your Account Has Been Activated</h1>
+
+<p>Hi {{name}},</p>
+
+<p>
+  Your Epilink account has been <strong>activated</strong> and you can now log in
+  to access the system.
+</p>
+
+<div class="success-box">
+  <p>&#10003; Account status: <strong>Active</strong></p>
+</div>
+
+<table class="detail-list">
+  <tr>
+    <td>Email</td>
+    <td>{{email}}</td>
+  </tr>
+  <tr>
+    <td>Role</td>
+    <td>{{roleLabel}}</td>
+  </tr>
+  {{#if district}}
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+<div class="btn-wrap">
+  <a href="{{loginUrl}}" class="btn">Login to Epilink</a>
+</div>

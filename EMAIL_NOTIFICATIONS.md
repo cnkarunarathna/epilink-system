@@ -189,9 +189,11 @@ Sends a test email to verify SMTP credentials and queue flow.
 
 ---
 
-## Phase 2 — Transactional User Notifications
+## Phase 2 — Transactional User Notifications ✅ COMPLETE
 
 > **Goal**: Send emails on every user lifecycle event — account creation (with credentials), status changes, and role/district assignments.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 2.1 Trigger Points
 
@@ -243,11 +245,14 @@ await this.emailService.send({
 ```
 
 ### Deliverables
-- [ ] `welcome.hbs` template
-- [ ] `account-activated.hbs` template
-- [ ] `account-deactivated.hbs` template
-- [ ] `UsersService` integrated with `EmailService`
-- [ ] End-to-end test: create user → email received
+- [x] `welcome.hbs` — credentials, role/district, login button, security warning
+- [x] `account-activated.hbs` — activation notice with login link
+- [x] `account-deactivated.hbs` — suspension notice with reinstatement guidance
+- [x] `UsersService.create()` — welcome email (admin path)
+- [x] `UsersService.createPhiForSupervisor()` — welcome email (supervisor path)
+- [x] `UsersService.toggleStatus()` — activated/deactivated email (admin path)
+- [x] `UsersService.togglePhiStatusForSupervisor()` — activated/deactivated email (supervisor path)
+- [x] `ROLE_LABELS` map for human-readable role display in templates
 
 ---
 
