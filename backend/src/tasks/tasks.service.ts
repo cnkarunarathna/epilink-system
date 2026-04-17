@@ -25,6 +25,8 @@ import { EventsGateway } from '../events/events.gateway';
 import { StorageService } from '../storage/storage.service';
 import { CacheHelperService } from '../cache/cache-helper.service';
 import { TaskMessagesService } from './task-messages.service';
+import { EmailService } from '../email/email.service';
+import { ConfigService } from '@nestjs/config';
 
 export interface TaskFilters {
   districtId?: number;
@@ -59,7 +61,27 @@ export class TasksService {
     private storageService: StorageService,
     private cacheHelper: CacheHelperService,
     private taskMessagesService: TaskMessagesService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private taskUrl(taskId: string): string {
+    const base = this.configService.get<string>(
+      'NEXT_FRONTEND_URL',
+      'http://localhost:3000',
+    );
+    return `${base}/dashboard/tasks/${taskId}`;
+  }
+
+  private formatDate(date: Date | null | undefined): string {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
 
   private async invalidateTaskCaches(): Promise<void> {
     await this.cacheHelper.delByPattern('tasks:*');
@@ -115,6 +137,31 @@ export class TasksService {
     );
 
     await this.invalidateTaskCaches();
+
+    // Email PHI on assignment (if assigned at creation time)
+    if (taskWithRelations.assignedPhi) {
+      this.emailService
+        .send({
+          to: taskWithRelations.assignedPhi.email,
+          subject: `New Task Assigned: ${taskWithRelations.title}`,
+          template: 'task-assigned',
+          context: {
+            phiName: taskWithRelations.assignedPhi.name,
+            taskTitle: taskWithRelations.title,
+            taskType: taskWithRelations.type,
+            priority: taskWithRelations.priority,
+            description: taskWithRelations.description,
+            address: taskWithRelations.address,
+            district: taskWithRelations.district?.name,
+            dueDate: this.formatDate(taskWithRelations.dueDate),
+            taskUrl: this.taskUrl(taskWithRelations.id),
+          },
+          relatedEntityType: 'task',
+          relatedEntityId: taskWithRelations.id,
+        })
+        .catch(() => {});
+    }
+
     return taskWithRelations;
   }
 
@@ -270,7 +317,94 @@ export class TasksService {
     }
 
     await this.invalidateTaskCaches();
+
+    // Email notifications per status transition
+    this.sendStatusChangeEmails(taskWithRelations, dto.status, userId).catch(
+      () => {},
+    );
+
     return taskWithRelations;
+  }
+
+  private async sendStatusChangeEmails(
+    task: Task,
+    newStatus: TaskStatus,
+    actorId: string,
+  ): Promise<void> {
+    const districtName = task.district?.name ?? '';
+    const taskUrl = this.taskUrl(task.id);
+
+    if (newStatus === TaskStatus.SUBMITTED) {
+      // Notify supervisor(s) in district
+      const supervisor = await this.userRepository.findOne({
+        where: { district: districtName, role: UserRole.SUPERVISOR, isActive: true },
+      });
+      if (supervisor) {
+        await this.emailService.send({
+          to: supervisor.email,
+          subject: `Task Submitted for Review: ${task.title}`,
+          template: 'task-submitted',
+          context: {
+            supervisorName: supervisor.name,
+            phiName: task.assignedPhi?.name ?? 'PHI',
+            taskTitle: task.title,
+            taskType: task.type,
+            priority: task.priority,
+            address: task.address,
+            district: districtName,
+            submittedAt: this.formatDate(task.submittedAt ?? new Date()),
+            taskUrl,
+          },
+          relatedEntityType: 'task',
+          relatedEntityId: task.id,
+          triggeredByUserId: actorId,
+        });
+      }
+    } else if (
+      newStatus === TaskStatus.VERIFIED ||
+      newStatus === TaskStatus.COMPLETED
+    ) {
+      if (!task.assignedPhi) return;
+      const actor = await this.userRepository.findOne({ where: { id: actorId } });
+      await this.emailService.send({
+        to: task.assignedPhi.email,
+        subject: `Task Verified: ${task.title}`,
+        template: 'task-verified',
+        context: {
+          phiName: task.assignedPhi.name,
+          taskTitle: task.title,
+          taskType: task.type,
+          district: districtName,
+          verifiedBy: actor?.name,
+          completedAt: this.formatDate(task.completedAt ?? new Date()),
+          taskUrl,
+        },
+        relatedEntityType: 'task',
+        relatedEntityId: task.id,
+        triggeredByUserId: actorId,
+      });
+    } else if (newStatus === TaskStatus.REJECTED) {
+      if (!task.assignedPhi) return;
+      const actor = await this.userRepository.findOne({ where: { id: actorId } });
+      await this.emailService.send({
+        to: task.assignedPhi.email,
+        subject: `Task Returned — Action Required: ${task.title}`,
+        template: 'task-rejected',
+        context: {
+          phiName: task.assignedPhi.name,
+          taskTitle: task.title,
+          taskType: task.type,
+          district: districtName,
+          rejectedBy: actor?.name,
+          rejectionReason: task.rejectionReason,
+          dueDate: this.formatDate(task.dueDate),
+          taskUrl,
+        },
+        relatedEntityType: 'task',
+        relatedEntityId: task.id,
+        triggeredByUserId: actorId,
+      });
+    }
   }
 
   async assignTask(id: string, dto: AssignTaskDto, actorId?: string): Promise<Task> {
@@ -306,6 +440,29 @@ export class TasksService {
     }
 
     await this.invalidateTaskCaches();
+
+    // Email assigned PHI
+    this.emailService
+      .send({
+        to: phi.email,
+        subject: `New Task Assigned: ${taskWithRelations.title}`,
+        template: 'task-assigned',
+        context: {
+          phiName: phi.name,
+          taskTitle: taskWithRelations.title,
+          taskType: taskWithRelations.type,
+          priority: taskWithRelations.priority,
+          description: taskWithRelations.description,
+          address: taskWithRelations.address,
+          district: taskWithRelations.district?.name,
+          dueDate: this.formatDate(taskWithRelations.dueDate),
+          taskUrl: this.taskUrl(taskWithRelations.id),
+        },
+        relatedEntityType: 'task',
+        relatedEntityId: taskWithRelations.id,
+      })
+      .catch(() => {});
+
     return taskWithRelations;
   }
 

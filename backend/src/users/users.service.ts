@@ -286,6 +286,12 @@ export class UsersService {
     return result;
   }
 
+  async findSupervisorByDistrict(district: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { district, role: UserRole.SUPERVISOR, isActive: true },
+    });
+  }
+
   async createPhiForSupervisor(
     supervisorDistrict: string,
     phiData: { name: string; email: string; password: string },

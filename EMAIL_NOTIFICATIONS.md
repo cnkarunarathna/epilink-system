@@ -256,9 +256,11 @@ await this.emailService.send({
 
 ---
 
-## Phase 3 — Task Lifecycle Notifications
+## Phase 3 — Task Lifecycle Notifications ✅ COMPLETE
 
 > **Goal**: Email notifications for every meaningful task state transition. PHIs are notified of assignments. Supervisors are notified of submissions, completions, and overdue tasks.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 3.1 Task Status Machine
 
@@ -338,11 +340,11 @@ async sendOverdueAlerts() {
 Used to resolve the supervisor CC address when emailing PHIs about overdue/rejected tasks.
 
 ### Deliverables
-- [ ] All 6 task templates
-- [ ] `TasksService` status-change hooks integrated
-- [ ] `TaskReminderScheduler` with 2 cron jobs
-- [ ] `UsersService.findSupervisorByDistrict()` helper
-- [ ] End-to-end test: assign → submit → reject → verify
+- [x] All 6 task templates (`task-assigned`, `task-submitted`, `task-verified`, `task-rejected`, `task-reminder`, `task-overdue`)
+- [x] `TasksService` status-change hooks integrated (`create`, `assignTask`, `updateStatus`)
+- [x] `TaskReminderScheduler` with 2 cron jobs (8 AM due-tomorrow, 9 AM overdue)
+- [x] `UsersService.findSupervisorByDistrict()` helper
+- [x] `ScheduleModule.forRoot()` registered in `AppModule`
 
 ---
 

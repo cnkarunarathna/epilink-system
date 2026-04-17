@@ -1,0 +1,54 @@
+<h1>Overdue Task Alert</h1>
+
+<p>Hi {{phiName}},</p>
+
+<p>
+  The following task assigned to you is <strong>overdue</strong>. Immediate action is required.
+</p>
+
+<div class="alert-box">
+  <p>&#9888; This task is <strong>{{daysOverdue}} day{{#if multipleDays}}s{{/if}} overdue</strong></p>
+</div>
+
+<hr class="divider" />
+
+<h2>{{taskTitle}}</h2>
+
+<table class="detail-list">
+  <tr>
+    <td>Type</td>
+    <td>{{taskType}}</td>
+  </tr>
+  <tr>
+    <td>Priority</td>
+    <td><span class="badge-{{priority}}">{{uppercase priority}}</span></td>
+  </tr>
+  <tr>
+    <td>Status</td>
+    <td>{{status}}</td>
+  </tr>
+  <tr>
+    <td>District</td>
+    <td>{{district}}</td>
+  </tr>
+  <tr>
+    <td>Was Due</td>
+    <td>{{dueDate}}</td>
+  </tr>
+  {{#if address}}
+  <tr>
+    <td>Address</td>
+    <td>{{address}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+{{#if taskUrl}}
+<div class="btn-wrap">
+  <a href="{{taskUrl}}" class="btn">Open Task Now</a>
+</div>
+{{/if}}
+
+<p style="font-size: 13px; color: #90a4ae;">
+  Your supervisor has also been notified. Please complete this task as soon as possible or contact your supervisor to explain the delay.
+</p>

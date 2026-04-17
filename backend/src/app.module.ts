@@ -16,6 +16,7 @@ import { CacheHelperModule } from './cache/cache-helper.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EmailModule } from './email/email.module';
 import databaseConfig from './config/database.config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
 
@@ -42,6 +43,7 @@ import * as redisStore from 'cache-manager-redis-store';
       }),
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     CacheHelperModule,
     NotificationsModule,
     EmailModule,
