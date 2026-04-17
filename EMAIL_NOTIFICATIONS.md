@@ -58,16 +58,17 @@ NestJS Service (Users / Tasks / Reports / Evidence)
 
 ---
 
-## Phase 1 — Core Email Infrastructure
+## Phase 1 — Core Email Infrastructure ✅ COMPLETE
 
 > **Goal**: Working Nodemailer → Zoho SMTP transport with a queue processor, base HTML template layout, and a database email log. No business notifications yet — just a reliable plumbing layer.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 1.1 Install Dependencies
 
 ```bash
-npm install nodemailer @nestjs-modules/mailer handlebars
-npm install @nestjs/bull bullmq bull
-npm install --save-dev @types/nodemailer @types/bull
+npm install nodemailer handlebars bullmq
+npm install --save-dev @types/nodemailer
 ```
 
 ### 1.2 Environment Variables
@@ -178,12 +179,13 @@ Body: { "to": "dev@example.com" }
 Sends a test email to verify SMTP credentials and queue flow.
 
 ### Deliverables
-- [ ] `EmailModule` registered in `AppModule`
-- [ ] Zoho SMTP transport verified
-- [ ] Bull queue connected to existing Redis
-- [ ] `email_logs` table migrated
-- [ ] Dev test endpoint working
-- [ ] Base layout template renders correctly
+- [x] `EmailModule` registered in `AppModule` — `src/email/email.module.ts` (`@Global`)
+- [x] Zoho SMTP transport — Nodemailer provider in `email.module.ts` (null-safe when creds absent)
+- [x] BullMQ queue connected to existing Redis — `EMAIL_BULL_QUEUE` provider
+- [x] `email_logs` table — migration `1780500000000-CreateEmailLogs.ts`
+- [x] Dev test endpoint — `POST /email/test` (admin-only, blocked in production)
+- [x] Base layout template — `base.hbs` + `partials/header.hbs` + `partials/footer.hbs`
+- [x] `nest-cli.json` assets configured — `.hbs` files copied to `dist/` on build
 
 ---
 

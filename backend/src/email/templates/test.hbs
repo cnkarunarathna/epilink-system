@@ -1,0 +1,35 @@
+<h1>Email System Test</h1>
+
+<p>
+  This is a test email from the <strong>Epilink Email Notification System</strong>.
+  If you are reading this, the Nodemailer + Zoho SMTP configuration is working correctly.
+</p>
+
+<div class="success-box">
+  <p>&#10003; SMTP transport connected and email delivered successfully.</p>
+</div>
+
+<hr class="divider" />
+
+<h2>Delivery Details</h2>
+<table class="detail-list">
+  <tr>
+    <td>Recipient</td>
+    <td>{{recipientEmail}}</td>
+  </tr>
+  <tr>
+    <td>Sent at</td>
+    <td>{{sentAt}}</td>
+  </tr>
+  <tr>
+    <td>Environment</td>
+    <td>{{env}}</td>
+  </tr>
+</table>
+
+<hr class="divider" />
+
+<p style="font-size: 13px; color: #90a4ae;">
+  This test was triggered manually via the <code>POST /email/test</code> admin endpoint.
+  No action is required.
+</p>
