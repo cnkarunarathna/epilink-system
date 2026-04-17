@@ -17,10 +17,24 @@ import { EmailLog } from './entities/email-log.entity';
 import { EmailJobPayload } from './email.types';
 import { MAIL_TRANSPORT, EMAIL_QUEUE } from './email.constants';
 
+/** Threshold above which the failure rate triggers an error-level log. */
+const FAILURE_RATE_THRESHOLD = 0.1; // 10 %
+/** Minimum sample size before the failure rate check fires. */
+const FAILURE_RATE_MIN_SAMPLE = 10;
+
 @Injectable()
 export class EmailProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EmailProcessor.name);
   private worker: Worker | null = null;
+
+  /**
+   * In-memory hourly counters for failure-rate monitoring.
+   * Key format: "YYYY-M-D-H" (UTC).  Entries older than 2 hours are pruned.
+   */
+  private readonly hourlyCounts = new Map<
+    string,
+    { sent: number; failed: number }
+  >();
 
   constructor(
     @Inject(MAIL_TRANSPORT)
@@ -118,12 +132,14 @@ export class EmailProcessor implements OnModuleInit, OnModuleDestroy {
       log.messageId = info.messageId;
       log.sentAt = new Date();
       this.logger.log(`Sent to ${to}: "${subject}" [${info.messageId}]`);
+      this.recordOutcome('sent');
     } catch (err) {
       log.status = 'failed';
       log.errorMessage = err instanceof Error ? err.message : String(err);
       this.logger.error(
         `Failed to send to ${to}: ${err instanceof Error ? err.message : err}`,
       );
+      this.recordOutcome('failed');
       await this.saveLog(log);
       throw err; // re-throw so BullMQ applies retry logic
     }
@@ -185,6 +201,39 @@ export class EmailProcessor implements OnModuleInit, OnModuleDestroy {
           day: 'numeric',
         }),
     );
+  }
+
+  // ── Failure-rate monitoring ────────────────────────────────────────────────
+
+  private currentHourKey(): string {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}-${now.getUTCHours()}`;
+  }
+
+  private recordOutcome(outcome: 'sent' | 'failed'): void {
+    const key = this.currentHourKey();
+    const counts = this.hourlyCounts.get(key) ?? { sent: 0, failed: 0 };
+    counts[outcome]++;
+    this.hourlyCounts.set(key, counts);
+
+    // Prune buckets older than 2 hours to prevent unbounded growth
+    const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const cutoffKey = `${cutoff.getUTCFullYear()}-${cutoff.getUTCMonth()}-${cutoff.getUTCDate()}-${cutoff.getUTCHours()}`;
+    for (const k of this.hourlyCounts.keys()) {
+      if (k < cutoffKey) this.hourlyCounts.delete(k);
+    }
+
+    // Check failure rate in the current hour window
+    const { sent, failed } = counts;
+    const total = sent + failed;
+    if (total >= FAILURE_RATE_MIN_SAMPLE) {
+      const rate = failed / total;
+      if (rate > FAILURE_RATE_THRESHOLD) {
+        this.logger.error(
+          `High email failure rate in current hour: ${failed}/${total} (${(rate * 100).toFixed(1)}%) — exceeds ${FAILURE_RATE_THRESHOLD * 100}% threshold`,
+        );
+      }
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

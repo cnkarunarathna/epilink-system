@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 import { EmailService } from './email.service';
+import { EmailLogService } from './email-log.service';
 import { EmailProcessor } from './email.processor';
 import { EmailController } from './email.controller';
 import { EmailLog } from './entities/email-log.entity';
@@ -74,6 +75,7 @@ import {
     },
 
     EmailService,
+    EmailLogService,
     EmailProcessor,
   ],
   exports: [EmailService],

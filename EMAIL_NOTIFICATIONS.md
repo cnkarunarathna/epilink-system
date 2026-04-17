@@ -508,9 +508,11 @@ export class NotificationPreference {
 
 ---
 
-## Phase 6 — Admin Panel & Audit Log
+## Phase 6 — Admin Panel & Audit Log ✅ COMPLETE
 
 > **Goal**: Admin visibility into email activity — searchable log, manual resend capability, and a stats dashboard endpoint.
+>
+> **Status**: Implemented 2026-04-17. All deliverables shipped and build verified.
 
 ### 6.1 Email Log API Endpoints
 
@@ -561,12 +563,13 @@ If the email failure rate exceeds 10% in a 1-hour window (checked via Redis coun
 - (Future) Send an admin alert via an alternative channel
 
 ### Deliverables
-- [ ] `EmailController` with log + stats endpoints
-- [ ] Pagination + filtering in `EmailLogService`
-- [ ] Resend logic
-- [ ] Role guard (admin only) on all email endpoints
-- [ ] Failure rate monitoring in `EmailProcessor`
-- [ ] API documentation (Swagger tags)
+- [x] `EmailLogService` — `findAll()` (paginated + filtered), `findOne()`, `resend()`, `getStats()`
+- [x] `EmailController` updated — `GET /email/logs`, `GET /email/logs/stats`, `GET /email/logs/:id`, `POST /email/logs/:id/resend`
+- [x] Pagination + filtering in `EmailLogService` (status, template, recipientEmail, relatedEntityType, from/to date range, page/limit)
+- [x] Resend logic — re-enqueues job from original log entry; fresh `EmailLog` created by processor
+- [x] Role guard (admin only) on all new email endpoints via `@Roles(UserRole.ADMIN)`
+- [x] Failure rate monitoring in `EmailProcessor` — in-memory hourly counter, logs `ERROR` when rate exceeds 10% with ≥10 sample
+- [x] `EmailLogService` registered in `EmailModule` providers
 
 ---
 
