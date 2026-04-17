@@ -71,7 +71,7 @@ const TAB_CONFIG: TabConfig[] = [
   },
   {
     name: "Route",
-    label: "My Route",
+    label: "Route",
     icon: "map-marker-path",
     iconFocused: "map-marker-path",
   },
