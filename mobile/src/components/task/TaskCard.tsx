@@ -41,6 +41,8 @@ interface TaskCardProps {
   onPress?: (task: Task) => void;
   onMarkInProgress?: (task: Task) => void;
   onViewOnMap?: (task: Task) => void;
+  onOpenChat?: (task: Task) => void;
+  unreadCount?: number;
   index?: number;
 }
 
@@ -49,6 +51,8 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
   onPress,
   onMarkInProgress,
   onViewOnMap,
+  onOpenChat,
+  unreadCount = 0,
   index = 0,
 }) => {
   const [menuVisible, setMenuVisible] = useState(false);
@@ -202,6 +206,43 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
               />
             </TouchableOpacity>
 
+            {onOpenChat && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setMenuVisible(false);
+                  onOpenChat(task);
+                }}
+              >
+                <View
+                  style={[
+                    styles.menuItemIcon,
+                    { backgroundColor: colors.primaryLight + "15" },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="chat-processing-outline"
+                    size={20}
+                    color={colors.primaryLight}
+                  />
+                </View>
+                <Text style={styles.menuItemText}>Open Chat</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Text>
+                  </View>
+                )}
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+
             {task.status === "assigned" && onMarkInProgress ? (
               <TouchableOpacity
                 style={styles.menuItem}
@@ -295,12 +336,24 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
             <Text style={styles.title} numberOfLines={2}>
               {task.title}
             </Text>
-            <View
-              style={[styles.statusBadge, { backgroundColor: statusColor }]}
-            >
-              <Text style={styles.statusText}>
-                {TASK_STATUS_LABELS[task.status]}
-              </Text>
+            <View style={styles.headerRight}>
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <MaterialCommunityIcons
+                    name="chat-processing"
+                    size={10}
+                    color={colors.primaryForeground}
+                  />
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                <Text style={styles.statusText}>
+                  {TASK_STATUS_LABELS[task.status]}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -387,12 +440,13 @@ const TaskCardInner: React.FC<TaskCardProps> = ({
   );
 };
 
-// Only re-render when the task's own id or status changes — not when other tasks in the list update
+// Only re-render when the task's own data, unread count, or index changes
 export const TaskCard = React.memo(
   TaskCardInner,
   (prev, next) =>
     prev.task.id === next.task.id &&
     prev.task.status === next.task.status &&
+    prev.unreadCount === next.unreadCount &&
     prev.index === next.index,
 );
 
@@ -432,6 +486,27 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
     lineHeight: 22,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  unreadBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: colors.destructive,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.xs + 1,
+    paddingVertical: 2,
+    minWidth: 20,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryForeground,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm + 2,
