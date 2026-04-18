@@ -1521,6 +1521,841 @@ def get_demographic_hotspots(district: str) -> str:
     )
 
 
+def get_national_briefing() -> str:
+    """Get a national-level dengue situation summary across all districts.
+
+    Use this when the user asks about the overall/national situation, total case burden,
+    how many districts are at high risk, or wants a country-wide briefing.
+    No arguments needed.
+    """
+    data = _api_get("/analytics/summary")
+    if not data:
+        return json.dumps({"error": "Failed to fetch national summary"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No national summary data available"})
+
+    # If the endpoint returns per-district rows, aggregate them
+    if isinstance(data, list) and len(rows) > 1:
+        total_cases = sum(r.get("cases", 0) or 0 for r in rows)
+        all_wows: list[float] = []
+        rising, falling, stable_count = [], [], []
+        critical_districts, high_districts = [], []
+
+        for r in rows:
+            name = r.get("district", "Unknown")
+            cases = r.get("cases", 0) or 0
+            wow = r.get("wow_change_pct") or r.get("wowChangePct")
+            if wow is not None:
+                wow = float(wow)
+                all_wows.append(wow)
+                if wow > 10:
+                    rising.append(name)
+                elif wow < -10:
+                    falling.append(name)
+                else:
+                    stable_count.append(name)
+
+            if cases >= 100:
+                critical_districts.append({"district": name, "cases": cases})
+            elif cases >= 50:
+                high_districts.append({"district": name, "cases": cases})
+
+        critical_districts.sort(key=lambda d: d["cases"], reverse=True)
+        high_districts.sort(key=lambda d: d["cases"], reverse=True)
+        top_hotspots = (critical_districts + high_districts)[:5]
+
+        national_wow = round(sum(all_wows) / len(all_wows), 1) if all_wows else None
+        if national_wow is not None:
+            trend_direction = (
+                "rising" if national_wow > 5 else "falling" if national_wow < -5 else "stable"
+            )
+        else:
+            trend_direction = "unknown"
+
+        summary_line = (
+            f"National total: {total_cases} cases across {len(rows)} districts. "
+            f"{len(critical_districts)} critical, {len(high_districts)} high-burden. "
+            f"{len(rising)} rising, {len(stable_count)} stable, {len(falling)} falling. "
+            f"National avg WoW: {('+' if (national_wow or 0) >= 0 else '')}{national_wow}%."
+            if national_wow is not None
+            else f"National total: {total_cases} cases across {len(rows)} districts. "
+            f"{len(critical_districts)} critical, {len(high_districts)} high-burden."
+        )
+
+        return json.dumps(
+            {
+                "total_cases": total_cases,
+                "districts_analyzed": len(rows),
+                "critical_count": len(critical_districts),
+                "high_risk_count": len(high_districts),
+                "top_hotspots": top_hotspots,
+                "national_wow_pct": national_wow,
+                "trend_direction": trend_direction,
+                "districts_rising": rising,
+                "districts_falling": falling,
+                "districts_stable": stable_count,
+                "summary": summary_line,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    # Single-object summary response from a dedicated endpoint
+    summary = rows[0]
+    total_cases = summary.get("total_cases") or summary.get("totalCases", 0)
+    critical_count = summary.get("critical_count") or summary.get("criticalCount", 0)
+    high_risk_count = summary.get("high_risk_count") or summary.get("highRiskCount", 0)
+    national_wow = summary.get("national_wow_pct") or summary.get("nationalWowPct")
+    trend_direction = summary.get("trend_direction") or summary.get("trendDirection", "unknown")
+    top_hotspots = summary.get("top_hotspots") or summary.get("topHotspots") or []
+
+    summary_line = (
+        f"National total: {total_cases} cases. "
+        f"{critical_count} critical districts, {high_risk_count} high-risk. "
+        f"Trend: {trend_direction}."
+    )
+
+    return json.dumps(
+        {
+            "total_cases": total_cases,
+            "critical_count": critical_count,
+            "high_risk_count": high_risk_count,
+            "top_hotspots": top_hotspots,
+            "national_wow_pct": national_wow,
+            "trend_direction": trend_direction,
+            "summary": summary_line,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_weekly_ml_forecast(district: str = "") -> str:
+    """Get the ML model's 1-week-ahead dengue case forecast.
+
+    Use when the user asks about predicted/forecast cases, what the model expects
+    next week, or wants to compare current cases to the model prediction.
+
+    Args:
+        district: Optional district name to filter. Empty string returns all districts.
+    """
+    params = {"district": district} if district.strip() else None
+    data = _api_get("/analytics/advanced/weekly-forecast", params)
+    if not data:
+        return json.dumps({"error": "Failed to fetch weekly forecast"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No forecast data available"})
+
+    forecasts = []
+    for row in rows:
+        predicted = row.get("predicted_cases") or row.get("predictedCases")
+        current = row.get("current_cases") or row.get("currentCases") or row.get("cases", 0) or 0
+        confidence = row.get("prediction_confidence") or row.get("predictionConfidence")
+        forecast_week = row.get("forecast_week") or row.get("forecastWeek")
+        forecast_year = row.get("forecast_year") or row.get("forecastYear")
+
+        # Derive comparison to current
+        comparison: str | None = None
+        change_pct: float | None = None
+        if predicted is not None and current > 0:
+            change_pct = round(((predicted - current) / current) * 100, 1)
+            if change_pct > 10:
+                comparison = f"forecast {change_pct:+.1f}% above current — rising expected"
+            elif change_pct < -10:
+                comparison = f"forecast {change_pct:+.1f}% below current — decline expected"
+            else:
+                comparison = f"forecast near current ({change_pct:+.1f}%) — stable expected"
+
+        # Trend direction from forecast vs current
+        trend = (
+            "rising"
+            if (change_pct or 0) > 10
+            else "falling" if (change_pct or 0) < -10 else "stable"
+        )
+
+        entry: dict = {
+            "district": row.get("district", "National") if not district.strip() else district,
+            "predicted_cases": predicted,
+            "current_cases": current,
+            "forecast_change_pct": change_pct,
+            "comparison_to_current": comparison,
+            "trend_direction": trend,
+            "prediction_confidence": confidence,
+        }
+        if forecast_week and forecast_year:
+            entry["forecast_week"] = f"{forecast_year}-W{int(forecast_week):02d}"
+        elif forecast_week:
+            entry["forecast_week"] = str(forecast_week)
+
+        forecasts.append(entry)
+
+    # Sort by predicted cases descending when multi-district
+    if len(forecasts) > 1:
+        forecasts.sort(key=lambda r: r.get("predicted_cases") or 0, reverse=True)
+
+    rising = [f for f in forecasts if f["trend_direction"] == "rising"]
+    falling = [f for f in forecasts if f["trend_direction"] == "falling"]
+    stable = [f for f in forecasts if f["trend_direction"] == "stable"]
+
+    if len(forecasts) == 1:
+        f = forecasts[0]
+        summary = (
+            f"{f['district']}: model forecasts {f['predicted_cases']} cases next week "
+            f"(current: {f['current_cases']}). {f.get('comparison_to_current', '')}."
+        )
+    else:
+        top = forecasts[0]
+        summary = (
+            f"Forecast across {len(forecasts)} districts — "
+            f"highest predicted: {top['district']} ({top['predicted_cases']} cases). "
+            f"{len(rising)} rising, {len(stable)} stable, {len(falling)} declining."
+        )
+
+    return json.dumps(
+        {
+            "forecasts": forecasts,
+            "districts_rising": len(rising),
+            "districts_stable": len(stable),
+            "districts_falling": len(falling),
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_rapid_hotspots(top_n: int = 5) -> str:
+    """Identify the top N dengue hotspot districts by current case magnitude and trajectory.
+
+    Use when the user asks "where should resources be deployed?", "which districts are
+    worst right now?", or needs a quick priority-ranked triage of all districts.
+    Different from outbreak_alerts — ranks by absolute burden, not ratio thresholds.
+
+    Args:
+        top_n: Number of top hotspot districts to return (default 5, max 10).
+    """
+    top_n = max(1, min(int(top_n), 10))
+    data = _api_get("/analytics/advanced/hotspots")
+    if not data:
+        return json.dumps({"error": "Failed to fetch hotspot data"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No hotspot data available"})
+
+    scored = []
+    for row in rows:
+        cases = row.get("current_cases") or row.get("currentCases") or row.get("cases", 0) or 0
+        wow = row.get("wow_change_pct") or row.get("wowChangePct") or row.get("avg_growth_rate", 0) or 0
+        avg_4w = row.get("avg_cases") or row.get("avgCases") or row.get("avg_4week_cases") or 1
+
+        # Hotspot score: weighted combination of absolute burden + trajectory
+        # Normalise WoW to 0-1 range (cap at 100%) then blend 70% cases + 30% trajectory
+        wow_norm = min(abs(float(wow)) / 100.0, 1.0) if wow else 0.0
+        cases_norm = float(cases) / max(float(avg_4w) * 4, 1)
+        hotspot_score = round(0.70 * cases_norm + 0.30 * wow_norm, 3)
+
+        risk = (
+            "critical" if cases >= 100
+            else "high" if cases >= 50
+            else "moderate" if cases >= 25
+            else "low"
+        )
+
+        wow_f = float(wow)
+        priority_action = (
+            "Deploy rapid response team immediately"
+            if cases >= 100 or wow_f >= 50
+            else "Intensify vector control and surveillance"
+            if cases >= 50 or wow_f >= 25
+            else "Increase monitoring frequency"
+        )
+
+        scored.append(
+            {
+                "district": row.get("district", "Unknown"),
+                "current_cases": cases,
+                "wow_change_pct": round(wow_f, 1),
+                "avg_4week_cases": round(float(avg_4w), 1),
+                "hotspot_score": hotspot_score,
+                "risk_level": risk,
+                "priority_action": priority_action,
+            }
+        )
+
+    # Rank by hotspot score descending
+    scored.sort(key=lambda r: r["hotspot_score"], reverse=True)
+    top = scored[:top_n]
+
+    top_names = ", ".join(r["district"] for r in top[:3])
+    critical = [r for r in top if r["risk_level"] == "critical"]
+    summary = (
+        f"Top {len(top)} hotspots (by case burden + trajectory): {top_names}. "
+        f"{len(critical)} critical district(s) requiring immediate action."
+    )
+
+    return json.dumps(
+        {
+            "hotspots": top,
+            "total_districts_analyzed": len(scored),
+            "critical_count": len(critical),
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_historical_range(
+    district: str,
+    start_year: int,
+    start_week: int,
+    end_year: int,
+    end_week: int,
+) -> str:
+    """Fetch dengue case data for a specific date range for a district.
+
+    Use when the user specifies a time window: "show me June to September 2024",
+    "what happened in week 20–35", "compare a specific outbreak period", or any
+    question requiring data outside the standard recent-weeks window.
+
+    Args:
+        district: District name.
+        start_year: ISO year of the range start (e.g. 2024).
+        start_week: ISO week number of range start (1–52).
+        end_year: ISO year of the range end.
+        end_week: ISO week number of range end (1–52).
+    """
+    params = {
+        "startYear": start_year,
+        "startWeek": start_week,
+        "endYear": end_year,
+        "endWeek": end_week,
+    }
+    data = _api_get("/analytics/historical/range", params)
+    if not data:
+        return json.dumps({"error": f"No data found for {district} in the specified range"})
+
+    rows = data if isinstance(data, list) else [data]
+
+    # Filter to the requested district (service returns all districts)
+    district_rows = [
+        r for r in rows if r.get("district", "").lower() == district.strip().lower()
+    ]
+    if not district_rows:
+        return json.dumps({
+            "error": f"No data for '{district}' in {start_year}-W{start_week:02d} to {end_year}-W{end_week:02d}. "
+                     f"Check the district name or date range."
+        })
+
+    # Ensure chronological order
+    district_rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+
+    # Enrich with WoW changes
+    enriched = []
+    for i, row in enumerate(district_rows):
+        cases = row.get("cases", 0) or 0
+        prev_cases = district_rows[i - 1].get("cases", 0) if i > 0 else None
+        wow: float | None = None
+        if prev_cases is not None and prev_cases > 0:
+            wow = round(((cases - prev_cases) / prev_cases) * 100, 1)
+        enriched.append({
+            "year": row.get("year"),
+            "week": row.get("week"),
+            "cases": cases,
+            "wow_change_pct": wow,
+            "temperature_c": row.get("temperature"),
+            "precipitation_mm": row.get("precipitation"),
+        })
+
+    # Aggregate stats
+    all_cases = [r["cases"] for r in enriched]
+    total_cases = sum(all_cases)
+    peak_cases = max(all_cases) if all_cases else 0
+    peak_entry = next((r for r in enriched if r["cases"] == peak_cases), None)
+
+    wows = [r["wow_change_pct"] for r in enriched if r["wow_change_pct"] is not None]
+    avg_wow = round(sum(wows) / len(wows), 1) if wows else None
+
+    # Trend across the full range (first half vs second half)
+    trend = "stable"
+    if len(enriched) >= 4:
+        mid = len(enriched) // 2
+        first_avg = sum(r["cases"] for r in enriched[:mid]) / mid
+        second_avg = sum(r["cases"] for r in enriched[mid:]) / max(len(enriched) - mid, 1)
+        if second_avg > first_avg * 1.10:
+            trend = "rising"
+        elif second_avg < first_avg * 0.90:
+            trend = "falling"
+
+    first_c = enriched[0]["cases"] if enriched else 0
+    last_c = enriched[-1]["cases"] if enriched else 0
+    period_change = (
+        round(((last_c - first_c) / max(first_c, 1)) * 100, 1) if first_c > 0 else 0.0
+    )
+
+    start_label = f"{start_year}-W{start_week:02d}"
+    end_label = f"{end_year}-W{end_week:02d}"
+    peak_label = (
+        f"W{peak_entry['week']}/{peak_entry['year']}" if peak_entry else "N/A"
+    )
+    summary = (
+        f"{district} ({start_label} → {end_label}): "
+        f"{len(enriched)} weeks, {total_cases} total cases. "
+        f"Peak: {peak_cases} cases at {peak_label}. "
+        f"Period trend: {trend} "
+        f"({'+' if period_change >= 0 else ''}{period_change}% start→end). "
+        + (f"Avg WoW: {'+' if (avg_wow or 0) >= 0 else ''}{avg_wow}%." if avg_wow is not None else "")
+    )
+
+    return json.dumps(
+        {
+            "district": district,
+            "date_range": {"start": start_label, "end": end_label},
+            "weeks_in_range": len(enriched),
+            "total_cases": total_cases,
+            "peak_cases": peak_cases,
+            "peak_entry": peak_entry,
+            "avg_wow_pct": avg_wow,
+            "trend_direction": trend,
+            "period_change_pct": period_change,
+            "weekly_data": enriched,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_year_over_year_comparison(district: str, years: int = 3) -> str:
+    """Compare annual dengue totals for a district across multiple years.
+
+    Use when the user asks "how does this year compare to last year?",
+    "annual totals for Colombo", "is 2025 worse than previous years?",
+    or any question about year-level aggregates rather than recent weeks.
+
+    Args:
+        district: District name.
+        years: Number of past years to include in comparison (default 3).
+    """
+    years = max(1, min(int(years), 10))
+
+    # Fetch most recent year (discovers the latest data year)
+    recent_data = _api_get("/analytics/historical/yearly-summary")
+    if not recent_data:
+        return json.dumps({"error": "Failed to fetch yearly summary"})
+
+    current_year = recent_data.get("year")
+    if not current_year:
+        return json.dumps({"error": "Could not determine current data year"})
+
+    # Collect data for the requested years window
+    yearly_results = []
+    for y in range(current_year - years + 1, current_year + 1):
+        data = recent_data if y == current_year else _api_get(
+            "/analytics/historical/yearly-summary", {"year": y}
+        )
+        if not data:
+            continue
+        dist_entry = next(
+            (d for d in data.get("districts", [])
+             if d.get("district", "").lower() == district.strip().lower()),
+            None,
+        )
+        if dist_entry:
+            yearly_results.append({"year": data.get("year"), **dist_entry})
+
+    if not yearly_results:
+        return json.dumps({"error": f"No yearly data found for '{district}'"})
+
+    yearly_results.sort(key=lambda r: r.get("year", 0))
+
+    # Enrich with YoY change
+    enriched = []
+    for i, row in enumerate(yearly_results):
+        prev_total = yearly_results[i - 1]["total_cases"] if i > 0 else None
+        yoy_pct: float | None = None
+        if prev_total is not None and prev_total > 0:
+            yoy_pct = round(((row["total_cases"] - prev_total) / prev_total) * 100, 1)
+        enriched.append({
+            "year": row["year"],
+            "total_cases": row["total_cases"],
+            "avg_weekly_cases": round(row.get("avg_cases", 0) or 0, 1),
+            "peak_week_cases": row.get("max_cases", 0),
+            "weeks_reported": row.get("week_count", 0),
+            "yoy_change_pct": yoy_pct,
+        })
+
+    # Overall multi-year trend (first vs last)
+    trend = "stable"
+    if len(enriched) >= 2:
+        first_total = enriched[0]["total_cases"]
+        last_total = enriched[-1]["total_cases"]
+        if last_total > first_total * 1.15:
+            trend = "worsening"
+        elif last_total < first_total * 0.85:
+            trend = "improving"
+
+    best_year = min(enriched, key=lambda r: r["total_cases"])
+    worst_year = max(enriched, key=lambda r: r["total_cases"])
+    latest = enriched[-1]
+    latest_yoy = latest.get("yoy_change_pct")
+    yoy_str = (
+        f"({'+' if (latest_yoy or 0) >= 0 else ''}{latest_yoy}% YoY)"
+        if latest_yoy is not None
+        else ""
+    )
+
+    summary = (
+        f"{district} annual comparison ({enriched[0]['year']}–{enriched[-1]['year']}): "
+        f"Latest ({latest['year']}): {latest['total_cases']} total cases {yoy_str}. "
+        f"Worst year: {worst_year['year']} ({worst_year['total_cases']} cases). "
+        f"Best year: {best_year['year']} ({best_year['total_cases']} cases). "
+        f"Multi-year trend: {trend}."
+    )
+
+    return json.dumps(
+        {
+            "district": district,
+            "years_compared": len(enriched),
+            "year_range": {"start": enriched[0]["year"], "end": enriched[-1]["year"]},
+            "annual_data": enriched,
+            "best_year": best_year,
+            "worst_year": worst_year,
+            "multi_year_trend": trend,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_colombo_ds_breakdown(year: int = 0, week: int = 0) -> str:
+    """Get dengue case breakdown by Divisional Secretariat (DS) zones within Colombo.
+
+    Use ONLY for Colombo-specific sub-district questions: "which part of Colombo
+    is most affected?", "DS zone breakdown in Colombo", "Colombo sub-district
+    hotspots", or resource allocation within Colombo.
+
+    Args:
+        year: ISO year (default: current year).
+        week: ISO week number (default: latest available week).
+    """
+    params: dict = {}
+    if year > 0:
+        params["year"] = year
+    if week > 0:
+        params["week"] = week
+
+    data = _api_get("/analytics/colombo/ds-breakdown", params or None)
+    if not data:
+        return json.dumps({"error": "Failed to fetch Colombo DS breakdown"})
+
+    weights_data = _api_get("/analytics/colombo/ds-breakdown/weights")
+
+    ds_breakdown: list = data.get("ds_breakdown", [])
+    district_total: int = data.get("district_predicted_cases", 0)
+    result_year: int = data.get("year", year)
+    result_week: int = data.get("week", week)
+
+    # Annotate each DS zone with rank and risk description
+    annotated = []
+    for rank, ds in enumerate(ds_breakdown, start=1):
+        risk = ds.get("risk_level", "unknown")
+        cases = ds.get("predicted_cases", 0)
+        pct = round(ds.get("proportion", 0) * 100, 1)
+        ci = ds.get("confidence_interval", {})
+        annotated.append({
+            "rank": rank,
+            "ds_division": ds.get("ds_division"),
+            "predicted_cases": cases,
+            "share_of_district_pct": pct,
+            "risk_level": risk,
+            "confidence_interval": {
+                "lower": ci.get("lower", 0),
+                "upper": ci.get("upper", 0),
+            },
+        })
+
+    # Priority zones: high/critical risk
+    priority_zones = [z for z in annotated if z["risk_level"] in ("high", "critical")]
+
+    # Top 3 by cases
+    top3 = [z["ds_division"] for z in annotated[:3]]
+
+    summary = (
+        f"Colombo DS breakdown (Year {result_year}, Week {result_week}): "
+        f"District total {district_total} predicted cases across "
+        f"{len(annotated)} DS divisions. "
+        f"Top zones: {', '.join(top3)}. "
+        f"Priority (high/critical risk): "
+        f"{len(priority_zones)} zone(s) — "
+        f"{', '.join(z['ds_division'] for z in priority_zones) or 'none'}."
+    )
+
+    result: dict = {
+        "district": "Colombo",
+        "year": result_year,
+        "week": result_week,
+        "district_predicted_cases": district_total,
+        "ds_division_count": len(annotated),
+        "disaggregation_method": data.get("disaggregation_method"),
+        "ds_breakdown": annotated,
+        "priority_zones": priority_zones,
+        "summary": summary,
+    }
+
+    if weights_data:
+        result["weight_formula"] = weights_data.get("weight_formula")
+        result["weight_sources"] = weights_data.get("sources", [])
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def get_field_response_capacity(district: str = "") -> str:
+    """Get field team (PHI) workload and response capacity for a district or nationally.
+
+    Use when asked about operational response: "are field teams coping?",
+    "how many uninvestigated cases in Kandy?", "PHI workload in Gampaha",
+    "is the response capacity sufficient?", or "task completion rate".
+
+    Args:
+        district: District name. Empty string returns national overview.
+    """
+    params = {"district": district.strip()} if district.strip() else None
+    data = _api_get("/analytics/field-capacity", params)
+    if not data:
+        return json.dumps({"error": "Failed to fetch field capacity data"})
+
+    if "error" in data:
+        return json.dumps(data)
+
+    scope = data.get("scope", "district")
+    task_stats = data.get("task_stats", {})
+    phi_active: int = data.get("phi_active", 0)
+    phi_total: int = data.get("phi_total", 0)
+    active_workload: int = data.get("active_workload", 0)
+    overdue: int = data.get("overdue_tasks", 0)
+    completion_rate: int = data.get("completion_rate", 0)
+    cases_per_phi = data.get("cases_per_phi")
+    capacity = data.get("capacity_assessment", "unknown")
+
+    label = data.get("district", "National") if scope == "district" else "National"
+
+    status_breakdown = ", ".join(
+        f"{k}: {v}" for k, v in task_stats.items() if k != "total" and v
+    )
+
+    phi_str = f"{phi_active} active (of {phi_total} total)"
+    cpp_str = f"{cases_per_phi} active tasks/PHI" if cases_per_phi is not None else "N/A"
+
+    summary = (
+        f"{label} field capacity: {phi_str} PHIs. "
+        f"Active workload: {active_workload} tasks ({status_breakdown}). "
+        f"Overdue: {overdue}. Completion rate: {completion_rate}%. "
+        f"Workload ratio: {cpp_str}. "
+        f"Capacity assessment: {capacity.upper()}."
+    )
+
+    return json.dumps(
+        {
+            "scope": scope,
+            "district": label,
+            "phi_active": phi_active,
+            "phi_total": phi_total,
+            "task_stats": task_stats,
+            "active_workload": active_workload,
+            "overdue_tasks": overdue,
+            "completion_rate": completion_rate,
+            "cases_per_phi": cases_per_phi,
+            "capacity_assessment": capacity,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+_SL_DISTRICTS = [
+    "Colombo", "Gampaha", "Kalutara",
+    "Kandy", "Matale", "Nuwara Eliya",
+    "Galle", "Hambantota", "Matara",
+    "Jaffna", "Kilinochchi", "Mannar", "Mullaitivu", "Vavuniya",
+    "Trincomalee", "Batticaloa", "Ampara",
+    "Puttalam", "Kurunegala",
+    "Anuradhapura", "Polonnaruwa",
+    "Badulla", "Monaragala",
+    "Ratnapura", "Kegalle",
+]
+
+
+def evaluate_national_intervention_effectiveness(top_n: int = 5) -> str:
+    """Rank all Sri Lanka districts by how effectively they control dengue outbreaks.
+
+    Use when asked "which districts respond best to outbreaks?", "where is vector
+    control most effective?", "show intervention effectiveness nationally", or to
+    identify districts that need response capacity support.
+
+    Note: Makes one backend call per district (~25 calls). Slightly slower than
+    single-district tools.
+
+    Args:
+        top_n: Number of top and bottom performers to return (default 5 each, max 12).
+    """
+    top_n = max(1, min(top_n, 12))
+
+    district_scores: list[dict] = []
+    no_data: list[str] = []
+    no_events: list[str] = []
+
+    for district in _SL_DISTRICTS:
+        data = _api_get(f"/analytics/districts/{district}/timeseries")
+        rows = data if isinstance(data, list) else []
+        if not rows:
+            no_data.append(district)
+            continue
+
+        rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+        cases_series = [r.get("cases", 0) or 0 for r in rows]
+
+        peaks: list[int] = []
+        for i in range(1, len(cases_series) - 1):
+            if (
+                cases_series[i] > cases_series[i - 1]
+                and cases_series[i] > cases_series[i + 1]
+                and cases_series[i] >= 25
+            ):
+                peaks.append(i)
+
+        response_events: list[dict] = []
+        for peak_idx in peaks:
+            peak_cases = cases_series[peak_idx]
+            peak_row = rows[peak_idx]
+            recovery_window = cases_series[peak_idx + 1 : peak_idx + 7]
+            if not recovery_window:
+                continue
+            trough = min(recovery_window)
+            trough_idx = peak_idx + 1 + recovery_window.index(trough)
+            decline_pct = (
+                round(((trough - peak_cases) / peak_cases) * 100, 1)
+                if peak_cases > 0
+                else 0
+            )
+            weeks_to_recovery = trough_idx - peak_idx
+            if decline_pct <= -30:
+                response_events.append(
+                    {
+                        "decline_pct": decline_pct,
+                        "weeks_to_recovery": weeks_to_recovery,
+                        "peak_year": peak_row.get("year"),
+                        "peak_week": peak_row.get("week"),
+                        "peak_cases": peak_cases,
+                    }
+                )
+
+        if not response_events:
+            no_events.append(district)
+            continue
+
+        avg_decline = round(
+            sum(e["decline_pct"] for e in response_events) / len(response_events), 1
+        )
+        avg_weeks = round(
+            sum(e["weeks_to_recovery"] for e in response_events) / len(response_events),
+            1,
+        )
+        n_events = len(response_events)
+        # Higher absolute decline, fewer weeks, more events = better score
+        effectiveness_score = round(
+            (abs(avg_decline) / max(avg_weeks, 0.5)) * (n_events**0.3), 2
+        )
+
+        district_scores.append(
+            {
+                "district": district,
+                "response_events": n_events,
+                "avg_decline_pct": avg_decline,
+                "avg_weeks_to_control": avg_weeks,
+                "effectiveness_score": effectiveness_score,
+                "rating": (
+                    "excellent"
+                    if effectiveness_score >= 30
+                    else "good"
+                    if effectiveness_score >= 20
+                    else "moderate"
+                    if effectiveness_score >= 10
+                    else "poor"
+                ),
+                "most_recent_event": max(
+                    response_events, key=lambda e: (e["peak_year"], e["peak_week"])
+                ),
+            }
+        )
+
+    district_scores.sort(key=lambda d: d["effectiveness_score"], reverse=True)
+
+    national_avg_weeks = (
+        round(
+            sum(d["avg_weeks_to_control"] for d in district_scores) / len(district_scores),
+            1,
+        )
+        if district_scores
+        else None
+    )
+    national_avg_decline = (
+        round(
+            sum(d["avg_decline_pct"] for d in district_scores) / len(district_scores), 1
+        )
+        if district_scores
+        else None
+    )
+
+    best = district_scores[:top_n]
+    worst = list(reversed(district_scores[-top_n:])) if len(district_scores) > top_n else []
+
+    summary_parts = [
+        f"National intervention effectiveness: {len(district_scores)} districts with "
+        f"response events analysed."
+    ]
+    if national_avg_weeks is not None:
+        summary_parts.append(
+            f"National average: {national_avg_weeks} weeks to post-peak trough, "
+            f"{national_avg_decline}% avg decline."
+        )
+    if best:
+        summary_parts.append(
+            f"Best responders: {', '.join(d['district'] for d in best)}."
+        )
+    if worst:
+        summary_parts.append(
+            f"Poorest responders: {', '.join(d['district'] for d in worst)}."
+        )
+    if no_events:
+        summary_parts.append(
+            f"No response events detected in: {', '.join(no_events)} "
+            f"(insufficient peak activity or data window)."
+        )
+
+    return json.dumps(
+        {
+            "districts_analysed": len(district_scores),
+            "districts_with_no_events": no_events,
+            "districts_with_no_data": no_data,
+            "national_avg_weeks_to_control": national_avg_weeks,
+            "national_avg_decline_pct": national_avg_decline,
+            "best_responders": best,
+            "worst_responders": worst,
+            "summary": " ".join(summary_parts),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1534,4 +2369,12 @@ ALL_TOOLS = [
     get_intervention_history,
     get_model_performance_metrics,
     get_demographic_hotspots,
+    get_national_briefing,
+    get_weekly_ml_forecast,
+    get_rapid_hotspots,
+    get_historical_range,
+    get_year_over_year_comparison,
+    get_colombo_ds_breakdown,
+    get_field_response_capacity,
+    evaluate_national_intervention_effectiveness,
 ]
