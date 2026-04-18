@@ -510,7 +510,7 @@ Enable only when latency budget allows. Disable by default.
 
 ---
 
-## Phase 6 — Cross-Encoder Re-Ranking
+## Phase 6 — Cross-Encoder Re-Ranking ✅ DONE
 
 **Goal:** Improve the final ranked list quality by scoring each retrieved chunk against
 the full epidemiological context, not just vector similarity.
@@ -709,7 +709,7 @@ at least one vote has been recorded (`feedback_ratio` defaults to 0.5 → multip
 | 3 | Source-type contextual filtering | ✅ Done | Low | Medium — guards against cross-contamination |
 | 4 | Per-source recency decay | ✅ Done | Low | Medium — prevents old surveillance from polluting |
 | 5 | HyDE query expansion | ✅ Done | Low (opt-in flag) | Medium — best for edge-case district scenarios |
-| 6 | Cross-encoder re-ranking | Medium (1.5 days) | Low (opt-in flag) | Medium — precision lift on critical-risk queries |
+| 6 | Cross-encoder re-ranking | ✅ Done | Low (opt-in flag) | Medium — precision lift on critical-risk queries |
 | 7 | Relevance feedback loop | Medium (2 days) | Low | Long-term — compounding value over time |
 
 **Recommended delivery order:** Phase 1 → 4 → 3 → 2 → 5 → 6 → 7

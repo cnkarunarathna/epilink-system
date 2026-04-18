@@ -72,7 +72,9 @@ class RAGService:
         if not self._ready:
             return []
 
-        k = top_k or settings.rag_top_k
+        # Fetch more candidates when re-ranking will cull them down afterwards
+        k = (settings.rag_rerank_candidate_k if settings.rag_rerank_enabled
+             else (top_k or settings.rag_top_k))
         query = self._build_query(
             district, model_risk_score, rainfall_mm_7d, temperature_c_7d,
             wow_case_change_pct, feature_importances=feature_importances,
@@ -92,7 +94,10 @@ class RAGService:
                 results = self._sparse_search(self._embed_sparse(query), k)
             else:
                 results = self._hybrid_search(query, k)
-            return self._apply_recency_decay(results)
+            decayed = self._apply_recency_decay(results)
+            if settings.rag_rerank_enabled and len(decayed) > settings.rag_rerank_top_n:
+                return self._rerank_with_gemini(query, decayed, settings.rag_rerank_top_n)
+            return decayed
         except Exception as exc:
             print(f"[RAGService] retrieve failed: {exc}")
             return []
@@ -118,7 +123,9 @@ class RAGService:
         if not self._ready:
             return []
 
-        k = top_k or settings.rag_top_k
+        # Fetch more candidates when re-ranking will cull them down afterwards
+        k = (settings.rag_rerank_candidate_k if settings.rag_rerank_enabled
+             else (top_k or settings.rag_top_k))
         # Explicit caller-supplied type takes priority; otherwise infer from query text
         effective_source_type = source_type or self._infer_query_intent(query)
         try:
@@ -134,7 +141,10 @@ class RAGService:
                 results = self._sparse_search(self._embed_sparse(query), k)
             else:
                 results = self._hybrid_search(query, k)
-            return self._apply_recency_decay(results)
+            decayed = self._apply_recency_decay(results)
+            if settings.rag_rerank_enabled and len(decayed) > settings.rag_rerank_top_n:
+                return self._rerank_with_gemini(query, decayed, settings.rag_rerank_top_n)
+            return decayed
         except Exception as exc:
             print(f"[RAGService] retrieve_for_query failed: {exc}")
             return []
@@ -598,6 +608,66 @@ class RAGService:
         if surveillance_hits >= 2 and surveillance_hits > clinical_hits:
             return "surveillance"
         return None
+
+    # ── Cross-encoder re-ranking ────────────────────────────────────
+
+    _RERANK_PROMPT = (
+        "You are a document relevance judge for dengue risk analysis.\n\n"
+        "Situation: {context}\n\n"
+        "For each document below, output ONLY a JSON array of objects with "
+        "\"idx\" (0-based) and \"score\" (0.0–1.0, how useful this document is "
+        "for the situation above). No explanation, only valid JSON.\n\n"
+        "Documents:\n{docs}"
+    )
+
+    def _rerank_with_gemini(
+        self,
+        query: str,
+        docs: list[DocumentReference],
+        top_n: int,
+    ) -> list[DocumentReference]:
+        """Re-score candidates via a Gemini relevance-judge call and return the top-N.
+
+        The prompt sees the full epidemiological context (query) alongside each
+        chunk title + excerpt, so it can demote a high-vector-score chunk that is
+        actually off-topic for this specific district/risk situation.
+        Falls back to the original order on any error.
+        """
+        import json as _json
+
+        if not docs or not settings.gemini_api_key:
+            return docs[:top_n]
+        try:
+            from google import genai
+            doc_block = "\n".join(
+                f"[{i}] {d.title}: {d.excerpt[:300]}"
+                for i, d in enumerate(docs)
+            )
+            prompt = self._RERANK_PROMPT.format(context=query, docs=doc_block)
+            client = genai.Client(api_key=settings.gemini_api_key)
+            response = client.models.generate_content(
+                model=settings.llm_model,
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                config={"response_mime_type": "application/json", "temperature": 0.0},
+            )
+            scores = _json.loads(response.text or "[]")
+            scored: dict[int, float] = {int(item["idx"]): float(item["score"]) for item in scores}
+            reranked = sorted(range(len(docs)), key=lambda i: scored.get(i, 0.0), reverse=True)
+            return [
+                DocumentReference(
+                    title=docs[i].title,
+                    source=docs[i].source,
+                    published_date=docs[i].published_date,
+                    excerpt=docs[i].excerpt,
+                    relevance_score=round(scored.get(i, docs[i].relevance_score or 0.0), 3),
+                    source_type=docs[i].source_type,
+                    chunk_index=docs[i].chunk_index,
+                )
+                for i in reranked[:top_n]
+            ]
+        except Exception as exc:
+            print(f"[RAGService] re-rank failed: {exc}")
+            return docs[:top_n]
 
     # ── Query construction ──────────────────────────────────────────
 

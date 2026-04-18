@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 350
     rag_chunk_overlap: int = 60
     rag_hyde_enabled: bool = False
+    rag_rerank_enabled: bool = False
+    rag_rerank_top_n: int = 5
+    rag_rerank_candidate_k: int = 12
 
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"
