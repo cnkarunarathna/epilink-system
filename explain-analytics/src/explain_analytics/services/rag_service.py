@@ -66,6 +66,7 @@ class RAGService:
         temperature_c_7d: float | None = None,
         wow_case_change_pct: float | None = None,
         top_k: int | None = None,
+        feature_importances: dict[str, float] | None = None,
     ) -> list[DocumentReference]:
         """Return the top-K most relevant documents for the given district signals."""
         if not self._ready:
@@ -73,7 +74,8 @@ class RAGService:
 
         k = top_k or settings.rag_top_k
         query = self._build_query(
-            district, model_risk_score, rainfall_mm_7d, temperature_c_7d, wow_case_change_pct
+            district, model_risk_score, rainfall_mm_7d, temperature_c_7d,
+            wow_case_change_pct, feature_importances=feature_importances,
         )
         try:
             mode = settings.rag_retrieval_mode
@@ -438,6 +440,21 @@ class RAGService:
 
     # ── Query construction ──────────────────────────────────────────
 
+    # Maps ML feature names to retrieval-relevant keyword phrases.
+    _SHAP_FEATURE_TERMS: dict[str, str] = {
+        "rainfall_mm_7d":      "rainfall standing water Aedes breeding site elimination",
+        "temperature_c_7d":    "high temperature vector control mosquito lifecycle acceleration",
+        "wow_case_change_pct": "rapid case surge outbreak early warning emergency response",
+        "recent_case_count":   "high case burden hospital capacity active surveillance",
+        "vector_index":        "mosquito vector index larval density Aedes control",
+        "humidity_pct":        "humidity mosquito survival rate vector abundance",
+        "population_density":  "urban density crowded housing community intervention",
+        "lag_1w_cases":        "lagged transmission incubation period case forecasting",
+        "lag_2w_cases":        "lagged transmission incubation period case forecasting",
+        "lag_3w_cases":        "lagged transmission incubation period case forecasting",
+        "urbanization_index":  "urban density crowded housing community intervention",
+    }
+
     def _build_query(
         self,
         district: str,
@@ -445,18 +462,35 @@ class RAGService:
         rainfall_mm_7d: float | None,
         temperature_c_7d: float | None,
         wow_case_change_pct: float | None,
+        feature_importances: dict[str, float] | None = None,
     ) -> str:
-        """Construct a natural-language retrieval query from district signals."""
+        """Construct a natural-language retrieval query from district signals.
+
+        When SHAP feature_importances are provided, query terms are weighted by
+        each feature's contribution: dominant features (≥0.25) appear twice for
+        stronger semantic signal. Falls back to threshold-based heuristics otherwise.
+        """
         risk = _risk_label(model_risk_score)
         parts = [f"dengue {risk} risk {district} district Sri Lanka intervention response"]
 
-        if rainfall_mm_7d is not None and rainfall_mm_7d >= 80:
-            parts.append("heavy rainfall standing water Aedes breeding site elimination")
-        if temperature_c_7d is not None and temperature_c_7d >= 28:
-            parts.append("high temperature vector control mosquito lifecycle acceleration")
-        if wow_case_change_pct is not None and wow_case_change_pct >= 15:
-            parts.append("rapid case surge outbreak early warning emergency response protocol")
-        if risk in ("high", "critical"):
-            parts.append("fogging fumigation rapid response team hospital preparedness")
+        if feature_importances:
+            sorted_fi = sorted(feature_importances.items(), key=lambda x: x[1], reverse=True)
+            for feat, importance in sorted_fi[:5]:
+                if importance < 0.05:
+                    break
+                terms = self._SHAP_FEATURE_TERMS.get(feat)
+                if terms:
+                    # High-importance features repeat to amplify their semantic weight
+                    repeat = 2 if importance >= 0.25 else 1
+                    parts.extend([terms] * repeat)
+        else:
+            if rainfall_mm_7d is not None and rainfall_mm_7d >= 80:
+                parts.append("heavy rainfall standing water Aedes breeding site elimination")
+            if temperature_c_7d is not None and temperature_c_7d >= 28:
+                parts.append("high temperature vector control mosquito lifecycle acceleration")
+            if wow_case_change_pct is not None and wow_case_change_pct >= 15:
+                parts.append("rapid case surge outbreak early warning emergency response protocol")
+            if risk in ("high", "critical"):
+                parts.append("fogging fumigation rapid response team hospital preparedness")
 
         return " ".join(parts)
