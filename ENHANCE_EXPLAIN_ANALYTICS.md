@@ -604,7 +604,7 @@ for low-latency paths; enable for high-stakes (`critical` risk) districts only i
 
 ---
 
-## Phase 7 — Relevance Feedback Loop
+## Phase 7 — Relevance Feedback Loop ✅ DONE
 
 **Goal:** Continuously improve retrieval quality by capturing user signals on whether
 retrieved documents were actually useful.
@@ -710,7 +710,7 @@ at least one vote has been recorded (`feedback_ratio` defaults to 0.5 → multip
 | 4 | Per-source recency decay | ✅ Done | Low | Medium — prevents old surveillance from polluting |
 | 5 | HyDE query expansion | ✅ Done | Low (opt-in flag) | Medium — best for edge-case district scenarios |
 | 6 | Cross-encoder re-ranking | ✅ Done | Low (opt-in flag) | Medium — precision lift on critical-risk queries |
-| 7 | Relevance feedback loop | Medium (2 days) | Low | Long-term — compounding value over time |
+| 7 | Relevance feedback loop | ✅ Done | Low | Long-term — compounding value over time |
 
 **Recommended delivery order:** Phase 1 → 4 → 3 → 2 → 5 → 6 → 7
 

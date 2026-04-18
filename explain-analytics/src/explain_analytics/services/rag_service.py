@@ -296,6 +296,44 @@ class RAGService:
             raise RuntimeError(f"Chunked ingestion failed after {stored} chunk(s): {exc}") from exc
         return stored
 
+    def record_feedback(self, point_id: str, vote: str) -> None:
+        """Persist a user up/down vote on a retrieved document in its Qdrant payload.
+
+        Updates feedback_positive, feedback_negative, and feedback_ratio fields.
+        These are picked up by _apply_recency_decay on the next retrieval to amplify
+        well-rated documents (ratio→1 gives ×1.2) and penalise poor ones (ratio→0 gives ×0.8).
+        Has no effect until the first vote (default ratio=0.5 → neutral multiplier ×1.0).
+        """
+        if not self._ready or self._client is None:
+            return
+        try:
+            points = self._client.retrieve(
+                collection_name=settings.qdrant_collection,
+                ids=[point_id],
+                with_payload=True,
+            )
+            if not points:
+                return
+            payload = points[0].payload or {}
+            pos = int(payload.get("feedback_positive", 0))
+            neg = int(payload.get("feedback_negative", 0))
+            if vote == "up":
+                pos += 1
+            else:
+                neg += 1
+            ratio = pos / (pos + neg) if (pos + neg) > 0 else 0.5
+            self._client.set_payload(
+                collection_name=settings.qdrant_collection,
+                payload={
+                    "feedback_positive": pos,
+                    "feedback_negative": neg,
+                    "feedback_ratio": round(ratio, 3),
+                },
+                points=[point_id],
+            )
+        except Exception as exc:
+            print(f"[RAGService] record_feedback failed: {exc}")
+
     def document_count(self) -> int:
         """Return the total number of points in the Qdrant collection."""
         if not self._ready or self._client is None:
@@ -436,6 +474,8 @@ class RAGService:
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
+                point_id=str(r.id),
+                feedback_ratio=float(r.payload.get("feedback_ratio", 0.5)),
             )
             for r in results
             if r.score >= _MIN_RELEVANCE_SCORE
@@ -477,6 +517,8 @@ class RAGService:
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
+                point_id=str(r.id),
+                feedback_ratio=float(r.payload.get("feedback_ratio", 0.5)),
             )
             for r in results
             if r.score >= _MIN_RELEVANCE_SCORE
@@ -499,6 +541,8 @@ class RAGService:
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
+                point_id=str(r.id),
+                feedback_ratio=float(r.payload.get("feedback_ratio", 0.5)),
             )
             for r in results
         ]
@@ -522,6 +566,8 @@ class RAGService:
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
+                point_id=str(r.id),
+                feedback_ratio=float(r.payload.get("feedback_ratio", 0.5)),
             )
             for r in results
         ]
@@ -569,6 +615,9 @@ class RAGService:
                     adjusted = raw
             else:
                 adjusted = raw
+            # Feedback multiplier: ratio=0 → ×0.8, ratio=0.5 (neutral) → ×1.0, ratio=1 → ×1.2
+            feedback_ratio = getattr(doc, "feedback_ratio", 0.5)
+            adjusted *= 0.8 + 0.4 * feedback_ratio
             decayed.append((adjusted, doc))
 
         decayed.sort(key=lambda x: x[0], reverse=True)
@@ -581,6 +630,8 @@ class RAGService:
                 relevance_score=round(score, 3),
                 source_type=d.source_type,
                 chunk_index=d.chunk_index,
+                point_id=d.point_id,
+                feedback_ratio=d.feedback_ratio,
             )
             for score, d in decayed
             if score >= _MIN_RELEVANCE_SCORE
@@ -662,6 +713,8 @@ class RAGService:
                     relevance_score=round(scored.get(i, docs[i].relevance_score or 0.0), 3),
                     source_type=docs[i].source_type,
                     chunk_index=docs[i].chunk_index,
+                    point_id=docs[i].point_id,
+                    feedback_ratio=docs[i].feedback_ratio,
                 )
                 for i in reranked[:top_n]
             ]

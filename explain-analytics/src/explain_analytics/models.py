@@ -17,6 +17,19 @@ class DocumentReference(BaseModel):
     relevance_score: float | None = Field(default=None, ge=0, le=1)
     source_type: str | None = None
     chunk_index: int | None = None
+    point_id: str | None = Field(
+        default=None,
+        description="Qdrant point UUID — submit to POST /v1/rag/feedback to vote on this document.",
+    )
+    feedback_ratio: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description=(
+            "Cumulative user feedback ratio (positive / total votes). "
+            "0.5 = no votes yet (neutral). Used internally as a score multiplier."
+        ),
+    )
 
 
 class DistrictSignal(BaseModel):
@@ -211,6 +224,12 @@ class RagSeedResponse(BaseModel):
     skipped: int
     total_documents: int
     message: str
+
+
+class DocumentFeedbackRequest(BaseModel):
+    point_id: str = Field(description="Qdrant point UUID from DocumentReference.point_id")
+    vote: Literal["up", "down"]
+    session_id: str | None = None
 
 
 # ── Chat models (Phase 3 + Enhancement 7) ─────────────────────────
