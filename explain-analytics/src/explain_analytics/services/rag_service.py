@@ -220,6 +220,72 @@ class RAGService:
             raise RuntimeError(f"Ingestion failed after {stored} document(s): {exc}") from exc
         return stored
 
+    def _chunk_text(self, text: str) -> list[str]:
+        """Split text into overlapping word-based chunks for finer-grained indexing."""
+        words = text.split()
+        size = settings.rag_chunk_size
+        overlap = settings.rag_chunk_overlap
+        chunks: list[str] = []
+        i = 0
+        while i < len(words):
+            chunks.append(" ".join(words[i: i + size]))
+            i += size - overlap
+        return chunks if chunks else [text]
+
+    def ingest_chunked(self, documents: list[RagIngestDocument], source_type: str = "knowledge") -> int:
+        """Split each document into overlapping chunks and upsert into Qdrant.
+
+        Each chunk point carries parent_id, chunk_index, and total_chunks in its
+        payload so callers can reconstruct the parent document if needed.
+        Replaces ingest_with_source_type for the knowledge corpus (Phase 2).
+        """
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointStruct
+
+        if not settings.qdrant_url:
+            raise RuntimeError("EXPLAIN_QDRANT_URL is not set.")
+
+        client = self._client or QdrantClient(url=settings.qdrant_url)
+        sparse_model = self._sparse_model or self._load_sparse_model(return_model=True)
+        self._ensure_collection(client)
+
+        stored = 0
+        try:
+            for doc in documents:
+                parent_id = _point_id(doc.title, doc.source, doc.published_date)
+                chunks = self._chunk_text(doc.content)
+                total = len(chunks)
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = _point_id(
+                        f"{doc.title}_chunk_{idx}", doc.source, doc.published_date
+                    )
+                    dense_vec = self._embed_dense(chunk)
+                    sparse_vec = self._embed_sparse(chunk, model=sparse_model)
+                    client.upsert(
+                        collection_name=settings.qdrant_collection,
+                        points=[PointStruct(
+                            id=chunk_id,
+                            vector={
+                                _DENSE_VECTOR_NAME: dense_vec,
+                                _SPARSE_VECTOR_NAME: sparse_vec,
+                            },
+                            payload={
+                                "title": doc.title,
+                                "source": doc.source,
+                                "published_date": doc.published_date,
+                                "content": chunk,
+                                "source_type": source_type,
+                                "parent_id": parent_id,
+                                "chunk_index": idx,
+                                "total_chunks": total,
+                            },
+                        )],
+                    )
+                    stored += 1
+        except Exception as exc:
+            raise RuntimeError(f"Chunked ingestion failed after {stored} chunk(s): {exc}") from exc
+        return stored
+
     def document_count(self) -> int:
         """Return the total number of points in the Qdrant collection."""
         if not self._ready or self._client is None:
@@ -323,7 +389,7 @@ class RAGService:
                 title=r.payload["title"],
                 source=r.payload["source"],
                 published_date=r.payload.get("published_date"),
-                excerpt=r.payload["content"][:800],
+                excerpt=r.payload["content"],
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
@@ -363,7 +429,7 @@ class RAGService:
                 title=r.payload["title"],
                 source=r.payload["source"],
                 published_date=r.payload.get("published_date"),
-                excerpt=r.payload["content"][:600],
+                excerpt=r.payload["content"],
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
@@ -385,7 +451,7 @@ class RAGService:
                 title=r.payload["title"],
                 source=r.payload["source"],
                 published_date=r.payload.get("published_date"),
-                excerpt=r.payload["content"][:600],
+                excerpt=r.payload["content"],
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),
@@ -408,7 +474,7 @@ class RAGService:
                 title=r.payload["title"],
                 source=r.payload["source"],
                 published_date=r.payload.get("published_date"),
-                excerpt=r.payload["content"][:600],
+                excerpt=r.payload["content"],
                 relevance_score=round(float(r.score), 3),
                 source_type=r.payload.get("source_type"),
                 chunk_index=r.payload.get("chunk_index"),

@@ -1184,7 +1184,7 @@ class KnowledgeSeeder:
             tagged = doc.model_copy()
             tagged_docs.append(tagged)
 
-        ingested = self._rag.ingest_with_source_type(tagged_docs, source_type="knowledge")
+        ingested = self._rag.ingest_chunked(tagged_docs, source_type="knowledge")
         return {
             "ingested": ingested,
             "skipped": 0,

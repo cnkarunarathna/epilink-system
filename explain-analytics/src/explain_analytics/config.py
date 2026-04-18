@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     rag_recency_decay_knowledge: float = 0.0001      # ~19-year half-life for clinical guides
     rag_recency_decay_guideline: float = 0.0003      # ~6-year half-life for MoH guidelines
     rag_etl_enabled: bool = False
+    rag_chunk_size: int = 350
+    rag_chunk_overlap: int = 60
 
     enable_agent_mode: bool = True
     backend_api_url: str = "http://localhost:3001/api"

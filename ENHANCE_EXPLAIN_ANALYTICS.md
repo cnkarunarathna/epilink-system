@@ -127,7 +127,7 @@ and confirm the retrieved docs are more vector-control-focused than with rainfal
 
 ---
 
-## Phase 2 — Document Chunking with Parent Reference
+## Phase 2 — Document Chunking with Parent Reference ✅ DONE
 
 **Goal:** Improve retrieval precision by indexing paragraph-level chunks rather than full documents.
 
@@ -705,7 +705,7 @@ at least one vote has been recorded (`feedback_ratio` defaults to 0.5 → multip
 | Phase | Enhancement | Effort | Risk | Value |
 |---|---|---|---|---|
 | 1 | SHAP-driven query construction | ✅ Done | Low | High — immediate recall improvement |
-| 2 | Document chunking | Medium (2 days) | Medium (requires re-seed) | High — most impactful for precision |
+| 2 | Document chunking | ✅ Done | Medium (requires re-seed) | High — most impactful for precision |
 | 3 | Source-type contextual filtering | ✅ Done | Low | Medium — guards against cross-contamination |
 | 4 | Per-source recency decay | ✅ Done | Low | Medium — prevents old surveillance from polluting |
 | 5 | HyDE query expansion | Low (1 day) | Low (opt-in flag) | Medium — best for edge-case district scenarios |
