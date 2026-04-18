@@ -143,7 +143,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 3 — Rapid Geographic Hotspot Scan
+## Phase 3 — Rapid Geographic Hotspot Scan ✅ DONE
 
 **Goal:** Give the chatbot a fast triage tool that identifies which districts need immediate
 attention using the backend's dedicated hotspot algorithm (distinct from outbreak alerts).
@@ -548,7 +548,7 @@ _t.FunctionDeclaration(
 |-------|------|-----------|-------------------|
 | 1 | `get_national_briefing` ✅ | Low | `GET /analytics/summary` |
 | 2 | `get_weekly_ml_forecast` ✅ | Low | `GET /analytics/advanced/weekly-forecast` |
-| 3 | `get_rapid_hotspots` | Low | `GET /analytics/advanced/hotspots` |
+| 3 | `get_rapid_hotspots` ✅ | Low | `GET /analytics/advanced/hotspots` |
 | 4 | `get_historical_range` | Low | `GET /analytics/historical/range` |
 | 5 | `get_year_over_year_comparison` | Medium | `GET /analytics/historical/yearly-summary` |
 | 6 | `get_colombo_ds_breakdown` | Medium | `GET /analytics/colombo/ds-breakdown` |

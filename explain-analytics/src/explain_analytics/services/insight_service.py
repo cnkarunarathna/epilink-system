@@ -665,6 +665,10 @@ No parameters needed. Use first for country-wide questions.
 - **get_weekly_ml_forecast**: ML model's 1-week-ahead case forecast for one or \
 all districts — predicted cases, confidence, forecast vs current comparison, \
 trend direction. Use for forward-looking / prediction questions.
+- **get_rapid_hotspots**: Priority-ranked triage of top N districts by case \
+magnitude + trajectory (hotspot score). Use for "where should resources go?" \
+or "which districts are worst?". Different from outbreak alerts — ranks by \
+absolute burden, not ratio thresholds.
 - **compare_districts**: Side-by-side latest cases, WoW%, 4-week avg, and \
 risk level for multiple districts. Pass an empty string to compare all.
 - **year_over_year**: 12-week timeseries with WoW changes, peak detection, \
@@ -705,6 +709,7 @@ health actions.
 |---|---|---|
 | National/country-wide situation | get_national_briefing | compare_districts |
 | ML forecast / predicted cases | get_weekly_ml_forecast | get_district_details |
+| Resource deployment / worst districts | get_rapid_hotspots | get_outbreak_alerts |
 | Current status for one district | get_district_details | year_over_year |
 | Compare two or more districts | compare_districts | get_growth_rate |
 | Weather / climate impact | get_weather_correlation | get_district_details |
@@ -892,6 +897,25 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_rapid_hotspots",
+                description=(
+                    "Identify the top dengue hotspot districts ranked by current case magnitude "
+                    "and trajectory. Use for 'where should resources go?', 'which districts are "
+                    "worst?', or quick priority triage. Distinct from outbreak alerts — this ranks "
+                    "by absolute burden, not ratio thresholds."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "top_n": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="Number of top hotspot districts to return. Default 5, max 10.",
+                        ),
+                    },
+                    required=[],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="get_weekly_ml_forecast",
                 description=(
                     "Get the ML model's 1-week-ahead dengue case forecast for one or all districts. "
@@ -969,6 +993,7 @@ def _build_tool_map():
         get_model_performance_metrics,
         get_national_briefing,
         get_outbreak_alerts,
+        get_rapid_hotspots,
         get_weekly_ml_forecast,
         get_seasonal_pattern,
         get_weather_correlation,
@@ -988,6 +1013,7 @@ def _build_tool_map():
         "get_demographic_hotspots": get_demographic_hotspots,
         "get_national_briefing": get_national_briefing,
         "get_weekly_ml_forecast": get_weekly_ml_forecast,
+        "get_rapid_hotspots": get_rapid_hotspots,
     }
 
 

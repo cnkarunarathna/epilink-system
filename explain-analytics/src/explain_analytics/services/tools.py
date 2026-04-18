@@ -1728,6 +1728,88 @@ def get_weekly_ml_forecast(district: str = "") -> str:
     )
 
 
+def get_rapid_hotspots(top_n: int = 5) -> str:
+    """Identify the top N dengue hotspot districts by current case magnitude and trajectory.
+
+    Use when the user asks "where should resources be deployed?", "which districts are
+    worst right now?", or needs a quick priority-ranked triage of all districts.
+    Different from outbreak_alerts — ranks by absolute burden, not ratio thresholds.
+
+    Args:
+        top_n: Number of top hotspot districts to return (default 5, max 10).
+    """
+    top_n = max(1, min(int(top_n), 10))
+    data = _api_get("/analytics/advanced/hotspots")
+    if not data:
+        return json.dumps({"error": "Failed to fetch hotspot data"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No hotspot data available"})
+
+    scored = []
+    for row in rows:
+        cases = row.get("current_cases") or row.get("currentCases") or row.get("cases", 0) or 0
+        wow = row.get("wow_change_pct") or row.get("wowChangePct") or row.get("avg_growth_rate", 0) or 0
+        avg_4w = row.get("avg_cases") or row.get("avgCases") or row.get("avg_4week_cases") or 1
+
+        # Hotspot score: weighted combination of absolute burden + trajectory
+        # Normalise WoW to 0-1 range (cap at 100%) then blend 70% cases + 30% trajectory
+        wow_norm = min(abs(float(wow)) / 100.0, 1.0) if wow else 0.0
+        cases_norm = float(cases) / max(float(avg_4w) * 4, 1)
+        hotspot_score = round(0.70 * cases_norm + 0.30 * wow_norm, 3)
+
+        risk = (
+            "critical" if cases >= 100
+            else "high" if cases >= 50
+            else "moderate" if cases >= 25
+            else "low"
+        )
+
+        wow_f = float(wow)
+        priority_action = (
+            "Deploy rapid response team immediately"
+            if cases >= 100 or wow_f >= 50
+            else "Intensify vector control and surveillance"
+            if cases >= 50 or wow_f >= 25
+            else "Increase monitoring frequency"
+        )
+
+        scored.append(
+            {
+                "district": row.get("district", "Unknown"),
+                "current_cases": cases,
+                "wow_change_pct": round(wow_f, 1),
+                "avg_4week_cases": round(float(avg_4w), 1),
+                "hotspot_score": hotspot_score,
+                "risk_level": risk,
+                "priority_action": priority_action,
+            }
+        )
+
+    # Rank by hotspot score descending
+    scored.sort(key=lambda r: r["hotspot_score"], reverse=True)
+    top = scored[:top_n]
+
+    top_names = ", ".join(r["district"] for r in top[:3])
+    critical = [r for r in top if r["risk_level"] == "critical"]
+    summary = (
+        f"Top {len(top)} hotspots (by case burden + trajectory): {top_names}. "
+        f"{len(critical)} critical district(s) requiring immediate action."
+    )
+
+    return json.dumps(
+        {
+            "hotspots": top,
+            "total_districts_analyzed": len(scored),
+            "critical_count": len(critical),
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1743,4 +1825,5 @@ ALL_TOOLS = [
     get_demographic_hotspots,
     get_national_briefing,
     get_weekly_ml_forecast,
+    get_rapid_hotspots,
 ]
