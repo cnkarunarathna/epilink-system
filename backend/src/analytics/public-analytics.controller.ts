@@ -26,6 +26,28 @@ export class PublicAnalyticsController {
     return this.analyticsService.getTrends(weekCount);
   }
 
+  @Get('historical/yearly-summary')
+  async yearlySummary(@Query('year') year?: string) {
+    return this.analyticsService.getYearlySummary(
+      year ? parseInt(year) : undefined,
+    );
+  }
+
+  @Get('historical/range')
+  async historicalRange(
+    @Query('startYear') startYear?: string,
+    @Query('startWeek') startWeek?: string,
+    @Query('endYear') endYear?: string,
+    @Query('endWeek') endWeek?: string,
+  ) {
+    return this.analyticsService.getHistoricalRange(
+      startYear ? parseInt(startYear) : undefined,
+      startWeek ? parseInt(startWeek) : undefined,
+      endYear ? parseInt(endYear) : undefined,
+      endWeek ? parseInt(endWeek) : undefined,
+    );
+  }
+
   @Get('historical/districts/compare')
   async compareDistricts(@Query('districts') districts?: string) {
     const districtList = districts ? districts.split(',') : [];
@@ -43,6 +65,11 @@ export class PublicAnalyticsController {
     return this.analyticsService.getGrowthRate(weekCount);
   }
 
+  @Get('advanced/weekly-forecast')
+  async weeklyForecast() {
+    return this.analyticsService.getWeeklyForecast();
+  }
+
   @Get('advanced/hotspots')
   async hotspots() {
     return this.analyticsService.getHotspots();
@@ -54,6 +81,11 @@ export class PublicAnalyticsController {
   }
 
   // ── DS-Level Disaggregation — Colombo District ────────────────────
+
+  @Get('field-capacity')
+  async fieldCapacity(@Query('district') district?: string) {
+    return this.analyticsService.getFieldCapacity(district);
+  }
 
   @Get('colombo/ds-breakdown')
   async colomboDsBreakdown(

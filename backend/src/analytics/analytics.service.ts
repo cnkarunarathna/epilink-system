@@ -1883,6 +1883,130 @@ export class AnalyticsService implements OnModuleInit {
     );
   }
 
+  /** Field response capacity: task backlog + PHI headcount per district (or national). */
+  async getFieldCapacity(districtName?: string): Promise<object> {
+    const manager = this.dataSource.manager;
+    const CLOSED_STATUSES = `('completed','rejected')`;
+
+    if (districtName) {
+      const distRow = await manager.query(
+        `SELECT id FROM districts WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+        [districtName],
+      );
+      if (!distRow.length) return { error: `District '${districtName}' not found` };
+      const districtId: number = distRow[0].id;
+
+      const [taskRows, overdueRow, phiRow] = await Promise.all([
+        manager.query(
+          `SELECT status, COUNT(*)::int AS cnt FROM tasks WHERE district_id = $1 GROUP BY status`,
+          [districtId],
+        ),
+        manager.query(
+          `SELECT COUNT(*)::int AS cnt FROM tasks
+           WHERE district_id = $1 AND due_date IS NOT NULL
+             AND due_date < NOW() AND status NOT IN ${CLOSED_STATUSES}`,
+          [districtId],
+        ),
+        manager.query(
+          `SELECT COUNT(*)::int AS total,
+                  SUM(CASE WHEN is_active THEN 1 ELSE 0 END)::int AS active
+           FROM users WHERE LOWER(district) = LOWER($1) AND role = 'phi'`,
+          [districtName],
+        ),
+      ]);
+
+      const byStatus: Record<string, number> = {};
+      let total = 0;
+      for (const r of taskRows) { byStatus[r.status] = r.cnt; total += r.cnt; }
+
+      const phi_total: number = phiRow[0]?.total ?? 0;
+      const phi_active: number = phiRow[0]?.active ?? 0;
+      const overdue: number = overdueRow[0]?.cnt ?? 0;
+      const active_workload =
+        (byStatus['pending'] ?? 0) +
+        (byStatus['assigned'] ?? 0) +
+        (byStatus['in_progress'] ?? 0) +
+        (byStatus['submitted'] ?? 0) +
+        (byStatus['verified'] ?? 0);
+      const completed = byStatus['completed'] ?? 0;
+      const completion_rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+      const cases_per_phi = phi_active > 0 ? Math.round(active_workload / phi_active) : null;
+
+      let capacity_assessment = 'adequate';
+      if (cases_per_phi !== null && (cases_per_phi > 20 || overdue > 10)) {
+        capacity_assessment = 'overwhelmed';
+      } else if (cases_per_phi !== null && (cases_per_phi > 10 || overdue > 5)) {
+        capacity_assessment = 'strained';
+      }
+
+      return {
+        scope: 'district',
+        district: districtName,
+        phi_total,
+        phi_active,
+        task_stats: { total, ...byStatus },
+        active_workload,
+        overdue_tasks: overdue,
+        completion_rate,
+        cases_per_phi,
+        capacity_assessment,
+      };
+    }
+
+    // National aggregate
+    const [taskRow, overdueRow, phiRow] = await Promise.all([
+      manager.query(
+        `SELECT status, COUNT(*)::int AS cnt FROM tasks GROUP BY status`,
+      ),
+      manager.query(
+        `SELECT COUNT(*)::int AS cnt FROM tasks
+         WHERE due_date IS NOT NULL AND due_date < NOW()
+           AND status NOT IN ${CLOSED_STATUSES}`,
+      ),
+      manager.query(
+        `SELECT COUNT(*)::int AS total,
+                SUM(CASE WHEN is_active THEN 1 ELSE 0 END)::int AS active
+         FROM users WHERE role = 'phi'`,
+      ),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    let total = 0;
+    for (const r of taskRow) { byStatus[r.status] = r.cnt; total += r.cnt; }
+
+    const phi_total: number = phiRow[0]?.total ?? 0;
+    const phi_active: number = phiRow[0]?.active ?? 0;
+    const overdue: number = overdueRow[0]?.cnt ?? 0;
+    const active_workload =
+      (byStatus['pending'] ?? 0) +
+      (byStatus['assigned'] ?? 0) +
+      (byStatus['in_progress'] ?? 0) +
+      (byStatus['submitted'] ?? 0) +
+      (byStatus['verified'] ?? 0);
+    const completed = byStatus['completed'] ?? 0;
+    const completion_rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const cases_per_phi = phi_active > 0 ? Math.round(active_workload / phi_active) : null;
+
+    let capacity_assessment = 'adequate';
+    if (cases_per_phi !== null && (cases_per_phi > 20 || overdue > 10)) {
+      capacity_assessment = 'overwhelmed';
+    } else if (cases_per_phi !== null && (cases_per_phi > 10 || overdue > 5)) {
+      capacity_assessment = 'strained';
+    }
+
+    return {
+      scope: 'national',
+      phi_total,
+      phi_active,
+      task_stats: { total, ...byStatus },
+      active_workload,
+      overdue_tasks: overdue,
+      completion_rate,
+      cases_per_phi,
+      capacity_assessment,
+    };
+  }
+
   /** Expose the raw DS weight table for academic transparency. */
   getColombosDsWeights() {
     return {
