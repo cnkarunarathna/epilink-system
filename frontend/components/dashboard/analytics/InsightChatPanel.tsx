@@ -20,6 +20,9 @@ import {
   Copy,
   Check,
   RotateCcw,
+  TrendingUp,
+  Activity,
+  Shield,
 } from "lucide-react";
 import { chatWithAgent, deleteChatSession } from "@/services/analytics.service";
 
@@ -28,16 +31,199 @@ const TOOL_LABELS: Record<string, string> = {
   year_over_year: "Historical Analysis",
   get_weather_correlation: "Weather Correlation",
   get_outbreak_alerts: "Outbreak Alerts",
-  get_growth_rate: "Growth Rate Analysis",
+  get_growth_rate: "Growth Rate",
+  get_district_details: "District Details",
+  get_seasonal_pattern: "Seasonal Pattern",
+  get_cross_district_spillover: "Spillover Risk",
+  get_intervention_history: "Intervention History",
+  get_model_performance_metrics: "Model Performance",
+  get_demographic_hotspots: "Demographic Hotspots",
+  get_national_briefing: "National Briefing",
+  get_weekly_ml_forecast: "ML Forecast",
+  get_rapid_hotspots: "Rapid Hotspots",
+  get_historical_range: "Historical Range",
+  get_year_over_year_comparison: "Year-over-Year",
+  get_colombo_ds_breakdown: "Colombo DS Zones",
+  get_field_response_capacity: "Field Capacity",
+  evaluate_national_intervention_effectiveness: "Intervention Scorecard",
 };
 
-const PRESET_QUESTIONS = [
-  "How does this district compare to its neighbors?",
-  "What is the weather impact on dengue here?",
-  "Are there any active outbreak alerts?",
-  "How does this compare to last year?",
-  "Which districts have the fastest case growth?",
+interface PresetCategory {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  chipClass: string;
+  labelClass: string;
+  questions: string[];
+}
+
+const PRESET_CATEGORIES: PresetCategory[] = [
+  {
+    id: "situational",
+    label: "Situational",
+    icon: Activity,
+    chipClass:
+      "bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50",
+    labelClass: "text-purple-500",
+    questions: [
+      "What is the current dengue situation here?",
+      "How does this district compare to its neighbors?",
+      "Are there any active outbreak alerts?",
+    ],
+  },
+  {
+    id: "trends",
+    label: "Trends & History",
+    icon: TrendingUp,
+    chipClass:
+      "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50",
+    labelClass: "text-blue-500",
+    questions: [
+      "How has the case trend changed this month?",
+      "How does this year compare to last year?",
+      "What is the typical seasonal pattern here?",
+    ],
+  },
+  {
+    id: "forecast",
+    label: "Forecast",
+    icon: Sparkles,
+    chipClass:
+      "bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50",
+    labelClass: "text-amber-500",
+    questions: [
+      "What does the model predict for next week?",
+      "How accurate are the recent predictions?",
+      "Which districts are growing fastest?",
+    ],
+  },
+  {
+    id: "operational",
+    label: "Operational",
+    icon: Shield,
+    chipClass:
+      "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50",
+    labelClass: "text-emerald-500",
+    questions: [
+      "Are field teams coping with the workload here?",
+      "What is the PHI task completion rate?",
+      "When was the last successful intervention?",
+    ],
+  },
 ];
+
+const TOOL_FOLLOWUPS: Record<string, string[]> = {
+  get_district_details: [
+    "What is the seasonal pattern here?",
+    "Are field teams coping with this case load?",
+    "What does the model predict for next week?",
+  ],
+  year_over_year: [
+    "How does this year compare to last year?",
+    "What is the typical seasonal peak here?",
+    "How does the weather affect case numbers?",
+  ],
+  get_weather_correlation: [
+    "Are there active outbreak alerts right now?",
+    "What does the ML model predict for next week?",
+    "Does high rainfall consistently precede outbreaks here?",
+  ],
+  get_outbreak_alerts: [
+    "Are field teams coping with the current outbreak?",
+    "How does this compare to previous outbreaks here?",
+    "What resources should be deployed immediately?",
+  ],
+  get_growth_rate: [
+    "Which district is growing fastest right now?",
+    "Are neighboring districts also rising?",
+    "What does the model forecast for next week?",
+  ],
+  get_seasonal_pattern: [
+    "How does this year compare to the seasonal baseline?",
+    "Are we currently in peak transmission season?",
+    "How does the weather correlate with the seasonal pattern?",
+  ],
+  get_cross_district_spillover: [
+    "Which neighboring districts are rising simultaneously?",
+    "Are outbreak alerts active in this region?",
+    "What is the national situation right now?",
+  ],
+  get_intervention_history: [
+    "How quickly was the last outbreak controlled here?",
+    "Are field teams currently keeping pace with the case load?",
+    "What was the most effective past intervention?",
+  ],
+  get_model_performance_metrics: [
+    "What does the model predict for next week?",
+    "How does the current forecast compare to actuals so far?",
+  ],
+  get_demographic_hotspots: [
+    "How should resources be allocated across these zones?",
+    "Are field teams covering the highest-risk zones?",
+    "How does this sub-district pattern compare to neighbors?",
+  ],
+  get_field_response_capacity: [
+    "Which tasks are most overdue here?",
+    "How does this capacity compare to other districts?",
+    "When was the last major intervention?",
+  ],
+  get_colombo_ds_breakdown: [
+    "Which Colombo DS zone needs the most urgent attention?",
+    "How should PHI resources be allocated within Colombo?",
+    "Are field teams coping in the highest-risk DS zones?",
+  ],
+  get_weekly_ml_forecast: [
+    "How accurate have the recent predictions been?",
+    "What is driving the forecasted increase?",
+    "How does this forecast compare to last week?",
+  ],
+  get_national_briefing: [
+    "Which districts need immediate intervention?",
+    "How does this week compare to last week nationally?",
+    "Which districts respond best to outbreaks?",
+  ],
+  evaluate_national_intervention_effectiveness: [
+    "Which districts need the most capacity support?",
+    "How do the top responders control outbreaks?",
+    "Are the poorest responders currently in active outbreak?",
+  ],
+  get_historical_range: [
+    "How does this period compare to the same period last year?",
+    "What interventions were active during this window?",
+    "What does the model predict for the coming weeks?",
+  ],
+  get_year_over_year_comparison: [
+    "Is the current year on track to exceed last year?",
+    "What seasonal patterns explain year-to-year variation?",
+  ],
+  get_rapid_hotspots: [
+    "What resources should be deployed to the top hotspots?",
+    "Are outbreak alerts active in these hotspot districts?",
+    "Are field teams coping in the highest-burden districts?",
+  ],
+  compare_districts: [
+    "What is driving the difference between these districts?",
+    "Which of these districts respond best to interventions?",
+    "Are neighboring districts also showing similar trends?",
+  ],
+};
+
+function getSmartFollowups(messages: ChatEntry[], used: Set<string>): string[] {
+  const lastWithTools = [...messages]
+    .reverse()
+    .find((m) => m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0);
+  if (!lastWithTools?.toolCalls) return [];
+  const suggestions: string[] = [];
+  for (const tool of lastWithTools.toolCalls) {
+    for (const q of TOOL_FOLLOWUPS[tool] ?? []) {
+      if (!used.has(q) && !suggestions.includes(q)) {
+        suggestions.push(q);
+        if (suggestions.length >= 3) return suggestions;
+      }
+    }
+  }
+  return suggestions;
+}
 
 function normalizeMarkdown(content: string) {
   let normalized = content;
@@ -397,16 +583,40 @@ export default function InsightChatPanel({ district }: Props) {
                     impact, and more
                   </p>
                 </div>
-                <div className="flex flex-wrap justify-center gap-2 mt-3">
-                  {PRESET_QUESTIONS.slice(0, 3).map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => sendMessage({ text: q })}
-                      className="text-xs px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
-                    >
-                      {q}
-                    </button>
-                  ))}
+                <div className="text-left space-y-3 mt-1">
+                  {PRESET_CATEGORIES.map((cat) => {
+                    const CatIcon = cat.icon;
+                    const qs =
+                      cat.id === "situational" && district === "Colombo"
+                        ? [
+                            ...cat.questions.slice(0, 2),
+                            "Which DS zone within Colombo is most affected?",
+                          ]
+                        : cat.questions;
+                    return (
+                      <div key={cat.id}>
+                        <div
+                          className={`flex items-center gap-1 mb-1.5 ${cat.labelClass}`}
+                        >
+                          <CatIcon className="h-3 w-3" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider">
+                            {cat.label}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {qs.slice(0, 2).map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => sendMessage({ text: q })}
+                              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${cat.chipClass}`}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -517,24 +727,39 @@ export default function InsightChatPanel({ district }: Props) {
             </div>
           )}
 
-          {/* Preset questions (when there are messages) */}
-          {messages.length > 0 && !loading && (
-            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-              {PRESET_QUESTIONS.filter(
-                (q) => !messages.some((m) => m.content === q),
-              )
-                .slice(0, 3)
-                .map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => sendMessage({ text: q })}
-                    className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    {q}
-                  </button>
-                ))}
-            </div>
-          )}
+          {/* Suggested follow-ups */}
+          {messages.length > 0 &&
+            !loading &&
+            (() => {
+              const used = new Set(messages.map((m) => m.content));
+              const smart = getSmartFollowups(messages, used);
+              const fallback = PRESET_CATEGORIES.flatMap((c) => c.questions)
+                .filter((q) => !used.has(q))
+                .slice(0, 3);
+              const display = smart.length > 0 ? smart : fallback;
+              if (display.length === 0) return null;
+              return (
+                <div className="px-4 pb-2 space-y-1">
+                  {smart.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Suggested follow-ups
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {display.map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => sendMessage({ text: q })}
+                        className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
           {/* Input */}
           <div className="flex gap-2 p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 items-end">
