@@ -1931,6 +1931,109 @@ def get_historical_range(
     )
 
 
+def get_year_over_year_comparison(district: str, years: int = 3) -> str:
+    """Compare annual dengue totals for a district across multiple years.
+
+    Use when the user asks "how does this year compare to last year?",
+    "annual totals for Colombo", "is 2025 worse than previous years?",
+    or any question about year-level aggregates rather than recent weeks.
+
+    Args:
+        district: District name.
+        years: Number of past years to include in comparison (default 3).
+    """
+    years = max(1, min(int(years), 10))
+
+    # Fetch most recent year (discovers the latest data year)
+    recent_data = _api_get("/analytics/historical/yearly-summary")
+    if not recent_data:
+        return json.dumps({"error": "Failed to fetch yearly summary"})
+
+    current_year = recent_data.get("year")
+    if not current_year:
+        return json.dumps({"error": "Could not determine current data year"})
+
+    # Collect data for the requested years window
+    yearly_results = []
+    for y in range(current_year - years + 1, current_year + 1):
+        data = recent_data if y == current_year else _api_get(
+            "/analytics/historical/yearly-summary", {"year": y}
+        )
+        if not data:
+            continue
+        dist_entry = next(
+            (d for d in data.get("districts", [])
+             if d.get("district", "").lower() == district.strip().lower()),
+            None,
+        )
+        if dist_entry:
+            yearly_results.append({"year": data.get("year"), **dist_entry})
+
+    if not yearly_results:
+        return json.dumps({"error": f"No yearly data found for '{district}'"})
+
+    yearly_results.sort(key=lambda r: r.get("year", 0))
+
+    # Enrich with YoY change
+    enriched = []
+    for i, row in enumerate(yearly_results):
+        prev_total = yearly_results[i - 1]["total_cases"] if i > 0 else None
+        yoy_pct: float | None = None
+        if prev_total is not None and prev_total > 0:
+            yoy_pct = round(((row["total_cases"] - prev_total) / prev_total) * 100, 1)
+        enriched.append({
+            "year": row["year"],
+            "total_cases": row["total_cases"],
+            "avg_weekly_cases": round(row.get("avg_cases", 0) or 0, 1),
+            "peak_week_cases": row.get("max_cases", 0),
+            "weeks_reported": row.get("week_count", 0),
+            "yoy_change_pct": yoy_pct,
+        })
+
+    # Overall multi-year trend (first vs last)
+    trend = "stable"
+    if len(enriched) >= 2:
+        first_total = enriched[0]["total_cases"]
+        last_total = enriched[-1]["total_cases"]
+        if last_total > first_total * 1.15:
+            trend = "worsening"
+        elif last_total < first_total * 0.85:
+            trend = "improving"
+
+    best_year = min(enriched, key=lambda r: r["total_cases"])
+    worst_year = max(enriched, key=lambda r: r["total_cases"])
+    latest = enriched[-1]
+    latest_yoy = latest.get("yoy_change_pct")
+    yoy_str = (
+        f"({'+' if (latest_yoy or 0) >= 0 else ''}{latest_yoy}% YoY)"
+        if latest_yoy is not None
+        else ""
+    )
+
+    summary = (
+        f"{district} annual comparison ({enriched[0]['year']}–{enriched[-1]['year']}): "
+        f"Latest ({latest['year']}): {latest['total_cases']} total cases {yoy_str}. "
+        f"Worst year: {worst_year['year']} ({worst_year['total_cases']} cases). "
+        f"Best year: {best_year['year']} ({best_year['total_cases']} cases). "
+        f"Multi-year trend: {trend}."
+    )
+
+    return json.dumps(
+        {
+            "district": district,
+            "years_compared": len(enriched),
+            "year_range": {"start": enriched[0]["year"], "end": enriched[-1]["year"]},
+            "annual_data": enriched,
+            "best_year": best_year,
+            "worst_year": worst_year,
+            "multi_year_trend": trend,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1948,4 +2051,5 @@ ALL_TOOLS = [
     get_weekly_ml_forecast,
     get_rapid_hotspots,
     get_historical_range,
+    get_year_over_year_comparison,
 ]

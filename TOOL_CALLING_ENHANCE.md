@@ -285,7 +285,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 5 — Year-over-Year Annual Comparison
+## Phase 5 — Year-over-Year Annual Comparison ✅ DONE
 
 **Goal:** Provide a full-year aggregate view so the chatbot can answer policy-level questions
 like "is 2025 worse than 2024?" without relying on the 12-week rolling window of `year_over_year`.
@@ -550,7 +550,7 @@ _t.FunctionDeclaration(
 | 2 | `get_weekly_ml_forecast` ✅ | Low | `GET /analytics/advanced/weekly-forecast` |
 | 3 | `get_rapid_hotspots` ✅ | Low | `GET /analytics/advanced/hotspots` |
 | 4 | `get_historical_range` ✅ | Low | `GET /analytics/historical/range` |
-| 5 | `get_year_over_year_comparison` | Medium | `GET /analytics/historical/yearly-summary` |
+| 5 | `get_year_over_year_comparison` ✅ | Medium | `GET /analytics/historical/yearly-summary` |
 | 6 | `get_colombo_ds_breakdown` | Medium | `GET /analytics/colombo/ds-breakdown` |
 | 7 | `get_field_response_capacity` | Medium | `GET /tasks/stats` + `/users` |
 | 8 | `evaluate_national_intervention_effectiveness` | High | Batches existing timeseries |

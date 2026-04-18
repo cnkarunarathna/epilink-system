@@ -26,6 +26,13 @@ export class PublicAnalyticsController {
     return this.analyticsService.getTrends(weekCount);
   }
 
+  @Get('historical/yearly-summary')
+  async yearlySummary(@Query('year') year?: string) {
+    return this.analyticsService.getYearlySummary(
+      year ? parseInt(year) : undefined,
+    );
+  }
+
   @Get('historical/range')
   async historicalRange(
     @Query('startYear') startYear?: string,

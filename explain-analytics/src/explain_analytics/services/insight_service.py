@@ -695,6 +695,9 @@ intervention priority ranking by settlement type (urban/coastal/rural).
 - **get_historical_range**: Case data for a custom date range for a district \
 (start_year, start_week, end_year, end_week). Use when the user specifies a \
 specific time window outside the standard recent weeks.
+- **get_year_over_year_comparison**: Annual dengue totals for a district across \
+multiple years — total cases, peak week, avg weekly, YoY% change, multi-year trend \
+direction. Use for "is this year worse than last?", "annual totals", year-level aggregates.
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
@@ -725,6 +728,7 @@ health actions.
 | Model prediction accuracy | get_model_performance_metrics | get_district_details |
 | Sub-district zone targeting | get_demographic_hotspots | get_district_details |
 | Specific time window / outbreak period | get_historical_range | year_over_year |
+| Annual totals / year-over-year comparison | get_year_over_year_comparison | year_over_year |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
@@ -966,6 +970,26 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_year_over_year_comparison",
+                description=(
+                    "Compare annual dengue totals for a district across multiple years. Use when "
+                    "asked 'how does this year compare to last year?', 'annual totals', 'is 2025 "
+                    "worse than previous years?'. Different from seasonal pattern — this aggregates "
+                    "full calendar years, not weekly overlays."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": _t.Schema(type=_t.Type.STRING, description="District name."),
+                        "years": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="Number of past years to include (default 3).",
+                        ),
+                    },
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description=(
                     "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
@@ -1021,6 +1045,7 @@ def _build_tool_map():
         get_weekly_ml_forecast,
         get_seasonal_pattern,
         get_weather_correlation,
+        get_year_over_year_comparison,
         year_over_year,
     )
     return {
@@ -1039,6 +1064,7 @@ def _build_tool_map():
         "get_weekly_ml_forecast": get_weekly_ml_forecast,
         "get_rapid_hotspots": get_rapid_hotspots,
         "get_historical_range": get_historical_range,
+        "get_year_over_year_comparison": get_year_over_year_comparison,
     }
 
 
