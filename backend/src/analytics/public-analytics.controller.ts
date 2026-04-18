@@ -43,6 +43,11 @@ export class PublicAnalyticsController {
     return this.analyticsService.getGrowthRate(weekCount);
   }
 
+  @Get('advanced/weekly-forecast')
+  async weeklyForecast() {
+    return this.analyticsService.getWeeklyForecast();
+  }
+
   @Get('advanced/hotspots')
   async hotspots() {
     return this.analyticsService.getHotspots();
