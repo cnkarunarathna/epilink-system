@@ -82,7 +82,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 2 — ML Forecast Surface
+## Phase 2 — ML Forecast Surface ✅ DONE
 
 **Goal:** Expose the backend's 1-week-ahead ML predictions to the chatbot so it can answer
 forward-looking questions, not just retrospective analysis.
@@ -547,7 +547,7 @@ _t.FunctionDeclaration(
 | Phase | Tool | Complexity | NestJS Dependency |
 |-------|------|-----------|-------------------|
 | 1 | `get_national_briefing` ✅ | Low | `GET /analytics/summary` |
-| 2 | `get_weekly_ml_forecast` | Low | `GET /analytics/advanced/weekly-forecast` |
+| 2 | `get_weekly_ml_forecast` ✅ | Low | `GET /analytics/advanced/weekly-forecast` |
 | 3 | `get_rapid_hotspots` | Low | `GET /analytics/advanced/hotspots` |
 | 4 | `get_historical_range` | Low | `GET /analytics/historical/range` |
 | 5 | `get_year_over_year_comparison` | Medium | `GET /analytics/historical/yearly-summary` |

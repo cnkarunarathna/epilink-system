@@ -662,6 +662,9 @@ historically account for the majority of national cases.
 - **get_national_briefing**: National-level aggregate — total cases, critical/\
 high-risk district counts, top hotspots, national WoW%, trend direction. \
 No parameters needed. Use first for country-wide questions.
+- **get_weekly_ml_forecast**: ML model's 1-week-ahead case forecast for one or \
+all districts — predicted cases, confidence, forecast vs current comparison, \
+trend direction. Use for forward-looking / prediction questions.
 - **compare_districts**: Side-by-side latest cases, WoW%, 4-week avg, and \
 risk level for multiple districts. Pass an empty string to compare all.
 - **year_over_year**: 12-week timeseries with WoW changes, peak detection, \
@@ -701,6 +704,7 @@ health actions.
 | Question type | Primary tool | Secondary tool |
 |---|---|---|
 | National/country-wide situation | get_national_briefing | compare_districts |
+| ML forecast / predicted cases | get_weekly_ml_forecast | get_district_details |
 | Current status for one district | get_district_details | year_over_year |
 | Compare two or more districts | compare_districts | get_growth_rate |
 | Weather / climate impact | get_weather_correlation | get_district_details |
@@ -888,6 +892,24 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_weekly_ml_forecast",
+                description=(
+                    "Get the ML model's 1-week-ahead dengue case forecast for one or all districts. "
+                    "Use when the user asks about predicted/forecast cases, what the model expects "
+                    "next week, or wants to compare current actuals to the prediction."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": _t.Schema(
+                            type=_t.Type.STRING,
+                            description="District name (e.g. 'Colombo'). Leave empty for all districts.",
+                        ),
+                    },
+                    required=[],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="get_national_briefing",
                 description=(
                     "Get a national-level dengue situation summary across all Sri Lanka districts. "
@@ -947,6 +969,7 @@ def _build_tool_map():
         get_model_performance_metrics,
         get_national_briefing,
         get_outbreak_alerts,
+        get_weekly_ml_forecast,
         get_seasonal_pattern,
         get_weather_correlation,
         year_over_year,
@@ -964,6 +987,7 @@ def _build_tool_map():
         "get_model_performance_metrics": get_model_performance_metrics,
         "get_demographic_hotspots": get_demographic_hotspots,
         "get_national_briefing": get_national_briefing,
+        "get_weekly_ml_forecast": get_weekly_ml_forecast,
     }
 
 

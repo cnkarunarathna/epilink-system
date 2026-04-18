@@ -1632,6 +1632,102 @@ def get_national_briefing() -> str:
     )
 
 
+def get_weekly_ml_forecast(district: str = "") -> str:
+    """Get the ML model's 1-week-ahead dengue case forecast.
+
+    Use when the user asks about predicted/forecast cases, what the model expects
+    next week, or wants to compare current cases to the model prediction.
+
+    Args:
+        district: Optional district name to filter. Empty string returns all districts.
+    """
+    params = {"district": district} if district.strip() else None
+    data = _api_get("/analytics/advanced/weekly-forecast", params)
+    if not data:
+        return json.dumps({"error": "Failed to fetch weekly forecast"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No forecast data available"})
+
+    forecasts = []
+    for row in rows:
+        predicted = row.get("predicted_cases") or row.get("predictedCases")
+        current = row.get("current_cases") or row.get("currentCases") or row.get("cases", 0) or 0
+        confidence = row.get("prediction_confidence") or row.get("predictionConfidence")
+        forecast_week = row.get("forecast_week") or row.get("forecastWeek")
+        forecast_year = row.get("forecast_year") or row.get("forecastYear")
+
+        # Derive comparison to current
+        comparison: str | None = None
+        change_pct: float | None = None
+        if predicted is not None and current > 0:
+            change_pct = round(((predicted - current) / current) * 100, 1)
+            if change_pct > 10:
+                comparison = f"forecast {change_pct:+.1f}% above current — rising expected"
+            elif change_pct < -10:
+                comparison = f"forecast {change_pct:+.1f}% below current — decline expected"
+            else:
+                comparison = f"forecast near current ({change_pct:+.1f}%) — stable expected"
+
+        # Trend direction from forecast vs current
+        trend = (
+            "rising"
+            if (change_pct or 0) > 10
+            else "falling" if (change_pct or 0) < -10 else "stable"
+        )
+
+        entry: dict = {
+            "district": row.get("district", "National") if not district.strip() else district,
+            "predicted_cases": predicted,
+            "current_cases": current,
+            "forecast_change_pct": change_pct,
+            "comparison_to_current": comparison,
+            "trend_direction": trend,
+            "prediction_confidence": confidence,
+        }
+        if forecast_week and forecast_year:
+            entry["forecast_week"] = f"{forecast_year}-W{int(forecast_week):02d}"
+        elif forecast_week:
+            entry["forecast_week"] = str(forecast_week)
+
+        forecasts.append(entry)
+
+    # Sort by predicted cases descending when multi-district
+    if len(forecasts) > 1:
+        forecasts.sort(key=lambda r: r.get("predicted_cases") or 0, reverse=True)
+
+    rising = [f for f in forecasts if f["trend_direction"] == "rising"]
+    falling = [f for f in forecasts if f["trend_direction"] == "falling"]
+    stable = [f for f in forecasts if f["trend_direction"] == "stable"]
+
+    if len(forecasts) == 1:
+        f = forecasts[0]
+        summary = (
+            f"{f['district']}: model forecasts {f['predicted_cases']} cases next week "
+            f"(current: {f['current_cases']}). {f.get('comparison_to_current', '')}."
+        )
+    else:
+        top = forecasts[0]
+        summary = (
+            f"Forecast across {len(forecasts)} districts — "
+            f"highest predicted: {top['district']} ({top['predicted_cases']} cases). "
+            f"{len(rising)} rising, {len(stable)} stable, {len(falling)} declining."
+        )
+
+    return json.dumps(
+        {
+            "forecasts": forecasts,
+            "districts_rising": len(rising),
+            "districts_stable": len(stable),
+            "districts_falling": len(falling),
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1646,4 +1742,5 @@ ALL_TOOLS = [
     get_model_performance_metrics,
     get_demographic_hotspots,
     get_national_briefing,
+    get_weekly_ml_forecast,
 ]
