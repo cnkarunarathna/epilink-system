@@ -2180,6 +2180,182 @@ def get_field_response_capacity(district: str = "") -> str:
     )
 
 
+_SL_DISTRICTS = [
+    "Colombo", "Gampaha", "Kalutara",
+    "Kandy", "Matale", "Nuwara Eliya",
+    "Galle", "Hambantota", "Matara",
+    "Jaffna", "Kilinochchi", "Mannar", "Mullaitivu", "Vavuniya",
+    "Trincomalee", "Batticaloa", "Ampara",
+    "Puttalam", "Kurunegala",
+    "Anuradhapura", "Polonnaruwa",
+    "Badulla", "Monaragala",
+    "Ratnapura", "Kegalle",
+]
+
+
+def evaluate_national_intervention_effectiveness(top_n: int = 5) -> str:
+    """Rank all Sri Lanka districts by how effectively they control dengue outbreaks.
+
+    Use when asked "which districts respond best to outbreaks?", "where is vector
+    control most effective?", "show intervention effectiveness nationally", or to
+    identify districts that need response capacity support.
+
+    Note: Makes one backend call per district (~25 calls). Slightly slower than
+    single-district tools.
+
+    Args:
+        top_n: Number of top and bottom performers to return (default 5 each, max 12).
+    """
+    top_n = max(1, min(top_n, 12))
+
+    district_scores: list[dict] = []
+    no_data: list[str] = []
+    no_events: list[str] = []
+
+    for district in _SL_DISTRICTS:
+        data = _api_get(f"/analytics/districts/{district}/timeseries")
+        rows = data if isinstance(data, list) else []
+        if not rows:
+            no_data.append(district)
+            continue
+
+        rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+        cases_series = [r.get("cases", 0) or 0 for r in rows]
+
+        peaks: list[int] = []
+        for i in range(1, len(cases_series) - 1):
+            if (
+                cases_series[i] > cases_series[i - 1]
+                and cases_series[i] > cases_series[i + 1]
+                and cases_series[i] >= 25
+            ):
+                peaks.append(i)
+
+        response_events: list[dict] = []
+        for peak_idx in peaks:
+            peak_cases = cases_series[peak_idx]
+            peak_row = rows[peak_idx]
+            recovery_window = cases_series[peak_idx + 1 : peak_idx + 7]
+            if not recovery_window:
+                continue
+            trough = min(recovery_window)
+            trough_idx = peak_idx + 1 + recovery_window.index(trough)
+            decline_pct = (
+                round(((trough - peak_cases) / peak_cases) * 100, 1)
+                if peak_cases > 0
+                else 0
+            )
+            weeks_to_recovery = trough_idx - peak_idx
+            if decline_pct <= -30:
+                response_events.append(
+                    {
+                        "decline_pct": decline_pct,
+                        "weeks_to_recovery": weeks_to_recovery,
+                        "peak_year": peak_row.get("year"),
+                        "peak_week": peak_row.get("week"),
+                        "peak_cases": peak_cases,
+                    }
+                )
+
+        if not response_events:
+            no_events.append(district)
+            continue
+
+        avg_decline = round(
+            sum(e["decline_pct"] for e in response_events) / len(response_events), 1
+        )
+        avg_weeks = round(
+            sum(e["weeks_to_recovery"] for e in response_events) / len(response_events),
+            1,
+        )
+        n_events = len(response_events)
+        # Higher absolute decline, fewer weeks, more events = better score
+        effectiveness_score = round(
+            (abs(avg_decline) / max(avg_weeks, 0.5)) * (n_events**0.3), 2
+        )
+
+        district_scores.append(
+            {
+                "district": district,
+                "response_events": n_events,
+                "avg_decline_pct": avg_decline,
+                "avg_weeks_to_control": avg_weeks,
+                "effectiveness_score": effectiveness_score,
+                "rating": (
+                    "excellent"
+                    if effectiveness_score >= 30
+                    else "good"
+                    if effectiveness_score >= 20
+                    else "moderate"
+                    if effectiveness_score >= 10
+                    else "poor"
+                ),
+                "most_recent_event": max(
+                    response_events, key=lambda e: (e["peak_year"], e["peak_week"])
+                ),
+            }
+        )
+
+    district_scores.sort(key=lambda d: d["effectiveness_score"], reverse=True)
+
+    national_avg_weeks = (
+        round(
+            sum(d["avg_weeks_to_control"] for d in district_scores) / len(district_scores),
+            1,
+        )
+        if district_scores
+        else None
+    )
+    national_avg_decline = (
+        round(
+            sum(d["avg_decline_pct"] for d in district_scores) / len(district_scores), 1
+        )
+        if district_scores
+        else None
+    )
+
+    best = district_scores[:top_n]
+    worst = list(reversed(district_scores[-top_n:])) if len(district_scores) > top_n else []
+
+    summary_parts = [
+        f"National intervention effectiveness: {len(district_scores)} districts with "
+        f"response events analysed."
+    ]
+    if national_avg_weeks is not None:
+        summary_parts.append(
+            f"National average: {national_avg_weeks} weeks to post-peak trough, "
+            f"{national_avg_decline}% avg decline."
+        )
+    if best:
+        summary_parts.append(
+            f"Best responders: {', '.join(d['district'] for d in best)}."
+        )
+    if worst:
+        summary_parts.append(
+            f"Poorest responders: {', '.join(d['district'] for d in worst)}."
+        )
+    if no_events:
+        summary_parts.append(
+            f"No response events detected in: {', '.join(no_events)} "
+            f"(insufficient peak activity or data window)."
+        )
+
+    return json.dumps(
+        {
+            "districts_analysed": len(district_scores),
+            "districts_with_no_events": no_events,
+            "districts_with_no_data": no_data,
+            "national_avg_weeks_to_control": national_avg_weeks,
+            "national_avg_decline_pct": national_avg_decline,
+            "best_responders": best,
+            "worst_responders": worst,
+            "summary": " ".join(summary_parts),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -2200,4 +2376,5 @@ ALL_TOOLS = [
     get_year_over_year_comparison,
     get_colombo_ds_breakdown,
     get_field_response_capacity,
+    evaluate_national_intervention_effectiveness,
 ]

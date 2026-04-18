@@ -478,7 +478,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 8 — National Intervention Effectiveness Scorecard
+## Phase 8 — National Intervention Effectiveness Scorecard ✅ DONE
 
 **Goal:** Rank all districts by how effectively their field teams control outbreaks once
 they begin — identifying which health divisions respond fastest and which need capacity support.
@@ -553,7 +553,7 @@ _t.FunctionDeclaration(
 | 5 | `get_year_over_year_comparison` ✅ | Medium | `GET /analytics/historical/yearly-summary` |
 | 6 | `get_colombo_ds_breakdown` ✅ | Medium | `GET /analytics/colombo/ds-breakdown` |
 | 7 | `get_field_response_capacity` ✅ | Medium | `GET /public/analytics/field-capacity` |
-| 8 | `evaluate_national_intervention_effectiveness` | High | Batches existing timeseries |
+| 8 | `evaluate_national_intervention_effectiveness` ✅ | High | Batches existing timeseries |
 
 **Total new tools after all phases: 19 (11 existing + 8 new)**
 

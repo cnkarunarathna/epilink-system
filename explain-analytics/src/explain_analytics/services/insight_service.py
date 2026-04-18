@@ -707,6 +707,13 @@ tasks, completion rate, and capacity assessment (adequate/strained/overwhelmed) 
 a district or nationally. Use for operational questions: "are field teams coping?", \
 "PHI workload in Kandy", "task completion rate", "uninvestigated cases", \
 "is the response capacity sufficient?".
+- **evaluate_national_intervention_effectiveness**: Ranks all 25 Sri Lanka districts \
+by outbreak control effectiveness — effectiveness score, avg weeks to post-peak trough, \
+avg decline %, response event count. Returns top-N best and worst responders with \
+national averages. Use for "which districts respond best?", "where is vector control \
+most effective?", "which districts need capacity support?", or any national \
+intervention benchmark question. Note: aggregates ~25 backend calls; slower than \
+single-district tools.
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
@@ -740,6 +747,7 @@ health actions.
 | Annual totals / year-over-year comparison | get_year_over_year_comparison | year_over_year |
 | Colombo sub-district / DS zone targeting | get_colombo_ds_breakdown | get_demographic_hotspots |
 | Field team capacity / PHI workload | get_field_response_capacity | get_outbreak_alerts |
+| Best/worst outbreak responders nationally | evaluate_national_intervention_effectiveness | get_intervention_history |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
@@ -1045,6 +1053,27 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="evaluate_national_intervention_effectiveness",
+                description=(
+                    "Rank all 25 Sri Lanka districts by how effectively they control dengue "
+                    "outbreaks — effectiveness score, avg weeks to post-peak trough, avg decline %, "
+                    "response events. Use for 'which districts respond best?', 'where is vector "
+                    "control most effective?', 'national intervention benchmark', or to identify "
+                    "districts needing capacity support. Note: aggregates ~25 calls; slower than "
+                    "single-district tools."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "top_n": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="Number of top and bottom performers to return (default 5, max 12).",
+                        ),
+                    },
+                    required=[],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description=(
                     "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
@@ -1103,6 +1132,7 @@ def _build_tool_map():
         get_year_over_year_comparison,
         get_colombo_ds_breakdown,
         get_field_response_capacity,
+        evaluate_national_intervention_effectiveness,
         year_over_year,
     )
     return {
@@ -1124,6 +1154,7 @@ def _build_tool_map():
         "get_year_over_year_comparison": get_year_over_year_comparison,
         "get_colombo_ds_breakdown": get_colombo_ds_breakdown,
         "get_field_response_capacity": get_field_response_capacity,
+        "evaluate_national_intervention_effectiveness": evaluate_national_intervention_effectiveness,
     }
 
 
