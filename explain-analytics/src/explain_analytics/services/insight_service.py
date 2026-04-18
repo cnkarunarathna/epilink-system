@@ -627,6 +627,7 @@ class ExplainabilityService:
                 rainfall_mm_7d=sig.rainfall_mm_7d,
                 temperature_c_7d=sig.temperature_c_7d,
                 wow_case_change_pct=sig.wow_case_change_pct,
+                feature_importances=sig.feature_importances or None,
             )
 
         baseline = self._generate_rule_based_insight(payload, doc_refs)
