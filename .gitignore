@@ -33,6 +33,5 @@ Desktop.ini
 *.csv
 
 # DOCS
-docs/
 python-service.txt
 generate_weekly_forecast.txt
