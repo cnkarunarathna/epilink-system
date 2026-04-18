@@ -659,6 +659,9 @@ development accelerates above 28 °C. Extrinsic incubation period is \
 historically account for the majority of national cases.
 
 ## Available Analytics Tools
+- **get_national_briefing**: National-level aggregate — total cases, critical/\
+high-risk district counts, top hotspots, national WoW%, trend direction. \
+No parameters needed. Use first for country-wide questions.
 - **compare_districts**: Side-by-side latest cases, WoW%, 4-week avg, and \
 risk level for multiple districts. Pass an empty string to compare all.
 - **year_over_year**: 12-week timeseries with WoW changes, peak detection, \
@@ -697,6 +700,7 @@ health actions.
 ## Tool Selection Guide
 | Question type | Primary tool | Secondary tool |
 |---|---|---|
+| National/country-wide situation | get_national_briefing | compare_districts |
 | Current status for one district | get_district_details | year_over_year |
 | Compare two or more districts | compare_districts | get_growth_rate |
 | Weather / climate impact | get_weather_correlation | get_district_details |
@@ -884,6 +888,15 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_national_briefing",
+                description=(
+                    "Get a national-level dengue situation summary across all Sri Lanka districts. "
+                    "Use for questions about the overall country situation, total case burden, "
+                    "how many districts are high-risk, or a national briefing. No parameters needed."
+                ),
+                parameters=_t.Schema(type=_t.Type.OBJECT, properties={}, required=[]),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description=(
                     "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
@@ -932,6 +945,7 @@ def _build_tool_map():
         get_growth_rate,
         get_intervention_history,
         get_model_performance_metrics,
+        get_national_briefing,
         get_outbreak_alerts,
         get_seasonal_pattern,
         get_weather_correlation,
@@ -949,6 +963,7 @@ def _build_tool_map():
         "get_intervention_history": get_intervention_history,
         "get_model_performance_metrics": get_model_performance_metrics,
         "get_demographic_hotspots": get_demographic_hotspots,
+        "get_national_briefing": get_national_briefing,
     }
 
 
@@ -1031,7 +1046,7 @@ class AgenticInsightService:
             return json.dumps({"error": f"Unknown tool: {name}"})
         try:
             # Tools that take no arguments
-            if name in ("get_weather_correlation", "get_outbreak_alerts"):
+            if name in ("get_weather_correlation", "get_outbreak_alerts", "get_national_briefing"):
                 return fn()
             return fn(**args)
         except Exception as exc:

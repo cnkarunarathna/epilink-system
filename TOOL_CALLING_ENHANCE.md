@@ -27,7 +27,7 @@ Key files:
 
 ---
 
-## Phase 1 — National Situational Awareness
+## Phase 1 — National Situational Awareness ✅ DONE
 
 **Goal:** Allow the chatbot to answer national-level questions across all 25 Sri Lanka districts
 in a single call instead of requiring per-district queries.
@@ -546,7 +546,7 @@ _t.FunctionDeclaration(
 
 | Phase | Tool | Complexity | NestJS Dependency |
 |-------|------|-----------|-------------------|
-| 1 | `get_national_briefing` | Low | `GET /analytics/summary` |
+| 1 | `get_national_briefing` ✅ | Low | `GET /analytics/summary` |
 | 2 | `get_weekly_ml_forecast` | Low | `GET /analytics/advanced/weekly-forecast` |
 | 3 | `get_rapid_hotspots` | Low | `GET /analytics/advanced/hotspots` |
 | 4 | `get_historical_range` | Low | `GET /analytics/historical/range` |

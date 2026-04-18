@@ -1521,6 +1521,117 @@ def get_demographic_hotspots(district: str) -> str:
     )
 
 
+def get_national_briefing() -> str:
+    """Get a national-level dengue situation summary across all districts.
+
+    Use this when the user asks about the overall/national situation, total case burden,
+    how many districts are at high risk, or wants a country-wide briefing.
+    No arguments needed.
+    """
+    data = _api_get("/analytics/summary")
+    if not data:
+        return json.dumps({"error": "Failed to fetch national summary"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No national summary data available"})
+
+    # If the endpoint returns per-district rows, aggregate them
+    if isinstance(data, list) and len(rows) > 1:
+        total_cases = sum(r.get("cases", 0) or 0 for r in rows)
+        all_wows: list[float] = []
+        rising, falling, stable_count = [], [], []
+        critical_districts, high_districts = [], []
+
+        for r in rows:
+            name = r.get("district", "Unknown")
+            cases = r.get("cases", 0) or 0
+            wow = r.get("wow_change_pct") or r.get("wowChangePct")
+            if wow is not None:
+                wow = float(wow)
+                all_wows.append(wow)
+                if wow > 10:
+                    rising.append(name)
+                elif wow < -10:
+                    falling.append(name)
+                else:
+                    stable_count.append(name)
+
+            if cases >= 100:
+                critical_districts.append({"district": name, "cases": cases})
+            elif cases >= 50:
+                high_districts.append({"district": name, "cases": cases})
+
+        critical_districts.sort(key=lambda d: d["cases"], reverse=True)
+        high_districts.sort(key=lambda d: d["cases"], reverse=True)
+        top_hotspots = (critical_districts + high_districts)[:5]
+
+        national_wow = round(sum(all_wows) / len(all_wows), 1) if all_wows else None
+        if national_wow is not None:
+            trend_direction = (
+                "rising" if national_wow > 5 else "falling" if national_wow < -5 else "stable"
+            )
+        else:
+            trend_direction = "unknown"
+
+        summary_line = (
+            f"National total: {total_cases} cases across {len(rows)} districts. "
+            f"{len(critical_districts)} critical, {len(high_districts)} high-burden. "
+            f"{len(rising)} rising, {len(stable_count)} stable, {len(falling)} falling. "
+            f"National avg WoW: {('+' if (national_wow or 0) >= 0 else '')}{national_wow}%."
+            if national_wow is not None
+            else f"National total: {total_cases} cases across {len(rows)} districts. "
+            f"{len(critical_districts)} critical, {len(high_districts)} high-burden."
+        )
+
+        return json.dumps(
+            {
+                "total_cases": total_cases,
+                "districts_analyzed": len(rows),
+                "critical_count": len(critical_districts),
+                "high_risk_count": len(high_districts),
+                "top_hotspots": top_hotspots,
+                "national_wow_pct": national_wow,
+                "trend_direction": trend_direction,
+                "districts_rising": rising,
+                "districts_falling": falling,
+                "districts_stable": stable_count,
+                "summary": summary_line,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    # Single-object summary response from a dedicated endpoint
+    summary = rows[0]
+    total_cases = summary.get("total_cases") or summary.get("totalCases", 0)
+    critical_count = summary.get("critical_count") or summary.get("criticalCount", 0)
+    high_risk_count = summary.get("high_risk_count") or summary.get("highRiskCount", 0)
+    national_wow = summary.get("national_wow_pct") or summary.get("nationalWowPct")
+    trend_direction = summary.get("trend_direction") or summary.get("trendDirection", "unknown")
+    top_hotspots = summary.get("top_hotspots") or summary.get("topHotspots") or []
+
+    summary_line = (
+        f"National total: {total_cases} cases. "
+        f"{critical_count} critical districts, {high_risk_count} high-risk. "
+        f"Trend: {trend_direction}."
+    )
+
+    return json.dumps(
+        {
+            "total_cases": total_cases,
+            "critical_count": critical_count,
+            "high_risk_count": high_risk_count,
+            "top_hotspots": top_hotspots,
+            "national_wow_pct": national_wow,
+            "trend_direction": trend_direction,
+            "summary": summary_line,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1534,4 +1645,5 @@ ALL_TOOLS = [
     get_intervention_history,
     get_model_performance_metrics,
     get_demographic_hotspots,
+    get_national_briefing,
 ]
