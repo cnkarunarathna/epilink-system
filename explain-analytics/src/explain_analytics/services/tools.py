@@ -2116,6 +2116,70 @@ def get_colombo_ds_breakdown(year: int = 0, week: int = 0) -> str:
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
+def get_field_response_capacity(district: str = "") -> str:
+    """Get field team (PHI) workload and response capacity for a district or nationally.
+
+    Use when asked about operational response: "are field teams coping?",
+    "how many uninvestigated cases in Kandy?", "PHI workload in Gampaha",
+    "is the response capacity sufficient?", or "task completion rate".
+
+    Args:
+        district: District name. Empty string returns national overview.
+    """
+    params = {"district": district.strip()} if district.strip() else None
+    data = _api_get("/analytics/field-capacity", params)
+    if not data:
+        return json.dumps({"error": "Failed to fetch field capacity data"})
+
+    if "error" in data:
+        return json.dumps(data)
+
+    scope = data.get("scope", "district")
+    task_stats = data.get("task_stats", {})
+    phi_active: int = data.get("phi_active", 0)
+    phi_total: int = data.get("phi_total", 0)
+    active_workload: int = data.get("active_workload", 0)
+    overdue: int = data.get("overdue_tasks", 0)
+    completion_rate: int = data.get("completion_rate", 0)
+    cases_per_phi = data.get("cases_per_phi")
+    capacity = data.get("capacity_assessment", "unknown")
+
+    label = data.get("district", "National") if scope == "district" else "National"
+
+    status_breakdown = ", ".join(
+        f"{k}: {v}" for k, v in task_stats.items() if k != "total" and v
+    )
+
+    phi_str = f"{phi_active} active (of {phi_total} total)"
+    cpp_str = f"{cases_per_phi} active tasks/PHI" if cases_per_phi is not None else "N/A"
+
+    summary = (
+        f"{label} field capacity: {phi_str} PHIs. "
+        f"Active workload: {active_workload} tasks ({status_breakdown}). "
+        f"Overdue: {overdue}. Completion rate: {completion_rate}%. "
+        f"Workload ratio: {cpp_str}. "
+        f"Capacity assessment: {capacity.upper()}."
+    )
+
+    return json.dumps(
+        {
+            "scope": scope,
+            "district": label,
+            "phi_active": phi_active,
+            "phi_total": phi_total,
+            "task_stats": task_stats,
+            "active_workload": active_workload,
+            "overdue_tasks": overdue,
+            "completion_rate": completion_rate,
+            "cases_per_phi": cases_per_phi,
+            "capacity_assessment": capacity,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -2135,4 +2199,5 @@ ALL_TOOLS = [
     get_historical_range,
     get_year_over_year_comparison,
     get_colombo_ds_breakdown,
+    get_field_response_capacity,
 ]

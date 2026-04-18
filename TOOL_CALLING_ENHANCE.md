@@ -415,7 +415,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 7 — Field Response Capacity
+## Phase 7 — Field Response Capacity ✅ DONE
 
 **Goal:** Integrate field operations data (tasks + PHI workload) so the chatbot can answer
 operational questions about whether the health system response is keeping pace with case burden.
@@ -552,7 +552,7 @@ _t.FunctionDeclaration(
 | 4 | `get_historical_range` ✅ | Low | `GET /analytics/historical/range` |
 | 5 | `get_year_over_year_comparison` ✅ | Medium | `GET /analytics/historical/yearly-summary` |
 | 6 | `get_colombo_ds_breakdown` ✅ | Medium | `GET /analytics/colombo/ds-breakdown` |
-| 7 | `get_field_response_capacity` | Medium | `GET /tasks/stats` + `/users` |
+| 7 | `get_field_response_capacity` ✅ | Medium | `GET /public/analytics/field-capacity` |
 | 8 | `evaluate_national_intervention_effectiveness` | High | Batches existing timeseries |
 
 **Total new tools after all phases: 19 (11 existing + 8 new)**

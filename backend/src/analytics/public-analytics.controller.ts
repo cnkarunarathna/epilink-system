@@ -82,6 +82,11 @@ export class PublicAnalyticsController {
 
   // ── DS-Level Disaggregation — Colombo District ────────────────────
 
+  @Get('field-capacity')
+  async fieldCapacity(@Query('district') district?: string) {
+    return this.analyticsService.getFieldCapacity(district);
+  }
+
   @Get('colombo/ds-breakdown')
   async colomboDsBreakdown(
     @Query('year') year?: string,

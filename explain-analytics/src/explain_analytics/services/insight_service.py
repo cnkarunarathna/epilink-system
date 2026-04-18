@@ -702,6 +702,11 @@ direction. Use for "is this year worse than last?", "annual totals", year-level 
 Secretariat (DS) zone — predicted cases, risk level, share of district burden, \
 confidence interval per zone. Use ONLY for Colombo sub-district questions: "which \
 part of Colombo is worst?", "DS zone breakdown", resource allocation within Colombo.
+- **get_field_response_capacity**: PHI headcount, task backlog by status, overdue \
+tasks, completion rate, and capacity assessment (adequate/strained/overwhelmed) for \
+a district or nationally. Use for operational questions: "are field teams coping?", \
+"PHI workload in Kandy", "task completion rate", "uninvestigated cases", \
+"is the response capacity sufficient?".
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
@@ -734,6 +739,7 @@ health actions.
 | Specific time window / outbreak period | get_historical_range | year_over_year |
 | Annual totals / year-over-year comparison | get_year_over_year_comparison | year_over_year |
 | Colombo sub-district / DS zone targeting | get_colombo_ds_breakdown | get_demographic_hotspots |
+| Field team capacity / PHI workload | get_field_response_capacity | get_outbreak_alerts |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
@@ -995,6 +1001,26 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_field_response_capacity",
+                description=(
+                    "Get PHI field team headcount, task backlog by status, overdue tasks, "
+                    "completion rate, and capacity assessment for a district or nationally. "
+                    "Use for operational questions: 'are field teams coping?', 'PHI workload "
+                    "in Kandy', 'task completion rate', 'uninvestigated/overdue cases', or "
+                    "'is the response capacity sufficient?'."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": _t.Schema(
+                            type=_t.Type.STRING,
+                            description="District name (e.g. 'Kandy'). Leave empty for national overview.",
+                        ),
+                    },
+                    required=[],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="get_colombo_ds_breakdown",
                 description=(
                     "Get dengue case breakdown by Divisional Secretariat (DS) zones within "
@@ -1076,6 +1102,7 @@ def _build_tool_map():
         get_weather_correlation,
         get_year_over_year_comparison,
         get_colombo_ds_breakdown,
+        get_field_response_capacity,
         year_over_year,
     )
     return {
@@ -1096,6 +1123,7 @@ def _build_tool_map():
         "get_historical_range": get_historical_range,
         "get_year_over_year_comparison": get_year_over_year_comparison,
         "get_colombo_ds_breakdown": get_colombo_ds_breakdown,
+        "get_field_response_capacity": get_field_response_capacity,
     }
 
 
