@@ -77,11 +77,18 @@ class RAGService:
             district, model_risk_score, rainfall_mm_7d, temperature_c_7d,
             wow_case_change_pct, feature_importances=feature_importances,
         )
+        # High/critical risk: prefer live surveillance data; lower risk: search all
+        risk = _risk_label(model_risk_score)
+        preferred_source = "surveillance" if risk in ("high", "critical") else None
         try:
-            mode = settings.rag_retrieval_mode
-            if mode == "dense":
+            if preferred_source:
+                results = self._filtered_hybrid_search(query, k, preferred_source)
+                # Fall back to unfiltered when surveillance corpus returns too few docs
+                if len(results) < 2:
+                    results = self._hybrid_search(query, k)
+            elif settings.rag_retrieval_mode == "dense":
                 results = self._dense_search(self._embed_dense(query), k)
-            elif mode == "sparse":
+            elif settings.rag_retrieval_mode == "sparse":
                 results = self._sparse_search(self._embed_sparse(query), k)
             else:
                 results = self._hybrid_search(query, k)
@@ -112,10 +119,15 @@ class RAGService:
             return []
 
         k = top_k or settings.rag_top_k
+        # Explicit caller-supplied type takes priority; otherwise infer from query text
+        effective_source_type = source_type or self._infer_query_intent(query)
         try:
             mode = settings.rag_retrieval_mode
-            if source_type:
-                results = self._filtered_hybrid_search(query, k, source_type)
+            if effective_source_type:
+                results = self._filtered_hybrid_search(query, k, effective_source_type)
+                # Fall back to unfiltered search when the filtered set is too small
+                if not results:
+                    results = self._hybrid_search(query, k)
             elif mode == "dense":
                 results = self._dense_search(self._embed_dense(query), k)
             elif mode == "sparse":
@@ -437,6 +449,29 @@ class RAGService:
             for score, d in decayed
             if score >= _MIN_RELEVANCE_SCORE
         ]
+
+    # ── Intent inference ───────────────────────────────────────────
+
+    _CLINICAL_KEYWORDS: frozenset[str] = frozenset([
+        "treatment", "fluid", "hospital", "warning signs", "platelet", "clinical",
+        "management", "diagnosis", "ns1", "pcr", "lab", "serology", "vaccine",
+        "dengvaxia", "symptoms", "dhf", "dss", "shock", "pregnancy",
+    ])
+    _SURVEILLANCE_KEYWORDS: frozenset[str] = frozenset([
+        "cases", "outbreak", "trend", "week", "count", "surge", "wow",
+        "district", "report", "notification", "cluster", "spread",
+    ])
+
+    def _infer_query_intent(self, query: str) -> str | None:
+        """Return 'knowledge', 'surveillance', or None (search all) based on query terms."""
+        lower = query.lower()
+        clinical_hits = sum(1 for k in self._CLINICAL_KEYWORDS if k in lower)
+        surveillance_hits = sum(1 for k in self._SURVEILLANCE_KEYWORDS if k in lower)
+        if clinical_hits >= 2 and clinical_hits > surveillance_hits:
+            return "knowledge"
+        if surveillance_hits >= 2 and surveillance_hits > clinical_hits:
+            return "surveillance"
+        return None
 
     # ── Query construction ──────────────────────────────────────────
 

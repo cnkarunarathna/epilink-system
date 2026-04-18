@@ -245,7 +245,7 @@ rag_chunk_overlap: int = 60
 
 ---
 
-## Phase 3 — Source-Type Aware Contextual Filtering
+## Phase 3 — Source-Type Aware Contextual Filtering ✅ DONE
 
 **Goal:** Match query intent to document type so surveillance data does not pollute
 guideline retrieval and vice versa.
@@ -706,7 +706,7 @@ at least one vote has been recorded (`feedback_ratio` defaults to 0.5 → multip
 |---|---|---|---|---|
 | 1 | SHAP-driven query construction | ✅ Done | Low | High — immediate recall improvement |
 | 2 | Document chunking | Medium (2 days) | Medium (requires re-seed) | High — most impactful for precision |
-| 3 | Source-type contextual filtering | Low (0.5 day) | Low | Medium — guards against cross-contamination |
+| 3 | Source-type contextual filtering | ✅ Done | Low | Medium — guards against cross-contamination |
 | 4 | Per-source recency decay | Low (0.5 day) | Low | Medium — prevents old surveillance from polluting |
 | 5 | HyDE query expansion | Low (1 day) | Low (opt-in flag) | Medium — best for edge-case district scenarios |
 | 6 | Cross-encoder re-ranking | Medium (1.5 days) | Low (opt-in flag) | Medium — precision lift on critical-risk queries |
