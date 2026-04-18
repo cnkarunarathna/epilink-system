@@ -359,6 +359,38 @@ class RAGService:
             values=result.values.tolist(),
         )
 
+    # ── HyDE query expansion ────────────────────────────────────────
+
+    _HYDE_PROMPT = (
+        "You are a dengue epidemiology expert. Write a 2–3 sentence excerpt from a "
+        "Ministry of Health dengue risk management guideline that would be the MOST "
+        "relevant document for the following situation. Do not mention the district name. "
+        "Write only the guideline text, no preamble.\n\nSituation: {query}"
+    )
+
+    def _expand_query_with_hyde(self, query: str) -> str:
+        """Generate a hypothetical guideline excerpt and return it as the search query.
+
+        Dense embedding of a document-style hypothesis typically outperforms embedding
+        a keyword bag because the vector space was trained on document-like text.
+        Falls back to the original query on any error or when Gemini is unavailable.
+        """
+        if not settings.gemini_api_key:
+            return query
+        try:
+            from google import genai
+            client = genai.Client(api_key=settings.gemini_api_key)
+            response = client.models.generate_content(
+                model=settings.llm_model,
+                contents=[{"role": "user", "parts": [{"text": self._HYDE_PROMPT.format(query=query)}]}],
+                config={"temperature": 0.1, "max_output_tokens": 150},
+            )
+            hypothesis = (response.text or "").strip()
+            return hypothesis if len(hypothesis) > 30 else query
+        except Exception as exc:
+            print(f"[RAGService] HyDE expansion failed: {exc}")
+            return query
+
     # ── Search strategies ───────────────────────────────────────────
 
     def _filtered_hybrid_search(
@@ -367,8 +399,9 @@ class RAGService:
         """RRF hybrid search filtered by source_type payload field."""
         from qdrant_client.models import FieldCondition, Filter, FusionQuery, MatchValue, Prefetch
 
-        dense_vec = self._embed_dense(query)
-        sparse_vec = self._embed_sparse(query)
+        dense_query = self._expand_query_with_hyde(query) if settings.rag_hyde_enabled else query
+        dense_vec = self._embed_dense(dense_query)
+        sparse_vec = self._embed_sparse(query)  # BM25 always uses original keywords
         payload_filter = Filter(
             must=[FieldCondition(key="source_type", match=MatchValue(value=source_type))]
         )
@@ -402,8 +435,9 @@ class RAGService:
         """RRF fusion of dense and sparse search via Qdrant's native query API."""
         from qdrant_client.models import FusionQuery, Prefetch, SparseVector
 
-        dense_vec = self._embed_dense(query)
-        sparse_vec = self._embed_sparse(query)
+        dense_query = self._expand_query_with_hyde(query) if settings.rag_hyde_enabled else query
+        dense_vec = self._embed_dense(dense_query)
+        sparse_vec = self._embed_sparse(query)  # BM25 always uses original keywords
 
         results = self._client.query_points(
             collection_name=settings.qdrant_collection,

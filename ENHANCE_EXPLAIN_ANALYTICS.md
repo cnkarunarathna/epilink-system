@@ -425,7 +425,7 @@ def _apply_recency_decay(self, docs: list[DocumentReference]) -> list[DocumentRe
 
 ---
 
-## Phase 5 — HyDE Query Expansion (Hypothetical Document Embeddings)
+## Phase 5 — HyDE Query Expansion (Hypothetical Document Embeddings) ✅ DONE
 
 **Goal:** Improve semantic recall for edge-case and under-represented district conditions by
 generating a hypothetical relevant document before embedding, rather than embedding the raw
@@ -708,7 +708,7 @@ at least one vote has been recorded (`feedback_ratio` defaults to 0.5 → multip
 | 2 | Document chunking | ✅ Done | Medium (requires re-seed) | High — most impactful for precision |
 | 3 | Source-type contextual filtering | ✅ Done | Low | Medium — guards against cross-contamination |
 | 4 | Per-source recency decay | ✅ Done | Low | Medium — prevents old surveillance from polluting |
-| 5 | HyDE query expansion | Low (1 day) | Low (opt-in flag) | Medium — best for edge-case district scenarios |
+| 5 | HyDE query expansion | ✅ Done | Low (opt-in flag) | Medium — best for edge-case district scenarios |
 | 6 | Cross-encoder re-ranking | Medium (1.5 days) | Low (opt-in flag) | Medium — precision lift on critical-risk queries |
 | 7 | Relevance feedback loop | Medium (2 days) | Low | Long-term — compounding value over time |
 
