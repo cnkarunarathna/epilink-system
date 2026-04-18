@@ -2034,6 +2034,88 @@ def get_year_over_year_comparison(district: str, years: int = 3) -> str:
     )
 
 
+def get_colombo_ds_breakdown(year: int = 0, week: int = 0) -> str:
+    """Get dengue case breakdown by Divisional Secretariat (DS) zones within Colombo.
+
+    Use ONLY for Colombo-specific sub-district questions: "which part of Colombo
+    is most affected?", "DS zone breakdown in Colombo", "Colombo sub-district
+    hotspots", or resource allocation within Colombo.
+
+    Args:
+        year: ISO year (default: current year).
+        week: ISO week number (default: latest available week).
+    """
+    params: dict = {}
+    if year > 0:
+        params["year"] = year
+    if week > 0:
+        params["week"] = week
+
+    data = _api_get("/analytics/colombo/ds-breakdown", params or None)
+    if not data:
+        return json.dumps({"error": "Failed to fetch Colombo DS breakdown"})
+
+    weights_data = _api_get("/analytics/colombo/ds-breakdown/weights")
+
+    ds_breakdown: list = data.get("ds_breakdown", [])
+    district_total: int = data.get("district_predicted_cases", 0)
+    result_year: int = data.get("year", year)
+    result_week: int = data.get("week", week)
+
+    # Annotate each DS zone with rank and risk description
+    annotated = []
+    for rank, ds in enumerate(ds_breakdown, start=1):
+        risk = ds.get("risk_level", "unknown")
+        cases = ds.get("predicted_cases", 0)
+        pct = round(ds.get("proportion", 0) * 100, 1)
+        ci = ds.get("confidence_interval", {})
+        annotated.append({
+            "rank": rank,
+            "ds_division": ds.get("ds_division"),
+            "predicted_cases": cases,
+            "share_of_district_pct": pct,
+            "risk_level": risk,
+            "confidence_interval": {
+                "lower": ci.get("lower", 0),
+                "upper": ci.get("upper", 0),
+            },
+        })
+
+    # Priority zones: high/critical risk
+    priority_zones = [z for z in annotated if z["risk_level"] in ("high", "critical")]
+
+    # Top 3 by cases
+    top3 = [z["ds_division"] for z in annotated[:3]]
+
+    summary = (
+        f"Colombo DS breakdown (Year {result_year}, Week {result_week}): "
+        f"District total {district_total} predicted cases across "
+        f"{len(annotated)} DS divisions. "
+        f"Top zones: {', '.join(top3)}. "
+        f"Priority (high/critical risk): "
+        f"{len(priority_zones)} zone(s) — "
+        f"{', '.join(z['ds_division'] for z in priority_zones) or 'none'}."
+    )
+
+    result: dict = {
+        "district": "Colombo",
+        "year": result_year,
+        "week": result_week,
+        "district_predicted_cases": district_total,
+        "ds_division_count": len(annotated),
+        "disaggregation_method": data.get("disaggregation_method"),
+        "ds_breakdown": annotated,
+        "priority_zones": priority_zones,
+        "summary": summary,
+    }
+
+    if weights_data:
+        result["weight_formula"] = weights_data.get("weight_formula")
+        result["weight_sources"] = weights_data.get("sources", [])
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -2052,4 +2134,5 @@ ALL_TOOLS = [
     get_rapid_hotspots,
     get_historical_range,
     get_year_over_year_comparison,
+    get_colombo_ds_breakdown,
 ]

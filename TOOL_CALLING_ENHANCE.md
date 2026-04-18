@@ -345,7 +345,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 6 — Colombo Sub-District Breakdown
+## Phase 6 — Colombo Sub-District Breakdown ✅ DONE
 
 **Goal:** Expose intra-district granularity for Colombo, Sri Lanka's largest and most
 densely populated district, where aggregated district-level numbers hide critical
@@ -551,7 +551,7 @@ _t.FunctionDeclaration(
 | 3 | `get_rapid_hotspots` ✅ | Low | `GET /analytics/advanced/hotspots` |
 | 4 | `get_historical_range` ✅ | Low | `GET /analytics/historical/range` |
 | 5 | `get_year_over_year_comparison` ✅ | Medium | `GET /analytics/historical/yearly-summary` |
-| 6 | `get_colombo_ds_breakdown` | Medium | `GET /analytics/colombo/ds-breakdown` |
+| 6 | `get_colombo_ds_breakdown` ✅ | Medium | `GET /analytics/colombo/ds-breakdown` |
 | 7 | `get_field_response_capacity` | Medium | `GET /tasks/stats` + `/users` |
 | 8 | `evaluate_national_intervention_effectiveness` | High | Batches existing timeseries |
 

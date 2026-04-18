@@ -698,6 +698,10 @@ specific time window outside the standard recent weeks.
 - **get_year_over_year_comparison**: Annual dengue totals for a district across \
 multiple years — total cases, peak week, avg weekly, YoY% change, multi-year trend \
 direction. Use for "is this year worse than last?", "annual totals", year-level aggregates.
+- **get_colombo_ds_breakdown**: Intra-district breakdown for Colombo by Divisional \
+Secretariat (DS) zone — predicted cases, risk level, share of district burden, \
+confidence interval per zone. Use ONLY for Colombo sub-district questions: "which \
+part of Colombo is worst?", "DS zone breakdown", resource allocation within Colombo.
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
@@ -729,6 +733,7 @@ health actions.
 | Sub-district zone targeting | get_demographic_hotspots | get_district_details |
 | Specific time window / outbreak period | get_historical_range | year_over_year |
 | Annual totals / year-over-year comparison | get_year_over_year_comparison | year_over_year |
+| Colombo sub-district / DS zone targeting | get_colombo_ds_breakdown | get_demographic_hotspots |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
@@ -990,6 +995,30 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_colombo_ds_breakdown",
+                description=(
+                    "Get dengue case breakdown by Divisional Secretariat (DS) zones within "
+                    "Colombo district. Use ONLY for Colombo sub-district questions: 'which "
+                    "part of Colombo is worst?', 'DS zone breakdown', 'sub-district hotspots "
+                    "in Colombo', or resource allocation within Colombo. Not applicable to "
+                    "other districts."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "year": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="ISO year. Default: current year (omit or pass 0).",
+                        ),
+                        "week": _t.Schema(
+                            type=_t.Type.INTEGER,
+                            description="ISO week number. Default: latest available (omit or pass 0).",
+                        ),
+                    },
+                    required=[],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description=(
                     "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
@@ -1046,6 +1075,7 @@ def _build_tool_map():
         get_seasonal_pattern,
         get_weather_correlation,
         get_year_over_year_comparison,
+        get_colombo_ds_breakdown,
         year_over_year,
     )
     return {
@@ -1065,6 +1095,7 @@ def _build_tool_map():
         "get_rapid_hotspots": get_rapid_hotspots,
         "get_historical_range": get_historical_range,
         "get_year_over_year_comparison": get_year_over_year_comparison,
+        "get_colombo_ds_breakdown": get_colombo_ds_breakdown,
     }
 
 
