@@ -12,6 +12,7 @@ from explain_analytics.models import (
     ChatResponse,
     ChatSessionHistoryResponse,
     ChatMessage,
+    DocumentFeedbackRequest,
     ExplainInsightRequest,
     ExplainInsightResponse,
     NationalSummaryResponse,
@@ -400,3 +401,23 @@ def rag_etl_run(
             detail="RAG service is not ready. Ensure EXPLAIN_RAG_ENABLED=true and Qdrant is reachable.",
         )
     return etl_service.run()
+
+
+@app.post("/v1/rag/feedback", status_code=200)
+def rag_feedback(req: DocumentFeedbackRequest) -> dict[str, str]:
+    """Record a thumbs-up or thumbs-down vote on a retrieved document.
+
+    The vote is persisted in the document's Qdrant payload as feedback_positive,
+    feedback_negative, and feedback_ratio. On subsequent retrievals the ratio acts
+    as a score multiplier (ratio=1 → ×1.2 boost; ratio=0 → ×0.8 penalty), so
+    relevance quality compounds over time without retraining embeddings.
+
+    point_id is returned in DocumentReference.point_id on every retrieve response.
+    """
+    if not rag_service.is_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="RAG service is not ready.",
+        )
+    rag_service.record_feedback(req.point_id, req.vote)
+    return {"status": "recorded"}
