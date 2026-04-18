@@ -325,6 +325,8 @@ class RAGService:
                 published_date=r.payload.get("published_date"),
                 excerpt=r.payload["content"][:800],
                 relevance_score=round(float(r.score), 3),
+                source_type=r.payload.get("source_type"),
+                chunk_index=r.payload.get("chunk_index"),
             )
             for r in results
             if r.score >= _MIN_RELEVANCE_SCORE
@@ -363,6 +365,8 @@ class RAGService:
                 published_date=r.payload.get("published_date"),
                 excerpt=r.payload["content"][:600],
                 relevance_score=round(float(r.score), 3),
+                source_type=r.payload.get("source_type"),
+                chunk_index=r.payload.get("chunk_index"),
             )
             for r in results
             if r.score >= _MIN_RELEVANCE_SCORE
@@ -383,6 +387,8 @@ class RAGService:
                 published_date=r.payload.get("published_date"),
                 excerpt=r.payload["content"][:600],
                 relevance_score=round(float(r.score), 3),
+                source_type=r.payload.get("source_type"),
+                chunk_index=r.payload.get("chunk_index"),
             )
             for r in results
         ]
@@ -404,33 +410,51 @@ class RAGService:
                 published_date=r.payload.get("published_date"),
                 excerpt=r.payload["content"][:600],
                 relevance_score=round(float(r.score), 3),
+                source_type=r.payload.get("source_type"),
+                chunk_index=r.payload.get("chunk_index"),
             )
             for r in results
         ]
 
     # ── Recency decay ───────────────────────────────────────────────
 
+    # Per-source decay constants keyed to config attribute names.
+    _DECAY_CONFIG_KEY: dict[str, str] = {
+        "surveillance": "rag_recency_decay_surveillance",
+        "knowledge":    "rag_recency_decay_knowledge",
+        "guideline":    "rag_recency_decay_guideline",
+    }
+
     def _apply_recency_decay(
         self, docs: list[DocumentReference]
     ) -> list[DocumentReference]:
         """Re-score documents with a time-decay factor: score × e^(-λ × days_since_published).
 
+        λ is chosen per source_type:
+          surveillance → 0.05  (~14-day half-life, case data goes stale fast)
+          knowledge    → 0.0001 (~19-year half-life, clinical guidelines stay valid)
+          guideline    → 0.0003 (~6-year half-life, MoH policy docs)
+          other/None   → rag_recency_decay_lambda (default 0.001)
+
         Documents without a published_date are returned unchanged.
         Results are re-sorted by decayed score and re-filtered by _MIN_RELEVANCE_SCORE.
         """
-        lam = settings.rag_recency_decay_lambda
-        if lam == 0:
+        default_lam = settings.rag_recency_decay_lambda
+        if default_lam == 0:
             return docs
 
         today = date.today()
         decayed: list[tuple[float, DocumentReference]] = []
         for doc in docs:
             raw = doc.relevance_score if doc.relevance_score is not None else 1.0
-            if doc.published_date:
+            config_key = self._DECAY_CONFIG_KEY.get(doc.source_type or "")
+            lam = getattr(settings, config_key, default_lam) if config_key else default_lam
+
+            if doc.published_date and lam > 0:
                 try:
                     pub = datetime.strptime(doc.published_date, "%Y-%m-%d").date()
-                    days = (today - pub).days
-                    adjusted = raw * math.exp(-lam * max(days, 0))
+                    days = max((today - pub).days, 0)
+                    adjusted = raw * math.exp(-lam * days)
                 except ValueError:
                     adjusted = raw
             else:
@@ -445,6 +469,8 @@ class RAGService:
                 published_date=d.published_date,
                 excerpt=d.excerpt,
                 relevance_score=round(score, 3),
+                source_type=d.source_type,
+                chunk_index=d.chunk_index,
             )
             for score, d in decayed
             if score >= _MIN_RELEVANCE_SCORE

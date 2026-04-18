@@ -15,6 +15,8 @@ class DocumentReference(BaseModel):
     published_date: str | None = None
     excerpt: str
     relevance_score: float | None = Field(default=None, ge=0, le=1)
+    source_type: str | None = None
+    chunk_index: int | None = None
 
 
 class DistrictSignal(BaseModel):
