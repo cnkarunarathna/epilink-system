@@ -692,6 +692,9 @@ from post-peak case declines (≥30% drops) in the timeseries.
 actual cases, absolute/percentage error, naive-persistence MAE benchmark.
 - **get_demographic_hotspots**: Sub-district zone risk breakdown with \
 intervention priority ranking by settlement type (urban/coastal/rural).
+- **get_historical_range**: Case data for a custom date range for a district \
+(start_year, start_week, end_year, end_week). Use when the user specifies a \
+specific time window outside the standard recent weeks.
 
 ## Analytical Methodology
 1. **Identify the question type** — single-district detail, multi-district \
@@ -721,6 +724,7 @@ health actions.
 | Past interventions / control | get_intervention_history | year_over_year |
 | Model prediction accuracy | get_model_performance_metrics | get_district_details |
 | Sub-district zone targeting | get_demographic_hotspots | get_district_details |
+| Specific time window / outbreak period | get_historical_range | year_over_year |
 
 ## Response Format
 - **Lead with the key finding** — state the single most important insight first.
@@ -943,6 +947,25 @@ def _build_gemini_tools():
                 parameters=_t.Schema(type=_t.Type.OBJECT, properties={}, required=[]),
             ),
             _t.FunctionDeclaration(
+                name="get_historical_range",
+                description=(
+                    "Fetch dengue case data for a custom date range for a district. Use when the "
+                    "user specifies a specific time window: 'show me June to September 2024', "
+                    "'what happened in weeks 20–35', or any question outside the standard recent window."
+                ),
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": _t.Schema(type=_t.Type.STRING, description="District name."),
+                        "start_year": _t.Schema(type=_t.Type.INTEGER, description="ISO year of range start."),
+                        "start_week": _t.Schema(type=_t.Type.INTEGER, description="ISO week of range start (1–52)."),
+                        "end_year": _t.Schema(type=_t.Type.INTEGER, description="ISO year of range end."),
+                        "end_week": _t.Schema(type=_t.Type.INTEGER, description="ISO week of range end (1–52)."),
+                    },
+                    required=["district", "start_year", "start_week", "end_year", "end_week"],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description=(
                     "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
@@ -989,6 +1012,7 @@ def _build_tool_map():
         get_demographic_hotspots,
         get_district_details,
         get_growth_rate,
+        get_historical_range,
         get_intervention_history,
         get_model_performance_metrics,
         get_national_briefing,
@@ -1014,6 +1038,7 @@ def _build_tool_map():
         "get_national_briefing": get_national_briefing,
         "get_weekly_ml_forecast": get_weekly_ml_forecast,
         "get_rapid_hotspots": get_rapid_hotspots,
+        "get_historical_range": get_historical_range,
     }
 
 

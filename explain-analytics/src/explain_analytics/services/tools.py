@@ -1810,6 +1810,127 @@ def get_rapid_hotspots(top_n: int = 5) -> str:
     )
 
 
+def get_historical_range(
+    district: str,
+    start_year: int,
+    start_week: int,
+    end_year: int,
+    end_week: int,
+) -> str:
+    """Fetch dengue case data for a specific date range for a district.
+
+    Use when the user specifies a time window: "show me June to September 2024",
+    "what happened in week 20–35", "compare a specific outbreak period", or any
+    question requiring data outside the standard recent-weeks window.
+
+    Args:
+        district: District name.
+        start_year: ISO year of the range start (e.g. 2024).
+        start_week: ISO week number of range start (1–52).
+        end_year: ISO year of the range end.
+        end_week: ISO week number of range end (1–52).
+    """
+    params = {
+        "startYear": start_year,
+        "startWeek": start_week,
+        "endYear": end_year,
+        "endWeek": end_week,
+    }
+    data = _api_get("/analytics/historical/range", params)
+    if not data:
+        return json.dumps({"error": f"No data found for {district} in the specified range"})
+
+    rows = data if isinstance(data, list) else [data]
+
+    # Filter to the requested district (service returns all districts)
+    district_rows = [
+        r for r in rows if r.get("district", "").lower() == district.strip().lower()
+    ]
+    if not district_rows:
+        return json.dumps({
+            "error": f"No data for '{district}' in {start_year}-W{start_week:02d} to {end_year}-W{end_week:02d}. "
+                     f"Check the district name or date range."
+        })
+
+    # Ensure chronological order
+    district_rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+
+    # Enrich with WoW changes
+    enriched = []
+    for i, row in enumerate(district_rows):
+        cases = row.get("cases", 0) or 0
+        prev_cases = district_rows[i - 1].get("cases", 0) if i > 0 else None
+        wow: float | None = None
+        if prev_cases is not None and prev_cases > 0:
+            wow = round(((cases - prev_cases) / prev_cases) * 100, 1)
+        enriched.append({
+            "year": row.get("year"),
+            "week": row.get("week"),
+            "cases": cases,
+            "wow_change_pct": wow,
+            "temperature_c": row.get("temperature"),
+            "precipitation_mm": row.get("precipitation"),
+        })
+
+    # Aggregate stats
+    all_cases = [r["cases"] for r in enriched]
+    total_cases = sum(all_cases)
+    peak_cases = max(all_cases) if all_cases else 0
+    peak_entry = next((r for r in enriched if r["cases"] == peak_cases), None)
+
+    wows = [r["wow_change_pct"] for r in enriched if r["wow_change_pct"] is not None]
+    avg_wow = round(sum(wows) / len(wows), 1) if wows else None
+
+    # Trend across the full range (first half vs second half)
+    trend = "stable"
+    if len(enriched) >= 4:
+        mid = len(enriched) // 2
+        first_avg = sum(r["cases"] for r in enriched[:mid]) / mid
+        second_avg = sum(r["cases"] for r in enriched[mid:]) / max(len(enriched) - mid, 1)
+        if second_avg > first_avg * 1.10:
+            trend = "rising"
+        elif second_avg < first_avg * 0.90:
+            trend = "falling"
+
+    first_c = enriched[0]["cases"] if enriched else 0
+    last_c = enriched[-1]["cases"] if enriched else 0
+    period_change = (
+        round(((last_c - first_c) / max(first_c, 1)) * 100, 1) if first_c > 0 else 0.0
+    )
+
+    start_label = f"{start_year}-W{start_week:02d}"
+    end_label = f"{end_year}-W{end_week:02d}"
+    peak_label = (
+        f"W{peak_entry['week']}/{peak_entry['year']}" if peak_entry else "N/A"
+    )
+    summary = (
+        f"{district} ({start_label} → {end_label}): "
+        f"{len(enriched)} weeks, {total_cases} total cases. "
+        f"Peak: {peak_cases} cases at {peak_label}. "
+        f"Period trend: {trend} "
+        f"({'+' if period_change >= 0 else ''}{period_change}% start→end). "
+        + (f"Avg WoW: {'+' if (avg_wow or 0) >= 0 else ''}{avg_wow}%." if avg_wow is not None else "")
+    )
+
+    return json.dumps(
+        {
+            "district": district,
+            "date_range": {"start": start_label, "end": end_label},
+            "weeks_in_range": len(enriched),
+            "total_cases": total_cases,
+            "peak_cases": peak_cases,
+            "peak_entry": peak_entry,
+            "avg_wow_pct": avg_wow,
+            "trend_direction": trend,
+            "period_change_pct": period_change,
+            "weekly_data": enriched,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -1826,4 +1947,5 @@ ALL_TOOLS = [
     get_national_briefing,
     get_weekly_ml_forecast,
     get_rapid_hotspots,
+    get_historical_range,
 ]

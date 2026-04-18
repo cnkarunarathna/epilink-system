@@ -205,7 +205,7 @@ _t.FunctionDeclaration(
 
 ---
 
-## Phase 4 — Custom Date-Range Analysis
+## Phase 4 — Custom Date-Range Analysis ✅ DONE
 
 **Goal:** Remove the hardcoded 8–12 week lookback window so investigators can query
 arbitrary epidemiological periods (e.g. a specific outbreak window, a monsoon season,
@@ -549,7 +549,7 @@ _t.FunctionDeclaration(
 | 1 | `get_national_briefing` ✅ | Low | `GET /analytics/summary` |
 | 2 | `get_weekly_ml_forecast` ✅ | Low | `GET /analytics/advanced/weekly-forecast` |
 | 3 | `get_rapid_hotspots` ✅ | Low | `GET /analytics/advanced/hotspots` |
-| 4 | `get_historical_range` | Low | `GET /analytics/historical/range` |
+| 4 | `get_historical_range` ✅ | Low | `GET /analytics/historical/range` |
 | 5 | `get_year_over_year_comparison` | Medium | `GET /analytics/historical/yearly-summary` |
 | 6 | `get_colombo_ds_breakdown` | Medium | `GET /analytics/colombo/ds-breakdown` |
 | 7 | `get_field_response_capacity` | Medium | `GET /tasks/stats` + `/users` |

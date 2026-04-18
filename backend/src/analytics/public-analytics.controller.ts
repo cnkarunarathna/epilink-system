@@ -26,6 +26,21 @@ export class PublicAnalyticsController {
     return this.analyticsService.getTrends(weekCount);
   }
 
+  @Get('historical/range')
+  async historicalRange(
+    @Query('startYear') startYear?: string,
+    @Query('startWeek') startWeek?: string,
+    @Query('endYear') endYear?: string,
+    @Query('endWeek') endWeek?: string,
+  ) {
+    return this.analyticsService.getHistoricalRange(
+      startYear ? parseInt(startYear) : undefined,
+      startWeek ? parseInt(startWeek) : undefined,
+      endYear ? parseInt(endYear) : undefined,
+      endWeek ? parseInt(endWeek) : undefined,
+    );
+  }
+
   @Get('historical/districts/compare')
   async compareDistricts(@Query('districts') districts?: string) {
     const districtList = districts ? districts.split(',') : [];
