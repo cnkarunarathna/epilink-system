@@ -79,8 +79,10 @@ export default function TrendStoryChart({ data }: { data: TrendData[] }) {
                   strokeWidth: 1,
                   strokeDasharray: "4 2",
                 }}
-                formatter={(value: number) => [
-                  value.toLocaleString(),
+                formatter={(value) => [
+                  typeof value === "number"
+                    ? value.toLocaleString()
+                    : String(value ?? ""),
                   "Expected cases",
                 ]}
                 labelFormatter={(label, payload) => {
