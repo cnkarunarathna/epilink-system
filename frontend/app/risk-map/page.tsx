@@ -32,6 +32,7 @@ import OutbreakAlerts from "@/components/dashboard/analytics/OutbreakAlerts";
 import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
 import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
 import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
+import PublicSummaryBanner from "@/components/public/PublicSummaryBanner";
 import {
   fetchPublicLatestPerDistrict,
   fetchPublicTimeseries,
@@ -130,8 +131,8 @@ export default function PublicRiskMapPage() {
     setSelectedDistrict(district);
     const districtData = predictions.find((p) => p.district === district);
     if (districtData) {
-      toast.info(district, {
-        description: `Current forecast: ${districtData.predicted_cases} cases`,
+      toast.info(`📍 ${district}`, {
+        description: `${districtData.predicted_cases} expected cases this week`,
       });
     }
 
@@ -145,12 +146,38 @@ export default function PublicRiskMapPage() {
 
   const topRiskDistricts = predictions.slice(0, 10);
 
-  const getRiskLevel = (cases: number): { level: string; color: string } => {
-    if (cases >= 100) return { level: "Very High", color: "destructive" };
-    if (cases >= 50) return { level: "High", color: "destructive" };
-    if (cases >= 25) return { level: "Medium", color: "default" };
-    if (cases >= 10) return { level: "Low", color: "secondary" };
-    return { level: "Very Low", color: "outline" };
+  const getRiskLevel = (
+    cases: number,
+  ): { level: string; color: string; description: string } => {
+    if (cases >= 100)
+      return {
+        level: "Very High",
+        color: "destructive",
+        description: "Take precautions now",
+      };
+    if (cases >= 50)
+      return {
+        level: "High",
+        color: "destructive",
+        description: "Stay alert",
+      };
+    if (cases >= 25)
+      return {
+        level: "Moderate",
+        color: "default",
+        description: "Stay cautious",
+      };
+    if (cases >= 10)
+      return {
+        level: "Low",
+        color: "secondary",
+        description: "Normal vigilance",
+      };
+    return {
+      level: "Minimal",
+      color: "outline",
+      description: "Situation is calm",
+    };
   };
 
   return (
@@ -185,7 +212,7 @@ export default function PublicRiskMapPage() {
                 <div className="flex gap-3 flex-wrap">
                   <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-[100px]">
                     <div className="text-xs text-emerald-200 font-medium">
-                      Prediction Week
+                      Current Week
                     </div>
                     <div className="text-2xl font-bold mt-1">
                       {summary.current_week.week}
@@ -196,7 +223,7 @@ export default function PublicRiskMapPage() {
                   </div>
                   <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-[100px]">
                     <div className="text-xs text-emerald-200 font-medium">
-                      Total Cases
+                      Expected Cases
                     </div>
                     <div className="text-2xl font-bold mt-1">
                       {summary.total_cases.toLocaleString()}
@@ -208,18 +235,25 @@ export default function PublicRiskMapPage() {
                   </div>
                   <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center min-w-[100px]">
                     <div className="text-xs text-emerald-200 font-medium">
-                      High Risk
+                      Districts to Watch
                     </div>
                     <div className="text-2xl font-bold mt-1">
                       {summary.high_risk_districts}
                     </div>
-                    <div className="text-xs text-emerald-300">districts</div>
+                    <div className="text-xs text-emerald-300">
+                      areas elevated
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* Plain-English Summary */}
+        {summary && predictions.length > 0 && (
+          <PublicSummaryBanner summary={summary} topDistricts={predictions} />
+        )}
 
         {/* Key Metrics */}
         {summary && (
@@ -230,7 +264,7 @@ export default function PublicRiskMapPage() {
                   <div className="p-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-lg">
                     <Activity className="h-4 w-4" />
                   </div>
-                  Total Predicted Cases
+                  Expected dengue cases this week
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -256,7 +290,9 @@ export default function PublicRiskMapPage() {
                   >
                     {Math.abs(summary.change_percent).toFixed(1)}%
                   </span>
-                  <span className="text-muted-foreground">from last week</span>
+                  <span className="text-muted-foreground">
+                    compared to last week
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -267,7 +303,7 @@ export default function PublicRiskMapPage() {
                   <div className="p-1.5 bg-red-200 dark:bg-red-800/50 rounded-lg">
                     <AlertTriangle className="h-4 w-4" />
                   </div>
-                  High Risk Districts
+                  Districts to watch closely
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -275,7 +311,7 @@ export default function PublicRiskMapPage() {
                   {summary.high_risk_districts}
                 </div>
                 <p className="text-xs text-red-700 dark:text-red-400 mt-2 font-medium">
-                  Districts with &ge;50 predicted cases
+                  Areas with an elevated dengue risk level this week
                 </p>
               </CardContent>
             </Card>
@@ -305,7 +341,7 @@ export default function PublicRiskMapPage() {
                   <div className="p-1.5 bg-orange-200 dark:bg-orange-800/50 rounded-lg">
                     <Thermometer className="h-4 w-4" />
                   </div>
-                  Avg Temperature
+                  Current heat level
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -315,7 +351,7 @@ export default function PublicRiskMapPage() {
                     : "N/A"}
                 </div>
                 <p className="text-xs text-orange-700 dark:text-orange-400 mt-2 font-medium">
-                  This week
+                  Average temperature this week
                 </p>
               </CardContent>
             </Card>
@@ -330,7 +366,7 @@ export default function PublicRiskMapPage() {
               className="text-sm md:text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
             >
               <MapPin className="h-4 w-4 md:h-5 md:w-5 mr-1.5 md:mr-2" />
-              <span className="hidden sm:inline">Risk Map</span>
+              <span className="hidden sm:inline">Where is dengue now?</span>
               <span className="sm:hidden">Map</span>
             </TabsTrigger>
             <TabsTrigger
@@ -338,7 +374,9 @@ export default function PublicRiskMapPage() {
               className="text-sm md:text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
             >
               <Sparkles className="h-4 w-4 md:h-5 md:w-5 mr-1.5 md:mr-2" />
-              <span className="hidden sm:inline">Predictions & Trends</span>
+              <span className="hidden sm:inline">
+                Is it getting better or worse?
+              </span>
               <span className="sm:hidden">Trends</span>
             </TabsTrigger>
             <TabsTrigger
@@ -346,8 +384,10 @@ export default function PublicRiskMapPage() {
               className="text-sm md:text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
             >
               <Zap className="h-4 w-4 md:h-5 md:w-5 mr-1.5 md:mr-2" />
-              <span className="hidden sm:inline">Weather & Analysis</span>
-              <span className="sm:hidden">Analysis</span>
+              <span className="hidden sm:inline">
+                How can I protect myself?
+              </span>
+              <span className="sm:hidden">Protect</span>
             </TabsTrigger>
           </TabsList>
 
@@ -386,8 +426,8 @@ export default function PublicRiskMapPage() {
                         Interactive District Risk Map
                       </CardTitle>
                       <CardDescription className="text-base mt-1">
-                        Click on any district to view predicted cases and recent
-                        trends
+                        Click any area on the map to see the dengue risk level
+                        for that district
                       </CardDescription>
                     </div>
                   </div>
@@ -439,7 +479,7 @@ export default function PublicRiskMapPage() {
                                 <>
                                   <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
                                     <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                                      Current Forecast
+                                      Expected cases this week
                                     </span>
                                     <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
                                       {currentData.predicted_cases.toLocaleString()}{" "}
@@ -448,11 +488,16 @@ export default function PublicRiskMapPage() {
                                   </div>
                                   <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
                                     <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                                      Risk Level
+                                      Risk level
                                     </span>
-                                    <Badge variant={risk?.color as any}>
-                                      {risk?.level}
-                                    </Badge>
+                                    <div className="flex flex-col items-end gap-0.5">
+                                      <Badge variant={risk?.color as any}>
+                                        {risk?.level}
+                                      </Badge>
+                                      <span className="text-xs text-muted-foreground">
+                                        {risk?.description}
+                                      </span>
+                                    </div>
                                   </div>
                                 </>
                               ) : null;
@@ -462,7 +507,7 @@ export default function PublicRiskMapPage() {
                         <div className="space-y-3">
                           <h5 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                             <Activity className="h-4 w-4" />
-                            Recent Trend (Last 4 Weeks)
+                            How cases changed recently
                           </h5>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {districtTimeseries
@@ -477,7 +522,7 @@ export default function PublicRiskMapPage() {
                                   >
                                     <div className="flex items-center gap-2">
                                       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        W{entry.week}/{entry.year}
+                                        Week {entry.week}, {entry.year}
                                       </span>
                                       {entry.temperature && (
                                         <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
@@ -518,9 +563,9 @@ export default function PublicRiskMapPage() {
             {predictions.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Top 10 Risk Districts</CardTitle>
+                  <CardTitle>Areas to Watch This Week</CardTitle>
                   <CardDescription>
-                    Districts with highest predicted cases this week
+                    These areas have the highest number of expected dengue cases
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -541,7 +586,7 @@ export default function PublicRiskMapPage() {
                               <p className="font-medium">{district.district}</p>
                               <p className="text-sm text-muted-foreground">
                                 {district.predicted_cases.toLocaleString()}{" "}
-                                cases
+                                expected cases
                               </p>
                             </div>
                           </div>
@@ -568,11 +613,11 @@ export default function PublicRiskMapPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-primary" />
-                    12-Week Dengue Case Trend
+                    How dengue cases changed over the past 12 weeks
                   </CardTitle>
                   <CardDescription>
-                    Total predicted cases across all districts over the last 12
-                    weeks
+                    Estimated total dengue cases across all districts in Sri
+                    Lanka — each bar represents one week
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -582,7 +627,7 @@ export default function PublicRiskMapPage() {
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis
                           dataKey="week"
-                          tickFormatter={(value) => `W${value}`}
+                          tickFormatter={(value) => `Wk ${value}`}
                           axisLine={false}
                           tickLine={false}
                           tick={{ fontSize: 12 }}
@@ -640,10 +685,10 @@ export default function PublicRiskMapPage() {
             {predictions.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>All Districts - Predicted Cases</CardTitle>
+                  <CardTitle>Risk levels across all districts</CardTitle>
                   <CardDescription>
-                    Comprehensive view of predicted dengue cases across all 25
-                    districts
+                    See the current dengue risk level for every district in Sri
+                    Lanka
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -682,9 +727,12 @@ export default function PublicRiskMapPage() {
             {predictions.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>District Comparison</CardTitle>
+                  <CardTitle>
+                    Comparing dengue levels district by district
+                  </CardTitle>
                   <CardDescription>
-                    Visual comparison of predicted case distribution
+                    Districts sorted from highest to lowest expected cases —
+                    longer bar means more cases
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -714,7 +762,7 @@ export default function PublicRiskMapPage() {
                               </span>
                               <span className="text-muted-foreground">
                                 {district.predicted_cases.toLocaleString()}{" "}
-                                cases
+                                expected cases
                               </span>
                             </div>
                             <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -724,7 +772,7 @@ export default function PublicRiskMapPage() {
                                     ? "bg-red-600"
                                     : risk.level === "High"
                                       ? "bg-orange-500"
-                                      : risk.level === "Medium"
+                                      : risk.level === "Moderate"
                                         ? "bg-yellow-500"
                                         : risk.level === "Low"
                                           ? "bg-blue-500"
@@ -746,8 +794,18 @@ export default function PublicRiskMapPage() {
         {/* Public notice */}
         <div className="text-center text-sm text-muted-foreground py-4 border-t">
           <p>
-            Data is generated by AI/ML models and updated weekly. For official
-            health advisories, consult the Ministry of Health.
+            These predictions are generated by a computer model and updated
+            weekly — they are estimates, not official figures. For confirmed
+            health advisories, visit the{" "}
+            <a
+              href="https://www.epid.gov.lk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              Epidemiology Unit of Sri Lanka
+            </a>{" "}
+            or consult the Ministry of Health.
           </p>
         </div>
       </div>

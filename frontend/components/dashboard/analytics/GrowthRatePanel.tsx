@@ -106,10 +106,14 @@ export default function GrowthRatePanel({
           <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
             <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
           </div>
-          Growth Rate Analysis
+          {usePublicApi
+            ? "Is dengue spreading or slowing?"
+            : "Growth Rate Analysis"}
         </CardTitle>
         <CardDescription>
-          4-week average growth trends by district
+          {usePublicApi
+            ? "How dengue cases have been changing over the past 4 weeks"
+            : "4-week average growth trends by district"}
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
@@ -122,7 +126,9 @@ export default function GrowthRatePanel({
                   <div className="p-1.5 bg-red-100 dark:bg-red-900/50 rounded">
                     <TrendingUp className="h-4 w-4" />
                   </div>
-                  Fastest Growing
+                  {usePublicApi
+                    ? "Cases are rising in these areas"
+                    : "Fastest Growing"}
                 </h4>
                 <Badge variant="destructive">{increasing.length}</Badge>
               </div>
@@ -141,14 +147,23 @@ export default function GrowthRatePanel({
                         <div className="font-semibold text-base">
                           {item.district}
                         </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <span className="font-medium">
-                            {item.current_cases}
-                          </span>
-                          <span>→</span>
-                          <span className="line-through opacity-60">
-                            {item.prev_cases}
-                          </span>
+                        <div className="text-xs text-muted-foreground">
+                          {usePublicApi ? (
+                            <span>
+                              {item.current_cases} cases this week (was{" "}
+                              {item.prev_cases})
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {item.current_cases}
+                              </span>
+                              <span>→</span>
+                              <span className="line-through opacity-60">
+                                {item.prev_cases}
+                              </span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -171,7 +186,9 @@ export default function GrowthRatePanel({
                   <div className="p-1.5 bg-green-100 dark:bg-green-900/50 rounded">
                     <TrendingDown className="h-4 w-4" />
                   </div>
-                  Declining
+                  {usePublicApi
+                    ? "Situation is improving in these areas"
+                    : "Declining"}
                 </h4>
                 <Badge className="bg-green-500">{decreasing.length}</Badge>
               </div>
@@ -190,14 +207,23 @@ export default function GrowthRatePanel({
                         <div className="font-semibold text-base">
                           {item.district}
                         </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <span className="font-medium">
-                            {item.current_cases}
-                          </span>
-                          <span>→</span>
-                          <span className="line-through opacity-60">
-                            {item.prev_cases}
-                          </span>
+                        <div className="text-xs text-muted-foreground">
+                          {usePublicApi ? (
+                            <span>
+                              {item.current_cases} cases this week (was{" "}
+                              {item.prev_cases})
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {item.current_cases}
+                              </span>
+                              <span>→</span>
+                              <span className="line-through opacity-60">
+                                {item.prev_cases}
+                              </span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
