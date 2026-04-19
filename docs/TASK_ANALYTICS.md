@@ -179,7 +179,7 @@ Add a Task Analytics section to the admin dashboard at `/admin/tasks/analytics` 
 
 ---
 
-### Phase 5 — Real-time Monitoring + Overdue Alerts
+### Phase 5 — Real-time Monitoring + Overdue Alerts ✅ DONE
 
 **Goal:** Live task activity feed and alerts for overdue/stalled tasks.
 
@@ -221,6 +221,5 @@ Add to sidebar nav (wherever existing admin links live).
 | 2 | National overview page + 6 chart components | Medium | ✅ Done |
 | 3 | District drill-down page + 3 table components | Low | ✅ Done |
 | 4 | PHI profile page + 3 components | Low | ✅ Done |
-| 5 | Real-time feed + overdue alerts + WebSocket | Medium | — |
+| 5 | Real-time feed + overdue alerts + WebSocket | Medium | ✅ Done |
 
-Start with Phase 1 — all frontend phases depend on it.

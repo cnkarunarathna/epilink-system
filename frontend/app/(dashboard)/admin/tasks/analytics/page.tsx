@@ -11,6 +11,8 @@ import { TaskStatusDonut } from "@/components/dashboard/task-analytics/TaskStatu
 import { TaskTypeChart } from "@/components/dashboard/task-analytics/TaskTypeChart";
 import { TaskPriorityChart } from "@/components/dashboard/task-analytics/TaskPriorityChart";
 import { TaskTrendChart } from "@/components/dashboard/task-analytics/TaskTrendChart";
+import { OverdueTasksAlert } from "@/components/dashboard/task-analytics/OverdueTasksAlert";
+import { LiveActivityFeed } from "@/components/dashboard/task-analytics/LiveActivityFeed";
 import {
   fetchNationalSummary,
   fetchByDistrict,
@@ -162,6 +164,16 @@ export default function TaskAnalyticsPage() {
 
       {/* Trend line — full width */}
       <TaskTrendChart data={trendData} loading={isLoading} />
+
+      {/* Real-time monitoring row */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <OverdueTasksAlert />
+        </div>
+        <div className="lg:col-span-1">
+          <LiveActivityFeed />
+        </div>
+      </div>
     </div>
   );
 }

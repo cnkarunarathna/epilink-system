@@ -309,6 +309,20 @@ export class TasksService {
       taskWithRelations.district?.name,
     );
 
+    this.eventsGateway.emitAnalyticsUpdated({
+      type: 'task-status-changed',
+      payload: {
+        taskId: savedTask.id,
+        taskTitle: taskWithRelations.title,
+        taskType: taskWithRelations.type,
+        oldStatus,
+        newStatus: dto.status,
+        districtName: taskWithRelations.district?.name ?? null,
+        phiName: taskWithRelations.assignedPhi?.name ?? null,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
     // 6.1 — System message audit trail
     const systemContent = this.buildStatusSystemMessage(dto.status, dto.rejectionReason);
     if (systemContent) {
