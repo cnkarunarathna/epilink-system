@@ -14,6 +14,7 @@ interface DistrictData {
 interface SriLankaMapProps {
   data: DistrictData[];
   onDistrictClick?: (district: string) => void;
+  publicMode?: boolean;
 }
 
 // Tight bounding box around Sri Lanka (SW → NE corners)
@@ -393,6 +394,7 @@ function GeoJSONLayer({
 export default function SriLankaMap({
   data,
   onDistrictClick,
+  publicMode = false,
 }: SriLankaMapProps) {
   const [hoveredDistrict, setHoveredDistrict] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -451,7 +453,7 @@ export default function SriLankaMap({
             <div className="space-y-2">
               <div className="flex items-center justify-between px-2.5 py-1.5 bg-primary/10 rounded-lg">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Predicted Cases
+                  {publicMode ? "Expected cases this week" : "Predicted Cases"}
                 </span>
                 <span className="text-base font-bold tabular-nums text-foreground">
                   {getDistrictData(hoveredDistrict)?.predicted_cases.toLocaleString()}
@@ -486,7 +488,7 @@ export default function SriLankaMap({
         </div>
 
         <div className="space-y-1.5">
-          {LEGEND_ITEMS.map((item) => (
+          {(publicMode ? PUBLIC_LEGEND_ITEMS : LEGEND_ITEMS).map((item) => (
             <div
               key={item.level}
               className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50"
@@ -497,7 +499,12 @@ export default function SriLankaMap({
               />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold">{item.level}</div>
-                <div className="text-[10px] text-muted-foreground">{item.cases}</div>
+                {"cases" in item && (
+                  <div className="text-[10px] text-muted-foreground">{item.cases}</div>
+                )}
+                {"meaning" in item && (
+                  <div className="text-[10px] text-muted-foreground">{item.meaning}</div>
+                )}
               </div>
             </div>
           ))}
@@ -511,7 +518,7 @@ export default function SriLankaMap({
         </div>
 
         <p className="mt-2.5 pt-2 border-t border-border text-[10px] text-center text-muted-foreground italic">
-          Hover districts for details
+          {publicMode ? "Click any area for details" : "Hover districts for details"}
         </p>
       </div>
     </div>
@@ -526,6 +533,14 @@ const LEGEND_ITEMS = [
   { level: "Medium",    cases: "25–49 cases", color: "#f59e0b" },
   { level: "Low",       cases: "10–24 cases", color: "#facc15" },
   { level: "Very Low",  cases: "<10 cases",   color: "#4ade80" },
+];
+
+const PUBLIC_LEGEND_ITEMS = [
+  { level: "Very High Risk", meaning: "Take strong precautions", color: "#7f1d1d" },
+  { level: "High Risk",      meaning: "Stay alert",             color: "#dc2626" },
+  { level: "Moderate Risk",  meaning: "Be cautious",            color: "#f59e0b" },
+  { level: "Low Risk",       meaning: "Normal care",            color: "#facc15" },
+  { level: "Minimal Risk",   meaning: "Situation is calm",      color: "#4ade80" },
 ];
 
 const RISK_META: Record<string, { label: string; dot: string }> = {

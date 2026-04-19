@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  BarChart3,
   RefreshCw,
   Loader2,
   MapPin,
@@ -28,25 +27,19 @@ import {
 import { toast } from "sonner";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
-import OutbreakAlerts from "@/components/dashboard/analytics/OutbreakAlerts";
-import HotspotsPanel from "@/components/dashboard/analytics/HotspotsPanel";
-import GrowthRatePanel from "@/components/dashboard/analytics/GrowthRatePanel";
-import WeatherCorrelation from "@/components/dashboard/analytics/WeatherCorrelation";
 import PublicSummaryBanner from "@/components/public/PublicSummaryBanner";
+import TrendStoryChart from "@/components/public/TrendStoryChart";
+import DistrictWatchList from "@/components/public/DistrictWatchList";
+import PublicHealthWarnings from "@/components/public/PublicHealthWarnings";
+import DistrictRiskTable from "@/components/public/DistrictRiskTable";
+import PreventionChecklist from "@/components/public/PreventionChecklist";
+import DistrictSearchBar from "@/components/public/DistrictSearchBar";
 import {
   fetchPublicLatestPerDistrict,
   fetchPublicTimeseries,
   fetchPublicDashboardSummary,
   fetchPublicTrends,
 } from "@/services/public-analytics.service";
-import {
-  BarChart as RechartsBar,
-  Bar,
-  XAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
 interface DistrictPrediction {
   district: string;
@@ -450,10 +443,18 @@ export default function PublicRiskMapPage() {
                   </div>
                 ) : predictions.length > 0 ? (
                   <div className="grid gap-6">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">Find your district</p>
+                      <DistrictSearchBar
+                        districts={predictions.map((p) => p.district)}
+                        onSelect={handleDistrictClick}
+                      />
+                    </div>
                     <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
                       <SriLankaMap
                         data={predictions}
                         onDistrictClick={handleDistrictClick}
+                        publicMode
                       />
                     </div>
 
@@ -608,186 +609,39 @@ export default function PublicRiskMapPage() {
             className="space-y-6 animate-in fade-in-50 duration-500"
           >
             {/* 12-Week Trend Chart */}
-            {trends.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5 text-primary" />
-                    How dengue cases changed over the past 12 weeks
-                  </CardTitle>
-                  <CardDescription>
-                    Estimated total dengue cases across all districts in Sri
-                    Lanka — each bar represents one week
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64 mt-4 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsBar data={trends}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis
-                          dataKey="week"
-                          tickFormatter={(value) => `Wk ${value}`}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fontSize: 12 }}
-                          dy={10}
-                        />
-                        <Tooltip
-                          cursor={{ fill: "transparent" }}
-                          formatter={(value: number | undefined) => [
-                            value || 0,
-                            "Cases",
-                          ]}
-                          labelFormatter={(label, payload) => {
-                            if (
-                              payload &&
-                              payload.length > 0 &&
-                              payload[0].payload
-                            ) {
-                              return `Week ${label}, ${payload[0].payload.year}`;
-                            }
-                            return `Week ${label}`;
-                          }}
-                        />
-                        <Bar
-                          dataKey="total_cases"
-                          fill="currentColor"
-                          className="fill-primary"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </RechartsBar>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {trends.length > 0 && <TrendStoryChart data={trends} />}
 
             {/* Outbreak Alerts */}
-            <OutbreakAlerts usePublicApi />
+            <PublicHealthWarnings />
 
-            {/* Hotspots and Growth Rate */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <HotspotsPanel usePublicApi />
-              <GrowthRatePanel usePublicApi />
-            </div>
+            {/* Districts to Watch / Declining */}
+            <DistrictWatchList />
           </TabsContent>
 
-          {/* ===== WEATHER & ANALYSIS TAB ===== */}
+          {/* ===== HOW CAN I PROTECT MYSELF TAB ===== */}
           <TabsContent
             value="analysis"
             className="space-y-6 animate-in fade-in-50 duration-500"
           >
-            {/* Weather Correlation */}
-            <WeatherCorrelation usePublicApi />
-
-            {/* All Districts Breakdown */}
-            {predictions.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Risk levels across all districts</CardTitle>
-                  <CardDescription>
-                    See the current dengue risk level for every district in Sri
-                    Lanka
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {predictions.map((district) => {
-                      const risk = getRiskLevel(district.predicted_cases);
-                      return (
-                        <div
-                          key={district.district}
-                          className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-all hover:shadow-md"
-                          onClick={() => handleDistrictClick(district.district)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm">
-                              {district.district}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {district.predicted_cases.toLocaleString()}
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              {risk.level}
-                            </Badge>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* District Comparison Chart */}
-            {predictions.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    Comparing dengue levels district by district
-                  </CardTitle>
-                  <CardDescription>
-                    Districts sorted from highest to lowest expected cases —
-                    longer bar means more cases
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {predictions
-                      .slice()
-                      .sort((a, b) => b.predicted_cases - a.predicted_cases)
-                      .map((district) => {
-                        const maxCases = Math.max(
-                          ...predictions.map((d) => d.predicted_cases),
-                        );
-                        const percentage =
-                          (district.predicted_cases / maxCases) * 100;
-                        const risk = getRiskLevel(district.predicted_cases);
-
-                        return (
-                          <div
-                            key={district.district}
-                            className="space-y-1 cursor-pointer hover:bg-accent p-2 rounded transition-colors"
-                            onClick={() =>
-                              handleDistrictClick(district.district)
-                            }
-                          >
-                            <div className="flex justify-between text-sm">
-                              <span className="font-medium">
-                                {district.district}
-                              </span>
-                              <span className="text-muted-foreground">
-                                {district.predicted_cases.toLocaleString()}{" "}
-                                expected cases
-                              </span>
-                            </div>
-                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  risk.level === "Very High"
-                                    ? "bg-red-600"
-                                    : risk.level === "High"
-                                      ? "bg-orange-500"
-                                      : risk.level === "Moderate"
-                                        ? "bg-yellow-500"
-                                        : risk.level === "Low"
-                                          ? "bg-blue-500"
-                                          : "bg-green-500"
-                                }`}
-                                style={{ width: `${percentage}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <div className="grid gap-6 md:grid-cols-2">
+              <PreventionChecklist
+                riskLevel={
+                  summary
+                    ? summary.high_risk_districts >= 8
+                      ? "high"
+                      : summary.high_risk_districts >= 4
+                        ? "moderate"
+                        : "low"
+                    : "low"
+                }
+              />
+              {predictions.length > 0 && (
+                <DistrictRiskTable
+                  districts={predictions}
+                  onDistrictClick={handleDistrictClick}
+                />
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 
