@@ -28,6 +28,7 @@ import {
   Clock,
   Wifi,
   WifiOff,
+  ClipboardList,
 } from "lucide-react";
 import { useSocket } from "@/contexts/SocketContext";
 import { useSocketEvent } from "@/hooks/useSocket";
@@ -74,6 +75,14 @@ const QUICK_LINKS = [
     label: "Districts",
     description: "Configure district boundaries and assignments",
     icon: MapPin,
+    iconColor: "text-emerald-600 bg-emerald-500/10",
+    accent: "success" as const,
+  },
+  {
+    href: "/admin/tasks/analytics",
+    label: "Task Analytics",
+    description: "Assignment, completion & performance metrics across districts",
+    icon: ClipboardList,
     iconColor: "text-emerald-600 bg-emerald-500/10",
     accent: "success" as const,
   },
