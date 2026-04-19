@@ -84,7 +84,10 @@ export class TasksService {
   }
 
   private async invalidateTaskCaches(): Promise<void> {
-    await this.cacheHelper.delByPattern('tasks:*');
+    await Promise.all([
+      this.cacheHelper.delByPattern('tasks:*'),
+      this.cacheHelper.delByPattern('analytics:*'),
+    ]);
   }
 
   /** Replace stored S3 keys (or legacy full URLs) with fresh pre-signed URLs. */
@@ -308,6 +311,20 @@ export class TasksService {
       dto.status,
       taskWithRelations.district?.name,
     );
+
+    this.eventsGateway.emitAnalyticsUpdated({
+      type: 'task-status-changed',
+      payload: {
+        taskId: savedTask.id,
+        taskTitle: taskWithRelations.title,
+        taskType: taskWithRelations.type,
+        oldStatus,
+        newStatus: dto.status,
+        districtName: taskWithRelations.district?.name ?? null,
+        phiName: taskWithRelations.assignedPhi?.name ?? null,
+        timestamp: new Date().toISOString(),
+      },
+    });
 
     // 6.1 — System message audit trail
     const systemContent = this.buildStatusSystemMessage(dto.status, dto.rejectionReason);
