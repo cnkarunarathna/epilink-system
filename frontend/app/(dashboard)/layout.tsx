@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   Users,
   ClipboardCheck,
+  ClipboardList,
   BarChart3,
   Settings,
   Bell,
@@ -102,6 +103,7 @@ function getNavItems(role: string): NavItem[] {
     case "admin":
       return [
         ...baseItems,
+        { label: "Task Analytics", href: "/admin/tasks/analytics", icon: ClipboardList },
         { label: "Users", href: "/admin/users", icon: Users },
         { label: "Districts", href: "/admin/districts", icon: MapPin },
         { label: "Reports", href: "/admin/reports", icon: FileText },

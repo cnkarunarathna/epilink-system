@@ -9,6 +9,8 @@ import { TaskMessagesController } from './task-messages.controller';
 import { TaskMessagesService } from './task-messages.service';
 import { TaskReminderScheduler } from './task-reminder.scheduler';
 import { TaskParticipantGuard } from './guards/task-participant.guard';
+import { TasksAnalyticsController } from './tasks-analytics.controller';
+import { TasksAnalyticsService } from './tasks-analytics.service';
 import { Task } from './entities/task.entity';
 import { Evidence } from './entities/evidence.entity';
 import { TaskMessage } from './entities/task-message.entity';
@@ -30,7 +32,7 @@ import { StorageModule } from '../storage/storage.module';
     StorageModule,
     ConfigModule,
   ],
-  controllers: [TasksController, TaskMessagesController],
+  controllers: [TasksController, TaskMessagesController, TasksAnalyticsController],
   providers: [
     TasksService,
     GeocodingService,
@@ -38,6 +40,7 @@ import { StorageModule } from '../storage/storage.module';
     TaskMessagesService,
     TaskReminderScheduler,
     TaskParticipantGuard,
+    TasksAnalyticsService,
   ],
   exports: [TasksService, TaskMessagesService, GeocodingService, RouteService],
 })
