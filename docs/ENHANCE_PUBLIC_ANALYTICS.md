@@ -220,9 +220,9 @@ On selection, the map zooms to the district, highlights it, and shows a summary 
 
 ---
 
-## Phase 3 — Guided Experience & Onboarding
+## Phase 3 — Guided Experience & Onboarding ✅ DONE
 **Goal**: Orient new visitors and make the page intuitive without any instruction.
-**Effort**: ~1 week | **Impact**: Medium
+**Effort**: ~1 week | **Impact**: Medium | **Status**: Completed 2026-04-19
 
 ### 3.1 Add a "How to Use This Page" Intro Panel
 
