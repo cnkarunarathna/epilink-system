@@ -84,7 +84,10 @@ export class TasksService {
   }
 
   private async invalidateTaskCaches(): Promise<void> {
-    await this.cacheHelper.delByPattern('tasks:*');
+    await Promise.all([
+      this.cacheHelper.delByPattern('tasks:*'),
+      this.cacheHelper.delByPattern('analytics:*'),
+    ]);
   }
 
   /** Replace stored S3 keys (or legacy full URLs) with fresh pre-signed URLs. */
