@@ -37,6 +37,8 @@ import PreventionChecklist from "@/components/public/PreventionChecklist";
 import DistrictSearchBar from "@/components/public/DistrictSearchBar";
 import OnboardingBanner from "@/components/public/OnboardingBanner";
 import InfoTooltip from "@/components/public/InfoTooltip";
+import ActionGuidance from "@/components/public/ActionGuidance";
+import NationalStatusBar from "@/components/public/NationalStatusBar";
 import {
   fetchPublicLatestPerDistrict,
   fetchPublicTimeseries,
@@ -279,6 +281,14 @@ export default function PublicRiskMapPage() {
           </div>
         )}
 
+        {/* National Status */}
+        {summary && (
+          <NationalStatusBar
+            highRiskDistricts={summary.high_risk_districts}
+            totalDistricts={summary.district_count}
+          />
+        )}
+
         {/* Onboarding Guide */}
         <OnboardingBanner />
 
@@ -500,94 +510,109 @@ export default function PublicRiskMapPage() {
 
                     {/* Selected District Details */}
                     {selectedDistrict && districtTimeseries.length > 0 && (
-                      <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800">
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                            <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                              {selectedDistrict}
-                            </h4>
-                          </div>
-                          <div className="space-y-2">
-                            {(() => {
-                              const currentData = predictions.find(
-                                (p) => p.district === selectedDistrict,
-                              );
-                              const risk = currentData
-                                ? getRiskLevel(currentData.predicted_cases)
-                                : null;
-                              return currentData ? (
-                                <>
-                                  <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
-                                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                                      Expected cases this week
-                                    </span>
-                                    <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                                      {currentData.predicted_cases.toLocaleString()}{" "}
-                                      cases
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
-                                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                                      Risk level
-                                    </span>
-                                    <div className="flex flex-col items-end gap-0.5">
-                                      <Badge variant={risk?.color as any}>
-                                        {risk?.level}
-                                      </Badge>
-                                      <span className="text-xs text-muted-foreground">
-                                        {risk?.description}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <h5 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            <Activity className="h-4 w-4" />
-                            How cases changed recently
-                          </h5>
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {districtTimeseries
-                              .slice(-4)
-                              .reverse()
-                              .map((entry) => {
-                                const risk = getRiskLevel(entry.cases);
-                                return (
-                                  <div
-                                    key={`${entry.year}-${entry.week}`}
-                                    className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        Week {entry.week}, {entry.year}
-                                      </span>
-                                      {entry.temperature && (
-                                        <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                          <Thermometer className="h-3 w-3" />
-                                          {entry.temperature.toFixed(1)}°C
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                                        {entry.cases}
-                                      </span>
-                                      <Badge
-                                        variant="outline"
-                                        className="text-xs"
-                                      >
-                                        {risk.level}
-                                      </Badge>
-                                    </div>
-                                  </div>
+                      <div className="space-y-4 p-4 bg-linear-to-br from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800">
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                {selectedDistrict}
+                              </h4>
+                            </div>
+                            <div className="space-y-2">
+                              {(() => {
+                                const currentData = predictions.find(
+                                  (p) => p.district === selectedDistrict,
                                 );
-                              })}
+                                const risk = currentData
+                                  ? getRiskLevel(currentData.predicted_cases)
+                                  : null;
+                                return currentData ? (
+                                  <>
+                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                        Expected cases this week
+                                      </span>
+                                      <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                        {currentData.predicted_cases.toLocaleString()}{" "}
+                                        cases
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                        Risk level
+                                      </span>
+                                      <div className="flex flex-col items-end gap-0.5">
+                                        <Badge variant={risk?.color as any}>
+                                          {risk?.level}
+                                        </Badge>
+                                        <span className="text-xs text-muted-foreground">
+                                          {risk?.description}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : null;
+                              })()}
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <h5 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                              <Activity className="h-4 w-4" />
+                              How cases changed recently
+                            </h5>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {districtTimeseries
+                                .slice(-4)
+                                .reverse()
+                                .map((entry) => {
+                                  const risk = getRiskLevel(entry.cases);
+                                  return (
+                                    <div
+                                      key={`${entry.year}-${entry.week}`}
+                                      className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                          Week {entry.week}, {entry.year}
+                                        </span>
+                                        {entry.temperature && (
+                                          <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                            <Thermometer className="h-3 w-3" />
+                                            {entry.temperature.toFixed(1)}°C
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                                          {entry.cases}
+                                        </span>
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs"
+                                        >
+                                          {risk.level}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Action Guidance for selected district */}
+                        {(() => {
+                          const currentData = predictions.find(
+                            (p) => p.district === selectedDistrict,
+                          );
+                          return currentData ? (
+                            <ActionGuidance
+                              level={getRiskLevel(currentData.predicted_cases).level}
+                              district={selectedDistrict}
+                            />
+                          ) : null;
+                        })()}
                       </div>
                     )}
                   </div>
@@ -684,6 +709,40 @@ export default function PublicRiskMapPage() {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Need help? */}
+        <div className="rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 px-6 py-5 space-y-3">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            Need more information?
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-3 text-sm">
+            <a
+              href="tel:0112693532"
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+            >
+              <span className="text-base">📞</span>
+              <span>Epidemiology Unit: 011-269-3532</span>
+            </a>
+            <a
+              href="https://www.epid.gov.lk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+            >
+              <span className="text-base">🌐</span>
+              <span>Epidemiology Unit Website</span>
+            </a>
+            <a
+              href="https://www.health.gov.lk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+            >
+              <span className="text-base">🏥</span>
+              <span>Ministry of Health Sri Lanka</span>
+            </a>
+          </div>
+        </div>
 
         {/* Public notice */}
         <div className="text-center text-sm text-muted-foreground py-4 border-t">
