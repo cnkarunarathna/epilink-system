@@ -28,7 +28,7 @@ Add a Task Analytics section to the admin dashboard at `/admin/tasks/analytics` 
 
 ---
 
-### Phase 1 — Backend: Task Analytics API
+### Phase 1 — Backend: Task Analytics API ✅ DONE
 
 **Goal:** Expose aggregate endpoints that power every chart and KPI card across all later phases.
 
@@ -57,10 +57,10 @@ Add a Task Analytics section to the admin dashboard at `/admin/tasks/analytics` 
 - `overdue_count = tasks WHERE dueDate < NOW() AND status NOT IN (COMPLETED, VERIFIED)`
 
 **Deliverables:**
-- `TasksAnalyticsService` with TypeORM query-builder aggregations
-- DTOs for each response shape
-- Guards: admin-only (`@Roles(Role.ADMIN)`)
-- Swagger annotations
+- `TasksAnalyticsService` with TypeORM query-builder aggregations → `backend/src/tasks/tasks-analytics.service.ts`
+- DTOs for each response shape → `backend/src/tasks/dto/task-analytics.dto.ts`
+- Controller with admin-only guard (`@Roles(UserRole.ADMIN)`) → `backend/src/tasks/tasks-analytics.controller.ts`
+- Registered in `TasksModule` → `backend/src/tasks/tasks.module.ts`
 
 ---
 
@@ -215,12 +215,12 @@ Add to sidebar nav (wherever existing admin links live).
 
 ## Implementation Order Summary
 
-| Phase | Scope | Est. Complexity |
-|---|---|---|
-| 1 | Backend analytics service + 10 API endpoints | Medium |
-| 2 | National overview page + 6 chart components | Medium |
-| 3 | District drill-down page + 3 table components | Low |
-| 4 | PHI profile page + 3 components | Low |
-| 5 | Real-time feed + overdue alerts + WebSocket | Medium |
+| Phase | Scope | Est. Complexity | Status |
+|---|---|---|---|
+| 1 | Backend analytics service + 10 API endpoints | Medium | ✅ Done |
+| 2 | National overview page + 6 chart components | Medium | — |
+| 3 | District drill-down page + 3 table components | Low | — |
+| 4 | PHI profile page + 3 components | Low | — |
+| 5 | Real-time feed + overdue alerts + WebSocket | Medium | — |
 
 Start with Phase 1 — all frontend phases depend on it.
