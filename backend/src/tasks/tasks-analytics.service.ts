@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { Evidence } from './entities/evidence.entity';
 import { User, UserRole } from '../entities/user.entity';
+import { CacheHelperService } from '../cache/cache-helper.service';
 import {
   NationalSummaryDto,
   DistrictTaskSummaryDto,
@@ -19,6 +20,23 @@ import {
   PhiTasksPageDto,
 } from './dto/task-analytics.dto';
 
+// ── TTLs (ms) ──────────────────────────────────────────────────────────────────
+// All aggregate endpoints are also invalidated on every task write via
+// invalidateTaskCaches() in tasks.service.ts, so these are just safety-net TTLs.
+const TTL = {
+  AGGREGATE: 5 * 60 * 1000,   // 5 min  — national/district/type/priority/status
+  TREND:     10 * 60 * 1000,  // 10 min — historical, slow-moving
+  OVERDUE:   2 * 60 * 1000,   // 2 min  — advances with wall-clock time
+  PHI:       3 * 60 * 1000,   // 3 min  — profile & paginated tasks
+} as const;
+
+const GRACE = {
+  AGGREGATE: 10 * 60 * 1000,
+  TREND:     20 * 60 * 1000,
+  OVERDUE:    5 * 60 * 1000,
+  PHI:        6 * 60 * 1000,
+} as const;
+
 @Injectable()
 export class TasksAnalyticsService {
   constructor(
@@ -28,9 +46,87 @@ export class TasksAnalyticsService {
     private readonly evidenceRepo: Repository<Evidence>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly cache: CacheHelperService,
   ) {}
 
-  async getNationalSummary(districtId?: number): Promise<NationalSummaryDto> {
+  // ── Public methods (all cached) ───────────────────────────────────────────
+
+  getNationalSummary(districtId?: number): Promise<NationalSummaryDto> {
+    const key = `analytics:national-summary:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getNationalSummary(districtId), GRACE.AGGREGATE);
+  }
+
+  getByDistrict(from?: string, to?: string): Promise<DistrictTaskSummaryDto[]> {
+    const key = `analytics:by-district:${from ?? ''}:${to ?? ''}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getByDistrict(from, to), GRACE.AGGREGATE);
+  }
+
+  getByStatus(districtId?: number): Promise<StatusDistributionDto[]> {
+    const key = `analytics:by-status:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getByStatus(districtId), GRACE.AGGREGATE);
+  }
+
+  getByType(districtId?: number): Promise<TypeDistributionDto[]> {
+    const key = `analytics:by-type:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getByType(districtId), GRACE.AGGREGATE);
+  }
+
+  getByPriority(districtId?: number): Promise<PriorityDistributionDto[]> {
+    const key = `analytics:by-priority:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getByPriority(districtId), GRACE.AGGREGATE);
+  }
+
+  getTrend(
+    period: 'day' | 'week' | 'month' = 'day',
+    from?: string,
+    to?: string,
+    districtId?: number,
+  ): Promise<TaskTrendPointDto[]> {
+    const key = `analytics:trend:${period}:${districtId ?? 'all'}:${from ?? ''}:${to ?? ''}`;
+    return this.cache.getOrRefresh(key, TTL.TREND, () => this._getTrend(period, from, to, districtId), GRACE.TREND);
+  }
+
+  getSupervisorMetrics(districtId?: number): Promise<SupervisorMetricsDto[]> {
+    const key = `analytics:supervisors:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getSupervisorMetrics(districtId), GRACE.AGGREGATE);
+  }
+
+  getPhiMetrics(districtId?: number): Promise<PhiMetricsDto[]> {
+    const key = `analytics:phis:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getPhiMetrics(districtId), GRACE.AGGREGATE);
+  }
+
+  getOverdueTasks(districtId?: number): Promise<OverdueTaskDto[]> {
+    const key = `analytics:overdue:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.OVERDUE, () => this._getOverdueTasks(districtId), GRACE.OVERDUE);
+  }
+
+  getEvidenceReview(districtId?: number): Promise<EvidenceReviewSummaryDto> {
+    const key = `analytics:evidence-review:${districtId ?? 'all'}`;
+    return this.cache.getOrRefresh(key, TTL.AGGREGATE, () => this._getEvidenceReview(districtId), GRACE.AGGREGATE);
+  }
+
+  async getPhiProfile(phiId: string): Promise<PhiProfileDto> {
+    const key = `analytics:phi-profile:${phiId}`;
+    return this.cache.getOrRefresh(key, TTL.PHI, () => this._getPhiProfile(phiId), GRACE.PHI);
+  }
+
+  getPhiTasks(
+    phiId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string,
+    type?: string,
+    from?: string,
+    to?: string,
+  ): Promise<PhiTasksPageDto> {
+    const key = `analytics:phi-tasks:${phiId}:${page}:${limit}:${status ?? ''}:${type ?? ''}:${from ?? ''}:${to ?? ''}`;
+    return this.cache.getOrRefresh(key, TTL.PHI, () => this._getPhiTasks(phiId, page, limit, status, type, from, to), GRACE.PHI);
+  }
+
+  // ── Private DB implementations ────────────────────────────────────────────
+
+  private async _getNationalSummary(districtId?: number): Promise<NationalSummaryDto> {
     const qb = this.taskRepo.createQueryBuilder('t');
     if (districtId) qb.where('t.district_id = :districtId', { districtId });
 
@@ -90,7 +186,7 @@ export class TasksAnalyticsService {
     };
   }
 
-  async getByDistrict(from?: string, to?: string): Promise<DistrictTaskSummaryDto[]> {
+  private async _getByDistrict(from?: string, to?: string): Promise<DistrictTaskSummaryDto[]> {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .innerJoin('t.district', 'd')
@@ -134,7 +230,7 @@ export class TasksAnalyticsService {
     });
   }
 
-  async getByStatus(districtId?: number): Promise<StatusDistributionDto[]> {
+  private async _getByStatus(districtId?: number): Promise<StatusDistributionDto[]> {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .select('t.status', 'status')
@@ -147,7 +243,7 @@ export class TasksAnalyticsService {
     return rows.map((r) => ({ status: r.status, count: parseInt(r.count, 10) }));
   }
 
-  async getByType(districtId?: number): Promise<TypeDistributionDto[]> {
+  private async _getByType(districtId?: number): Promise<TypeDistributionDto[]> {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .select('t.type', 'type')
@@ -165,7 +261,7 @@ export class TasksAnalyticsService {
     }));
   }
 
-  async getByPriority(districtId?: number): Promise<PriorityDistributionDto[]> {
+  private async _getByPriority(districtId?: number): Promise<PriorityDistributionDto[]> {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .select('t.priority', 'priority')
@@ -183,7 +279,7 @@ export class TasksAnalyticsService {
     }));
   }
 
-  async getTrend(
+  private async _getTrend(
     period: 'day' | 'week' | 'month' = 'day',
     from?: string,
     to?: string,
@@ -211,7 +307,7 @@ export class TasksAnalyticsService {
     }));
   }
 
-  async getSupervisorMetrics(districtId?: number): Promise<SupervisorMetricsDto[]> {
+  private async _getSupervisorMetrics(districtId?: number): Promise<SupervisorMetricsDto[]> {
     const qb = this.userRepo
       .createQueryBuilder('u')
       .leftJoin(Task, 't', 't.created_by_id = u.id')
@@ -234,7 +330,6 @@ export class TasksAnalyticsService {
       .orderBy('COUNT(t.id)', 'DESC');
 
     if (districtId) {
-      // User.district is the district name string; join through tasks to filter by districtId
       qb.andWhere('t.district_id = :districtId', { districtId });
     }
 
@@ -256,7 +351,7 @@ export class TasksAnalyticsService {
     });
   }
 
-  async getPhiMetrics(districtId?: number): Promise<PhiMetricsDto[]> {
+  private async _getPhiMetrics(districtId?: number): Promise<PhiMetricsDto[]> {
     const qb = this.userRepo
       .createQueryBuilder('u')
       .leftJoin(Task, 't', 't.assigned_phi_id = u.id')
@@ -303,7 +398,7 @@ export class TasksAnalyticsService {
     });
   }
 
-  async getOverdueTasks(districtId?: number): Promise<OverdueTaskDto[]> {
+  private async _getOverdueTasks(districtId?: number): Promise<OverdueTaskDto[]> {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .innerJoin('t.district', 'd')
@@ -345,7 +440,7 @@ export class TasksAnalyticsService {
     });
   }
 
-  async getEvidenceReview(districtId?: number): Promise<EvidenceReviewSummaryDto> {
+  private async _getEvidenceReview(districtId?: number): Promise<EvidenceReviewSummaryDto> {
     const qb = this.evidenceRepo
       .createQueryBuilder('e')
       .innerJoin('e.task', 't')
@@ -393,56 +488,56 @@ export class TasksAnalyticsService {
     return { national, byDistrict };
   }
 
-  async getPhiProfile(phiId: string): Promise<PhiProfileDto> {
+  private async _getPhiProfile(phiId: string): Promise<PhiProfileDto> {
     const user = await this.userRepo.findOne({ where: { id: phiId } });
     if (!user) throw new NotFoundException('PHI not found');
 
-    const metricsRow = await this.taskRepo
-      .createQueryBuilder('t')
-      .select('COUNT(t.id)', 'assigned')
-      .addSelect("SUM(CASE WHEN t.status IN ('completed','verified') THEN 1 ELSE 0 END)", 'completed')
-      .addSelect("SUM(CASE WHEN t.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
-      .addSelect(
-        "SUM(CASE WHEN t.due_date < NOW() AND t.status NOT IN ('completed','verified') THEN 1 ELSE 0 END)",
-        'overdue',
-      )
-      .addSelect(
-        "AVG(CASE WHEN t.completed_at IS NOT NULL AND t.assigned_at IS NOT NULL THEN EXTRACT(EPOCH FROM (t.completed_at - t.assigned_at)) / 3600 END)",
-        'avgCompletionHours',
-      )
-      .where('t.assigned_phi_id = :phiId', { phiId })
-      .getRawOne<Record<string, string | null>>();
+    const [metricsRow, statusRows, monthlyRows, evidenceRow] = await Promise.all([
+      this.taskRepo
+        .createQueryBuilder('t')
+        .select('COUNT(t.id)', 'assigned')
+        .addSelect("SUM(CASE WHEN t.status IN ('completed','verified') THEN 1 ELSE 0 END)", 'completed')
+        .addSelect("SUM(CASE WHEN t.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
+        .addSelect(
+          "SUM(CASE WHEN t.due_date < NOW() AND t.status NOT IN ('completed','verified') THEN 1 ELSE 0 END)",
+          'overdue',
+        )
+        .addSelect(
+          "AVG(CASE WHEN t.completed_at IS NOT NULL AND t.assigned_at IS NOT NULL THEN EXTRACT(EPOCH FROM (t.completed_at - t.assigned_at)) / 3600 END)",
+          'avgCompletionHours',
+        )
+        .where('t.assigned_phi_id = :phiId', { phiId })
+        .getRawOne<Record<string, string | null>>(),
 
-    const statusRows = await this.taskRepo
-      .createQueryBuilder('t')
-      .select('t.status', 'status')
-      .addSelect('COUNT(*)', 'count')
-      .where('t.assigned_phi_id = :phiId', { phiId })
-      .groupBy('t.status')
-      .getRawMany<{ status: string; count: string }>();
+      this.taskRepo
+        .createQueryBuilder('t')
+        .select('t.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .where('t.assigned_phi_id = :phiId', { phiId })
+        .groupBy('t.status')
+        .getRawMany<{ status: string; count: string }>(),
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const monthlyRows = await this.taskRepo
-      .createQueryBuilder('t')
-      .select("DATE_TRUNC('month', t.completed_at)", 'month')
-      .addSelect('COUNT(*)', 'completed')
-      .where('t.assigned_phi_id = :phiId', { phiId })
-      .andWhere("t.status IN ('completed','verified')")
-      .andWhere('t.completed_at IS NOT NULL')
-      .andWhere('t.completed_at >= :from', { from: sixMonthsAgo })
-      .groupBy("DATE_TRUNC('month', t.completed_at)")
-      .orderBy("DATE_TRUNC('month', t.completed_at)", 'ASC')
-      .getRawMany<{ month: Date; completed: string }>();
+      this.taskRepo
+        .createQueryBuilder('t')
+        .select("DATE_TRUNC('month', t.completed_at)", 'month')
+        .addSelect('COUNT(*)', 'completed')
+        .where('t.assigned_phi_id = :phiId', { phiId })
+        .andWhere("t.status IN ('completed','verified')")
+        .andWhere('t.completed_at IS NOT NULL')
+        .andWhere('t.completed_at >= :from', { from: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) })
+        .groupBy("DATE_TRUNC('month', t.completed_at)")
+        .orderBy("DATE_TRUNC('month', t.completed_at)", 'ASC')
+        .getRawMany<{ month: Date; completed: string }>(),
 
-    const evidenceRow = await this.evidenceRepo
-      .createQueryBuilder('e')
-      .select('COUNT(e.id)', 'total')
-      .addSelect("SUM(CASE WHEN e.status = 'approved' THEN 1 ELSE 0 END)", 'approved')
-      .addSelect("SUM(CASE WHEN e.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
-      .addSelect("SUM(CASE WHEN e.status = 'pending' THEN 1 ELSE 0 END)", 'pending')
-      .where('e.submitted_by_id = :phiId', { phiId })
-      .getRawOne<Record<string, string>>();
+      this.evidenceRepo
+        .createQueryBuilder('e')
+        .select('COUNT(e.id)', 'total')
+        .addSelect("SUM(CASE WHEN e.status = 'approved' THEN 1 ELSE 0 END)", 'approved')
+        .addSelect("SUM(CASE WHEN e.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
+        .addSelect("SUM(CASE WHEN e.status = 'pending' THEN 1 ELSE 0 END)", 'pending')
+        .where('e.submitted_by_id = :phiId', { phiId })
+        .getRawOne<Record<string, string>>(),
+    ]);
 
     const assigned = parseInt(metricsRow?.assigned ?? '0', 10);
     const completed = parseInt(metricsRow?.completed ?? '0', 10);
@@ -480,7 +575,7 @@ export class TasksAnalyticsService {
     };
   }
 
-  async getPhiTasks(
+  private async _getPhiTasks(
     phiId: string,
     page: number = 1,
     limit: number = 20,
