@@ -86,4 +86,30 @@ export class TasksAnalyticsController {
       districtId ? parseInt(districtId, 10) : undefined,
     );
   }
+
+  @Get('phi-profile')
+  getPhiProfile(@Query('phiId') phiId: string) {
+    return this.analyticsService.getPhiProfile(phiId);
+  }
+
+  @Get('phi-tasks')
+  getPhiTasks(
+    @Query('phiId') phiId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.analyticsService.getPhiTasks(
+      phiId,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      status,
+      type,
+      from,
+      to,
+    );
+  }
 }

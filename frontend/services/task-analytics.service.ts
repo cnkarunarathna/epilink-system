@@ -191,3 +191,68 @@ export async function fetchEvidenceReview(districtId?: number): Promise<Evidence
   });
   return data;
 }
+
+export interface PhiMonthlyTrend {
+  month: string;
+  completed: number;
+}
+
+export interface PhiProfile {
+  phiId: string;
+  name: string;
+  district: string;
+  isActive: boolean;
+  memberSince: string;
+  assigned: number;
+  completed: number;
+  rejected: number;
+  overdue: number;
+  completionRate: number;
+  avgCompletionHours: number | null;
+  evidenceTotal: number;
+  evidenceApproved: number;
+  evidenceRejected: number;
+  evidencePending: number;
+  evidenceApprovalRate: number;
+  statusBreakdown: { status: string; count: number }[];
+  monthlyTrend: PhiMonthlyTrend[];
+}
+
+export interface PhiTaskItem {
+  id: string;
+  title: string;
+  type: string;
+  priority: string;
+  status: string;
+  assignedAt: string | null;
+  completedAt: string | null;
+  dueDate: string | null;
+  districtName: string;
+}
+
+export interface PhiTasksPage {
+  tasks: PhiTaskItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function fetchPhiProfile(phiId: string): Promise<PhiProfile> {
+  const { data } = await axios.get<PhiProfile>(`${BASE}/phi-profile`, { params: { phiId } });
+  return data;
+}
+
+export async function fetchPhiTasks(
+  phiId: string,
+  page: number = 1,
+  limit: number = 20,
+  status?: string,
+  type?: string,
+  from?: string,
+  to?: string,
+): Promise<PhiTasksPage> {
+  const { data } = await axios.get<PhiTasksPage>(`${BASE}/phi-tasks`, {
+    params: { phiId, page, limit, status, type, from, to },
+  });
+  return data;
+}

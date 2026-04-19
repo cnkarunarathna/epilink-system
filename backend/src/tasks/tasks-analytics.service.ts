@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
@@ -15,6 +15,8 @@ import {
   PhiMetricsDto,
   OverdueTaskDto,
   EvidenceReviewSummaryDto,
+  PhiProfileDto,
+  PhiTasksPageDto,
 } from './dto/task-analytics.dto';
 
 @Injectable()
@@ -389,5 +391,154 @@ export class TasksAnalyticsService {
       national.total > 0 ? Math.round((national.approved / national.total) * 100) : 0;
 
     return { national, byDistrict };
+  }
+
+  async getPhiProfile(phiId: string): Promise<PhiProfileDto> {
+    const user = await this.userRepo.findOne({ where: { id: phiId } });
+    if (!user) throw new NotFoundException('PHI not found');
+
+    const metricsRow = await this.taskRepo
+      .createQueryBuilder('t')
+      .select('COUNT(t.id)', 'assigned')
+      .addSelect("SUM(CASE WHEN t.status IN ('completed','verified') THEN 1 ELSE 0 END)", 'completed')
+      .addSelect("SUM(CASE WHEN t.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
+      .addSelect(
+        "SUM(CASE WHEN t.due_date < NOW() AND t.status NOT IN ('completed','verified') THEN 1 ELSE 0 END)",
+        'overdue',
+      )
+      .addSelect(
+        "AVG(CASE WHEN t.completed_at IS NOT NULL AND t.assigned_at IS NOT NULL THEN EXTRACT(EPOCH FROM (t.completed_at - t.assigned_at)) / 3600 END)",
+        'avgCompletionHours',
+      )
+      .where('t.assigned_phi_id = :phiId', { phiId })
+      .getRawOne<Record<string, string | null>>();
+
+    const statusRows = await this.taskRepo
+      .createQueryBuilder('t')
+      .select('t.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('t.assigned_phi_id = :phiId', { phiId })
+      .groupBy('t.status')
+      .getRawMany<{ status: string; count: string }>();
+
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const monthlyRows = await this.taskRepo
+      .createQueryBuilder('t')
+      .select("DATE_TRUNC('month', t.completed_at)", 'month')
+      .addSelect('COUNT(*)', 'completed')
+      .where('t.assigned_phi_id = :phiId', { phiId })
+      .andWhere("t.status IN ('completed','verified')")
+      .andWhere('t.completed_at IS NOT NULL')
+      .andWhere('t.completed_at >= :from', { from: sixMonthsAgo })
+      .groupBy("DATE_TRUNC('month', t.completed_at)")
+      .orderBy("DATE_TRUNC('month', t.completed_at)", 'ASC')
+      .getRawMany<{ month: Date; completed: string }>();
+
+    const evidenceRow = await this.evidenceRepo
+      .createQueryBuilder('e')
+      .select('COUNT(e.id)', 'total')
+      .addSelect("SUM(CASE WHEN e.status = 'approved' THEN 1 ELSE 0 END)", 'approved')
+      .addSelect("SUM(CASE WHEN e.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
+      .addSelect("SUM(CASE WHEN e.status = 'pending' THEN 1 ELSE 0 END)", 'pending')
+      .where('e.submitted_by_id = :phiId', { phiId })
+      .getRawOne<Record<string, string>>();
+
+    const assigned = parseInt(metricsRow?.assigned ?? '0', 10);
+    const completed = parseInt(metricsRow?.completed ?? '0', 10);
+    const evidenceTotal = parseInt(evidenceRow?.total ?? '0', 10);
+    const evidenceApproved = parseInt(evidenceRow?.approved ?? '0', 10);
+
+    return {
+      phiId: user.id,
+      name: user.name,
+      district: user.district ?? '',
+      isActive: user.isActive,
+      memberSince: user.createdAt.toISOString(),
+      assigned,
+      completed,
+      rejected: parseInt(metricsRow?.rejected ?? '0', 10),
+      overdue: parseInt(metricsRow?.overdue ?? '0', 10),
+      completionRate: assigned > 0 ? Math.round((completed / assigned) * 100) : 0,
+      avgCompletionHours: metricsRow?.avgCompletionHours
+        ? parseFloat(metricsRow.avgCompletionHours)
+        : null,
+      evidenceTotal,
+      evidenceApproved,
+      evidenceRejected: parseInt(evidenceRow?.rejected ?? '0', 10),
+      evidencePending: parseInt(evidenceRow?.pending ?? '0', 10),
+      evidenceApprovalRate:
+        evidenceTotal > 0 ? Math.round((evidenceApproved / evidenceTotal) * 100) : 0,
+      statusBreakdown: statusRows.map((r) => ({
+        status: r.status,
+        count: parseInt(r.count, 10),
+      })),
+      monthlyTrend: monthlyRows.map((r) => ({
+        month: r.month instanceof Date ? r.month.toISOString() : String(r.month),
+        completed: parseInt(r.completed, 10),
+      })),
+    };
+  }
+
+  async getPhiTasks(
+    phiId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string,
+    type?: string,
+    from?: string,
+    to?: string,
+  ): Promise<PhiTasksPageDto> {
+    const applyFilters = (qb: ReturnType<typeof this.taskRepo.createQueryBuilder>) => {
+      qb.where('t.assigned_phi_id = :phiId', { phiId });
+      if (status) qb.andWhere('t.status = :status', { status });
+      if (type) qb.andWhere('t.type = :type', { type });
+      if (from) qb.andWhere('t.created_at >= :from', { from });
+      if (to) qb.andWhere('t.created_at <= :to', { to });
+      return qb;
+    };
+
+    const total = await applyFilters(this.taskRepo.createQueryBuilder('t')).getCount();
+
+    const dataQb = this.taskRepo
+      .createQueryBuilder('t')
+      .innerJoin('t.district', 'd')
+      .select('t.id', 'id')
+      .addSelect('t.title', 'title')
+      .addSelect('t.type', 'type')
+      .addSelect('t.priority', 'priority')
+      .addSelect('t.status', 'status')
+      .addSelect('t.assigned_at', 'assignedAt')
+      .addSelect('t.completed_at', 'completedAt')
+      .addSelect('t.due_date', 'dueDate')
+      .addSelect('d.name', 'districtName')
+      .orderBy('t.created_at', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit);
+    applyFilters(dataQb);
+
+    const rows = await dataQb.getRawMany<Record<string, unknown>>();
+
+    const toIso = (v: unknown): string | null => {
+      if (!v) return null;
+      return v instanceof Date ? v.toISOString() : String(v);
+    };
+
+    return {
+      tasks: rows.map((r) => ({
+        id: r.id as string,
+        title: r.title as string,
+        type: r.type as string,
+        priority: r.priority as string,
+        status: r.status as string,
+        assignedAt: toIso(r.assignedAt),
+        completedAt: toIso(r.completedAt),
+        dueDate: toIso(r.dueDate),
+        districtName: r.districtName as string,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 }

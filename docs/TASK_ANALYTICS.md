@@ -105,7 +105,7 @@ Add a Task Analytics section to the admin dashboard at `/admin/tasks/analytics` 
 
 ---
 
-### Phase 3 — Frontend: District Drill-Down
+### Phase 3 — Frontend: District Drill-Down ✅ DONE
 
 **Goal:** Click a district in Phase 2 charts → see that district's supervisor and PHI breakdown.
 
@@ -141,7 +141,7 @@ Add a Task Analytics section to the admin dashboard at `/admin/tasks/analytics` 
 
 ---
 
-### Phase 4 — Frontend: PHI Performance Profile
+### Phase 4 — Frontend: PHI Performance Profile ✅ DONE
 
 **Goal:** Deep-dive into a single PHI's task history and performance metrics.
 
@@ -220,7 +220,7 @@ Add to sidebar nav (wherever existing admin links live).
 | 1 | Backend analytics service + 10 API endpoints | Medium | ✅ Done |
 | 2 | National overview page + 6 chart components | Medium | ✅ Done |
 | 3 | District drill-down page + 3 table components | Low | ✅ Done |
-| 4 | PHI profile page + 3 components | Low | — |
+| 4 | PHI profile page + 3 components | Low | ✅ Done |
 | 5 | Real-time feed + overdue alerts + WebSocket | Medium | — |
 
 Start with Phase 1 — all frontend phases depend on it.

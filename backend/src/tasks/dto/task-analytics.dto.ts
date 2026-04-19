@@ -118,3 +118,48 @@ export class EvidenceReviewSummaryDto {
   };
   byDistrict: EvidenceReviewDistrictDto[];
 }
+
+export class PhiMonthlyTrendDto {
+  month: string;
+  completed: number;
+}
+
+export class PhiProfileDto {
+  phiId: string;
+  name: string;
+  district: string;
+  isActive: boolean;
+  memberSince: string;
+  assigned: number;
+  completed: number;
+  rejected: number;
+  overdue: number;
+  completionRate: number;
+  avgCompletionHours: number | null;
+  evidenceTotal: number;
+  evidenceApproved: number;
+  evidenceRejected: number;
+  evidencePending: number;
+  evidenceApprovalRate: number;
+  statusBreakdown: { status: string; count: number }[];
+  monthlyTrend: PhiMonthlyTrendDto[];
+}
+
+export class PhiTaskItemDto {
+  id: string;
+  title: string;
+  type: string;
+  priority: string;
+  status: string;
+  assignedAt: string | null;
+  completedAt: string | null;
+  dueDate: string | null;
+  districtName: string;
+}
+
+export class PhiTasksPageDto {
+  tasks: PhiTaskItemDto[];
+  total: number;
+  page: number;
+  limit: number;
+}
