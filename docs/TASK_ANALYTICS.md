@@ -219,7 +219,7 @@ Add to sidebar nav (wherever existing admin links live).
 |---|---|---|---|
 | 1 | Backend analytics service + 10 API endpoints | Medium | ✅ Done |
 | 2 | National overview page + 6 chart components | Medium | ✅ Done |
-| 3 | District drill-down page + 3 table components | Low | — |
+| 3 | District drill-down page + 3 table components | Low | ✅ Done |
 | 4 | PHI profile page + 3 components | Low | — |
 | 5 | Real-time feed + overdue alerts + WebSocket | Medium | — |
 
