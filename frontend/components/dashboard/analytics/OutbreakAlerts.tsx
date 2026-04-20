@@ -54,6 +54,15 @@ export default function OutbreakAlerts({
   };
 
   const getSeverityBadge = (severity: string) => {
+    if (usePublicApi) {
+      switch (severity) {
+        case "critical":
+        case "high":
+          return <Badge variant="destructive">⚠️ Warning</Badge>;
+        default:
+          return <Badge variant="default">⚠️ Watch</Badge>;
+      }
+    }
     switch (severity) {
       case "critical":
         return <Badge variant="destructive">Critical</Badge>;
@@ -72,7 +81,7 @@ export default function OutbreakAlerts({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
-            Outbreak Alerts
+            {usePublicApi ? "Health Warnings" : "Outbreak Alerts"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -92,9 +101,13 @@ export default function OutbreakAlerts({
             <div className="p-2 bg-green-100 dark:bg-green-900/50 rounded-lg">
               <AlertTriangle className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
-            Outbreak Alerts
+            {usePublicApi ? "Health Warnings" : "Outbreak Alerts"}
           </CardTitle>
-          <CardDescription>Real-time outbreak monitoring</CardDescription>
+          <CardDescription>
+            {usePublicApi
+              ? "Areas where dengue cases have risen sharply this week"
+              : "Real-time outbreak monitoring"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
@@ -102,9 +115,13 @@ export default function OutbreakAlerts({
               <Activity className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
             <p className="font-medium text-green-700 dark:text-green-400">
-              All Clear!
+              {usePublicApi ? "✓ All Clear!" : "All Clear!"}
             </p>
-            <p className="text-sm">No active outbreak alerts detected</p>
+            <p className="text-sm">
+              {usePublicApi
+                ? "No major health warnings this week"
+                : "No active outbreak alerts detected"}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -118,13 +135,15 @@ export default function OutbreakAlerts({
           <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-lg animate-pulse">
             <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
           </div>
-          Outbreak Alerts
+          {usePublicApi ? "Health Warnings" : "Outbreak Alerts"}
           <Badge variant="destructive" className="ml-auto">
             {alerts.length} Active
           </Badge>
         </CardTitle>
         <CardDescription>
-          Districts requiring immediate attention
+          {usePublicApi
+            ? "Areas where dengue cases have risen sharply this week"
+            : "Districts requiring immediate attention"}
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
@@ -150,44 +169,72 @@ export default function OutbreakAlerts({
                   <p className="text-sm text-muted-foreground mb-2">
                     {alert.description}
                   </p>
-                  <div className="flex items-center gap-4 text-xs">
-                    <span className="flex items-center gap-1">
-                      <span className="font-medium">Current:</span>
-                      <span className="font-bold text-red-600 dark:text-red-400">
-                        {alert.current_cases}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="font-medium">4-week avg:</span>
-                      <span>{alert.avg_cases.toFixed(0)}</span>
-                    </span>
-                    <span className="flex items-center gap-1">
+                  {usePublicApi ? (
+                    <div className="flex items-center gap-2 text-xs mt-1">
                       {alert.current_cases > alert.avg_cases ? (
                         <>
-                          <TrendingUp className="h-3 w-3 text-red-500" />
-                          <span className="text-red-600 dark:text-red-400 font-medium">
-                            +
-                            {(
-                              (alert.current_cases / alert.avg_cases - 1) *
-                              100
-                            ).toFixed(0)}
-                            %
+                          <TrendingUp className="h-3 w-3 text-red-500 shrink-0" />
+                          <span className="text-red-600 dark:text-red-400">
+                            Cases rose by{" "}
+                            <strong>
+                              {(
+                                (alert.current_cases / alert.avg_cases - 1) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </strong>{" "}
+                            above the recent average
                           </span>
                         </>
                       ) : (
                         <>
-                          <TrendingDown className="h-3 w-3 text-green-500" />
-                          <span className="text-green-600 dark:text-green-400 font-medium">
-                            {(
-                              (alert.current_cases / alert.avg_cases - 1) *
-                              100
-                            ).toFixed(0)}
-                            %
+                          <TrendingDown className="h-3 w-3 text-green-500 shrink-0" />
+                          <span className="text-green-600 dark:text-green-400">
+                            Cases are lower than the recent average
                           </span>
                         </>
                       )}
-                    </span>
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="flex items-center gap-1">
+                        <span className="font-medium">Current:</span>
+                        <span className="font-bold text-red-600 dark:text-red-400">
+                          {alert.current_cases}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="font-medium">4-week avg:</span>
+                        <span>{alert.avg_cases.toFixed(0)}</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        {alert.current_cases > alert.avg_cases ? (
+                          <>
+                            <TrendingUp className="h-3 w-3 text-red-500" />
+                            <span className="text-red-600 dark:text-red-400 font-medium">
+                              +
+                              {(
+                                (alert.current_cases / alert.avg_cases - 1) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <TrendingDown className="h-3 w-3 text-green-500" />
+                            <span className="text-green-600 dark:text-green-400 font-medium">
+                              {(
+                                (alert.current_cases / alert.avg_cases - 1) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

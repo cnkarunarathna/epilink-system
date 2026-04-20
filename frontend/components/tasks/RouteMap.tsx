@@ -21,6 +21,7 @@ import {
   getStatusColor,
 } from "@/services/tasks.service";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 
 interface RouteMapProps {
   tasks: Task[];
@@ -59,9 +60,25 @@ export function RouteMap({
   height = 500,
   basePath = "/phi/tasks",
 }: RouteMapProps) {
+  const { resolvedTheme } = useTheme();
+
   const taskById = useMemo(
     () => new globalThis.Map<string, Task>(tasks.map((t) => [t.id, t])),
     [tasks],
+  );
+
+  const routeColors = useMemo(
+    () =>
+      resolvedTheme === "dark"
+        ? {
+            halo: "#f8fafc",
+            line: "#60a5fa",
+          }
+        : {
+            halo: "#0f172a",
+            line: "#1d4ed8",
+          },
+    [resolvedTheme],
   );
 
   // Build ordered task list, preserving only tasks present in orderedTaskIds
@@ -130,12 +147,22 @@ export function RouteMap({
         <RouteMapView center={mapCenter} zoom={10} minZoom={6} maxZoom={18}>
           {/* Road polyline */}
           {routeResult.polyline.length > 1 && (
-            <MapRoute
-              coordinates={routeResult.polyline}
-              color="#3b82f6"
-              width={4}
-              opacity={0.85}
-            />
+            <>
+              <MapRoute
+                coordinates={routeResult.polyline}
+                color={routeColors.halo}
+                width={8}
+                opacity={0.3}
+                interactive={false}
+              />
+              <MapRoute
+                coordinates={routeResult.polyline}
+                color={routeColors.line}
+                width={4}
+                opacity={0.95}
+                interactive={false}
+              />
+            </>
           )}
 
           {/* Numbered markers in optimized order */}
@@ -179,7 +206,10 @@ export function RouteMap({
 
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Badge
-                        className={cn("text-[10px]", getStatusColor(task.status))}
+                        className={cn(
+                          "text-[10px]",
+                          getStatusColor(task.status),
+                        )}
                       >
                         {statusLabels[task.status]}
                       </Badge>
