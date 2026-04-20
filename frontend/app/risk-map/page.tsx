@@ -87,6 +87,7 @@ export default function PublicRiskMapPage() {
     TimeSeriesData[]
   >([]);
   const [showListView, setShowListView] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const hasFetchedRef = useRef(false);
 
@@ -94,6 +95,14 @@ export default function PublicRiskMapPage() {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
     loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   const loadDashboardData = async () => {
@@ -402,9 +411,145 @@ export default function PublicRiskMapPage() {
           </div>
         )}
 
-        {/* Main Tabbed Content */}
+        {/* ===== MOBILE FLAT SCROLL (< 768px) ===== */}
+        {isMobile && (
+          <div className="space-y-8">
+            {/* Section 1 — Map */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-bold flex items-center gap-2 pb-2 border-b">
+                <MapPin className="h-5 w-5 text-primary" /> Where is dengue now?
+              </h2>
+              <div className="flex justify-end">
+                <Button onClick={loadDashboardData} disabled={loading} size="sm" className="shadow-md">
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Refresh
+                </Button>
+              </div>
+              {predictions.length > 0 && (
+                <div className="space-y-4">
+                  <DistrictSearchBar districts={predictions.map((p) => p.district)} onSelect={handleDistrictClick} />
+                  <div className="flex gap-2">
+                    <Button variant={!showListView ? "default" : "outline"} size="sm" onClick={() => setShowListView(false)}>
+                      <MapPin className="h-4 w-4 mr-1.5" /> Map
+                    </Button>
+                    <Button variant={showListView ? "default" : "outline"} size="sm" onClick={() => setShowListView(true)}>
+                      <Activity className="h-4 w-4 mr-1.5" /> List
+                    </Button>
+                  </div>
+                  {!showListView ? (
+                    <div className="h-[400px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
+                      <SriLankaMap data={predictions} onDistrictClick={handleDistrictClick} publicMode />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {topRiskDistricts.map((district, index) => {
+                        const risk = getRiskLevel(district.predicted_cases);
+                        return (
+                          <div
+                            key={district.district}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent cursor-pointer transition-colors"
+                            onClick={() => handleDistrictClick(district.district)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                                {index + 1}
+                              </div>
+                              <div>
+                                <p className="font-medium">{district.district}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {district.predicted_cases.toLocaleString()} expected cases
+                                </p>
+                              </div>
+                            </div>
+                            <Badge variant={risk.color as any}>{risk.level}</Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedDistrict && districtTimeseries.length > 0 && (
+                    <div className="space-y-4 p-4 bg-linear-to-br from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800">
+                      {(() => {
+                        const d = predictions.find((p) => p.district === selectedDistrict);
+                        const risk = d ? getRiskLevel(d.predicted_cases) : null;
+                        return d ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100">{selectedDistrict}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Expected cases this week</span>
+                                <span className="text-lg font-bold">{d.predicted_cases.toLocaleString()} cases</span>
+                              </div>
+                              <div className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Risk level</span>
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <Badge variant={risk?.color as any}>{risk?.level}</Badge>
+                                  <span className="text-xs text-muted-foreground">{risk?.description}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {districtTimeseries.slice(-4).reverse().map((entry) => {
+                                const r = getRiskLevel(entry.cases);
+                                return (
+                                  <div key={`${entry.year}-${entry.week}`} className="flex items-center justify-between p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg">
+                                    <span className="text-xs font-medium text-slate-500">Week {entry.week}, {entry.year}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-bold">{entry.cases}</span>
+                                      <Badge variant="outline" className="text-xs">{r.level}</Badge>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <ActionGuidance level={risk!.level} district={selectedDistrict} />
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Section 2 — Trends */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-bold flex items-center gap-2 pb-2 border-b">
+                <Sparkles className="h-5 w-5 text-primary" /> Is it getting better or worse?
+              </h2>
+              {trends.length > 0 && <TrendStoryChart data={trends} />}
+              <PublicHealthWarnings />
+              <DistrictWatchList />
+            </section>
+
+            {/* Section 3 — Protection */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-bold flex items-center gap-2 pb-2 border-b">
+                <Zap className="h-5 w-5 text-primary" /> How can I protect myself?
+              </h2>
+              <PreventionChecklist
+                riskLevel={
+                  summary
+                    ? summary.high_risk_districts >= 8 ? "high"
+                      : summary.high_risk_districts >= 4 ? "moderate"
+                      : "low"
+                    : "low"
+                }
+              />
+              {predictions.length > 0 && (
+                <DistrictRiskTable districts={predictions} onDistrictClick={handleDistrictClick} />
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* ===== DESKTOP TABBED CONTENT (≥ 768px) ===== */}
+        {!isMobile && (
         <Tabs defaultValue="risk-map" className="space-y-6">
-          <TabsList className="hidden md:grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
+          <TabsList className="grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
             <TabsTrigger
               value="risk-map"
               className="text-sm md:text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
@@ -438,15 +583,8 @@ export default function PublicRiskMapPage() {
           {/* ===== RISK MAP TAB ===== */}
           <TabsContent
             value="risk-map"
-            forceMount
-            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
+            className="space-y-6 animate-in fade-in-50 duration-500"
           >
-            <div className="md:hidden border-b pb-3 mb-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-primary" />
-                Where is dengue now?
-              </h2>
-            </div>
             {/* Refresh */}
             <div className="flex justify-end">
               <Button
@@ -508,63 +646,13 @@ export default function PublicRiskMapPage() {
                         onSelect={handleDistrictClick}
                       />
                     </div>
-                    {/* Map / List toggle — visible on mobile only */}
-                    <div className="flex gap-2 md:hidden">
-                      <Button
-                        variant={!showListView ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setShowListView(false)}
-                      >
-                        <MapPin className="h-4 w-4 mr-1.5" />
-                        Map
-                      </Button>
-                      <Button
-                        variant={showListView ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setShowListView(true)}
-                      >
-                        <Activity className="h-4 w-4 mr-1.5" />
-                        List
-                      </Button>
-                    </div>
-
-                    {/* Map — always shown on desktop; hidden on mobile when list view is active */}
-                    <div className={`${showListView ? "hidden md:block" : ""} h-[400px] md:h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner`}>
+                    <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
                       <SriLankaMap
                         data={predictions}
                         onDistrictClick={handleDistrictClick}
                         publicMode
                       />
                     </div>
-
-                    {/* List view — mobile only, shown when toggled */}
-                    {showListView && (
-                      <div className="md:hidden space-y-3">
-                        {topRiskDistricts.map((district, index) => {
-                          const risk = getRiskLevel(district.predicted_cases);
-                          return (
-                            <div
-                              key={district.district}
-                              className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent cursor-pointer transition-colors"
-                              onClick={() => handleDistrictClick(district.district)}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <p className="font-medium">{district.district}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {district.predicted_cases.toLocaleString()} expected cases
-                                  </p>
-                                </div>
-                              </div>
-                              <Badge variant={risk.color as any}>{risk.level}</Badge>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
 
                     {/* Selected District Details */}
                     {selectedDistrict && districtTimeseries.length > 0 && (
@@ -729,15 +817,8 @@ export default function PublicRiskMapPage() {
           {/* ===== PREDICTIONS & TRENDS TAB ===== */}
           <TabsContent
             value="predictions"
-            forceMount
-            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
+            className="space-y-6 animate-in fade-in-50 duration-500"
           >
-            <div className="md:hidden border-b pb-3 mb-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Is it getting better or worse?
-              </h2>
-            </div>
             {/* 12-Week Trend Chart */}
             {trends.length > 0 && <TrendStoryChart data={trends} />}
 
@@ -751,15 +832,8 @@ export default function PublicRiskMapPage() {
           {/* ===== HOW CAN I PROTECT MYSELF TAB ===== */}
           <TabsContent
             value="analysis"
-            forceMount
-            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
+            className="space-y-6 animate-in fade-in-50 duration-500"
           >
-            <div className="md:hidden border-b pb-3 mb-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <Zap className="h-5 w-5 text-primary" />
-                How can I protect myself?
-              </h2>
-            </div>
             <div className="grid gap-6 md:grid-cols-2">
               <PreventionChecklist
                 riskLevel={
@@ -781,6 +855,7 @@ export default function PublicRiskMapPage() {
             </div>
           </TabsContent>
         </Tabs>
+        )}
 
         {/* Need help? */}
         <div className="rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 px-6 py-5 space-y-3">
