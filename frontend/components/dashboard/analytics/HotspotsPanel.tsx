@@ -50,6 +50,16 @@ export default function HotspotsPanel({
   };
 
   const getSeverityBadge = (severity: string) => {
+    if (usePublicApi) {
+      switch (severity) {
+        case "critical":
+          return <Badge variant="destructive">Sharp rise</Badge>;
+        case "high":
+          return <Badge className="bg-orange-500">Rising fast</Badge>;
+        default:
+          return <Badge className="bg-yellow-500">Rising</Badge>;
+      }
+    }
     switch (severity) {
       case "critical":
         return <Badge variant="destructive">Critical</Badge>;
@@ -89,7 +99,7 @@ export default function HotspotsPanel({
           <div className="p-2 bg-orange-100 dark:bg-orange-900/50 rounded-lg">
             <Flame className="h-5 w-5 text-orange-600 dark:text-orange-400" />
           </div>
-          Active Hotspots
+          {usePublicApi ? "Areas with rising cases" : "Active Hotspots"}
           {hotspots.length > 0 && (
             <Badge variant="destructive" className="ml-auto">
               {hotspots.length}
@@ -97,7 +107,9 @@ export default function HotspotsPanel({
           )}
         </CardTitle>
         <CardDescription>
-          Districts with high case counts and rapid growth
+          {usePublicApi
+            ? "Areas where dengue cases have increased suddenly"
+            : "Districts with high case counts and rapid growth"}
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
@@ -106,8 +118,16 @@ export default function HotspotsPanel({
             <div className="p-4 bg-muted rounded-full mb-3">
               <MapPin className="h-8 w-8" />
             </div>
-            <p className="font-medium">No hotspots detected</p>
-            <p className="text-sm">All districts under control</p>
+            <p className="font-medium">
+              {usePublicApi
+                ? "No sudden rises detected"
+                : "No hotspots detected"}
+            </p>
+            <p className="text-sm">
+              {usePublicApi
+                ? "All districts appear stable this week"
+                : "All districts under control"}
+            </p>
           </div>
         ) : (
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800">
@@ -142,39 +162,62 @@ export default function HotspotsPanel({
                   </div>
                   {getSeverityBadge(hotspot.severity)}
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
-                    <div className="text-xs text-muted-foreground mb-1">
-                      Current
-                    </div>
-                    <div className="font-bold text-2xl">
-                      {hotspot.current_cases}
-                    </div>
-                  </div>
-                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
-                    <div className="text-xs text-muted-foreground mb-1">
-                      Previous
-                    </div>
-                    <div className="font-medium text-lg">
-                      {hotspot.previous_cases}
-                    </div>
-                  </div>
-                  <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
-                    <div className="text-xs text-muted-foreground mb-1">
-                      Growth
+                {usePublicApi ? (
+                  <div className="flex items-center gap-3 text-sm">
+                    <div className="p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg flex-1 text-center">
+                      <div className="text-xs text-muted-foreground mb-0.5">
+                        Cases this week
+                      </div>
+                      <div className="font-bold text-xl">
+                        {hotspot.current_cases}
+                      </div>
                     </div>
                     <div
-                      className={`font-bold text-lg flex items-center justify-center gap-1 ${
+                      className={`text-sm font-medium flex items-center gap-1 ${
                         hotspot.growth_rate > 0
                           ? "text-red-600 dark:text-red-400"
                           : "text-green-600 dark:text-green-400"
                       }`}
                     >
                       {hotspot.growth_rate > 0 ? "↑" : "↓"}
-                      {Math.abs(hotspot.growth_rate).toFixed(1)}%
+                      up from {hotspot.previous_cases} last week
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Current
+                      </div>
+                      <div className="font-bold text-2xl">
+                        {hotspot.current_cases}
+                      </div>
+                    </div>
+                    <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Previous
+                      </div>
+                      <div className="font-medium text-lg">
+                        {hotspot.previous_cases}
+                      </div>
+                    </div>
+                    <div className="text-center p-2 bg-white/60 dark:bg-gray-800/60 rounded-lg">
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Growth
+                      </div>
+                      <div
+                        className={`font-bold text-lg flex items-center justify-center gap-1 ${
+                          hotspot.growth_rate > 0
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-green-600 dark:text-green-400"
+                        }`}
+                      >
+                        {hotspot.growth_rate > 0 ? "↑" : "↓"}
+                        {Math.abs(hotspot.growth_rate).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
