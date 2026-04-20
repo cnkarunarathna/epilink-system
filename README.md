@@ -423,7 +423,7 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
          ▼                                 ▼
 ┌─────────────────────────────────┐  ┌───────────────────┐
 │ PostgreSQL Database             │  │ Object Storage    │
-│ - Users, Districts              │  │ (S3/R2)           │
+│ - Users, Districts              │  │ (S3)           │
 │ - Dengue Cases, Weather Data    │  │ Evidence files    │
 │ - Predictions (updated weekly)  │  │ PDF reports       │
 │ - Tasks, Evidence, Messages     │  └───────────────────┘
@@ -589,12 +589,8 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [x] Automated ETL pipeline (APScheduler weekly corpus updates)
 - [x] Spatial cluster / geographic spillover detection
 - [x] Redis session persistence for agentic chat
-- [ ] Multi-language output for insights (Sinhala / Tamil)
-- [ ] Structured logging and observability (Prometheus metrics)
 - [ ] Response caching for insight stability
 - [ ] Lightweight follow-up question endpoint (cache-backed)
-- [ ] Multi-PHI vehicle routing optimization (OR-Tools VRP)
-- [ ] Advanced ML ensemble with time-window constraints
 
 ---
 
@@ -717,7 +713,7 @@ This project is developed as a final year academic project.
 
 ## Authors
 
-- **Your Name** - Final Year Project, [Your University]
+- **Charuka Karunarathna** - Final Year Project, [NSBM Green University (in affiliation with University of Plymouth)]
 
 ---
 
@@ -725,4 +721,4 @@ This project is developed as a final year academic project.
 
 - Ministry of Health, Sri Lanka - Epidemiology Unit
 - Open-Meteo for weather data API
-- Project Supervisor: [Supervisor Name]
+- Project Supervisor: Mr. Diluka Wijesinghe
