@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { MapPin, Activity, RotateCcw } from "lucide-react";
+import { MapPin, Activity, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Map, useMap, MapControls } from "@/components/ui/map";
 import type MapLibreGL from "maplibre-gl";
@@ -398,6 +398,7 @@ export default function SriLankaMap({
 }: SriLankaMapProps) {
   const [hoveredDistrict, setHoveredDistrict] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [legendCollapsed, setLegendCollapsed] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -407,7 +408,7 @@ export default function SriLankaMap({
   if (!mounted) return null;
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full" aria-label="Interactive dengue risk map of Sri Lanka — tap or click a district to see its risk level">
       {/*
         bounds   → MapLibre fits the viewport to Sri Lanka on mount (no fixed zoom)
         fitBoundsOptions.animate: false → instant, no jarring fly-in on first load
@@ -436,14 +437,18 @@ export default function SriLankaMap({
 
       {/* ── Hover tooltip (top-right, theme-token colours) ── */}
       {hoveredDistrict && (
-        <div className="
-          absolute top-3 right-3 z-1000
-          bg-card/95 backdrop-blur-md
-          border border-primary/25
-          rounded-xl shadow-xl p-4
-          min-w-50 max-w-60
-          animate-in fade-in-0 slide-in-from-top-2 duration-150
-        ">
+        <div
+          role="tooltip"
+          aria-live="polite"
+          className="
+            absolute top-3 right-3 z-1000
+            bg-card/95 backdrop-blur-md
+            border border-primary/25
+            rounded-xl shadow-xl p-4
+            min-w-50 max-w-60
+            animate-in fade-in-0 slide-in-from-top-2 duration-150
+          "
+        >
           <div className="flex items-center gap-2 mb-2.5">
             <MapPin className="h-4 w-4 text-primary shrink-0" />
             <h4 className="font-bold text-sm leading-tight">{hoveredDistrict}</h4>
@@ -472,6 +477,32 @@ export default function SriLankaMap({
         </div>
       )}
 
+      {/* Screen-reader accessible district data table */}
+      <table className="sr-only" aria-label="Dengue risk levels by district">
+        <caption>District dengue risk data</caption>
+        <thead>
+          <tr>
+            <th scope="col">District</th>
+            <th scope="col">Expected cases this week</th>
+            <th scope="col">Risk level</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((d) => {
+            const color = getRiskColor(d.predicted_cases);
+            const items = publicMode ? PUBLIC_LEGEND_ITEMS : LEGEND_ITEMS;
+            const riskLabel = items.find((i) => i.color === color)?.level ?? "Unknown";
+            return (
+              <tr key={d.district}>
+                <td>{d.district}</td>
+                <td>{d.predicted_cases}</td>
+                <td>{riskLabel}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
       {/* ── Risk legend (bottom-left, theme-token colours) ── */}
       <div className="
         absolute bottom-3 left-3 z-1000
@@ -480,46 +511,65 @@ export default function SriLankaMap({
         rounded-xl shadow-xl p-4
         min-w-40
       ">
-        <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-border">
-          <div className="p-1 bg-linear-to-br from-red-500 to-orange-500 rounded-md">
-            <Activity className="h-3.5 w-3.5 text-white" />
+        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-linear-to-br from-red-500 to-orange-500 rounded-md">
+              <Activity className="h-3.5 w-3.5 text-white" />
+            </div>
+            <h4 className="font-bold text-xs">Risk Levels</h4>
           </div>
-          <h4 className="font-bold text-xs">Risk Levels</h4>
+          <button
+            type="button"
+            onClick={() => setLegendCollapsed((c) => !c)}
+            className="text-muted-foreground hover:text-foreground transition-colors ml-2"
+            aria-label={legendCollapsed ? "Expand legend" : "Collapse legend"}
+          >
+            {legendCollapsed ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronUp className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
 
-        <div className="space-y-1.5">
-          {(publicMode ? PUBLIC_LEGEND_ITEMS : LEGEND_ITEMS).map((item) => (
-            <div
-              key={item.level}
-              className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50"
-            >
-              <span
-                className="w-3.5 h-3.5 rounded-sm shrink-0 shadow-sm border border-black/10"
-                style={{ backgroundColor: item.color }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold">{item.level}</div>
-                {"cases" in item && (
-                  <div className="text-[10px] text-muted-foreground">{item.cases}</div>
-                )}
-                {"meaning" in item && (
-                  <div className="text-[10px] text-muted-foreground">{item.meaning}</div>
-                )}
+        {!legendCollapsed && (
+          <>
+            <div className="space-y-1.5">
+              {(publicMode ? PUBLIC_LEGEND_ITEMS : LEGEND_ITEMS).map((item) => (
+                <div
+                  key={item.level}
+                  className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="w-3.5 h-3.5 rounded-sm shrink-0 shadow-sm border border-black/10"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold">{item.level}</div>
+                    {"cases" in item && (
+                      <div className="text-[10px] text-muted-foreground">{item.cases}</div>
+                    )}
+                    {"meaning" in item && (
+                      <div className="text-[10px] text-muted-foreground">{item.meaning}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50">
+                <span aria-hidden="true" className="w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold">No Data</div>
+                  <div className="text-[10px] text-muted-foreground">Not available</div>
+                </div>
               </div>
             </div>
-          ))}
-          <div className="flex items-center gap-2.5 px-1 py-1 rounded-md transition-colors hover:bg-muted/50">
-            <span className="w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted" />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold">No Data</div>
-              <div className="text-[10px] text-muted-foreground">Not available</div>
-            </div>
-          </div>
-        </div>
 
-        <p className="mt-2.5 pt-2 border-t border-border text-[10px] text-center text-muted-foreground italic">
-          {publicMode ? "Click any area for details" : "Hover districts for details"}
-        </p>
+            <p className="mt-2.5 pt-2 border-t border-border text-[10px] text-center text-muted-foreground italic">
+              {publicMode ? "Tap or click any area for details" : "Hover districts for details"}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -351,9 +351,9 @@ Need more information?
 
 ---
 
-## Phase 5 — Mobile & Accessibility
+## Phase 5 — Mobile & Accessibility ✅ DONE
 **Goal**: Ensure the enhanced experience works well on mobile phones (the primary device for most Sri Lankan public users) and meets basic accessibility standards.
-**Effort**: ~1 week | **Impact**: Medium-High
+**Effort**: ~1 week | **Impact**: Medium-High | **Status**: Completed 2026-04-20
 
 ### 5.1 Mobile-First Map Experience
 

@@ -47,6 +47,8 @@ export default function PublicSummaryBanner({ summary, topDistricts }: Props) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={`rounded-xl p-5 border-l-4 flex items-start gap-4 ${
         alertLevel === "high"
           ? "bg-red-50 dark:bg-red-950/30 border-red-500"

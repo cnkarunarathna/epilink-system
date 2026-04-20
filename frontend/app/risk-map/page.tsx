@@ -86,6 +86,7 @@ export default function PublicRiskMapPage() {
   const [districtTimeseries, setDistrictTimeseries] = useState<
     TimeSeriesData[]
   >([]);
+  const [showListView, setShowListView] = useState(false);
 
   const hasFetchedRef = useRef(false);
 
@@ -196,8 +197,8 @@ export default function PublicRiskMapPage() {
     <PublicLayout>
       <div className="container mx-auto px-4 max-w-7xl py-8 space-y-8">
         {/* Hero Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-cyan-800 p-8 md:p-12 text-white shadow-2xl">
-          <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,white)]"></div>
+        <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-emerald-600 via-teal-700 to-cyan-800 p-8 md:p-12 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-grid-white/10 mask-[linear-gradient(0deg,transparent,white)]"></div>
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
           <div className="relative">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -300,7 +301,7 @@ export default function PublicRiskMapPage() {
         {/* Key Metrics */}
         {summary && (
           <div className="grid gap-4 md:grid-cols-4">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 border-2 border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+            <Card className="bg-linear-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 border-2 border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
                   <div className="p-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-lg">
@@ -340,7 +341,7 @@ export default function PublicRiskMapPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+            <Card className="bg-linear-to-br from-red-50 to-red-100 dark:from-red-950/50 dark:to-red-900/30 border-2 border-red-200 dark:border-red-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
                   <div className="p-1.5 bg-red-200 dark:bg-red-800/50 rounded-lg">
@@ -359,7 +360,7 @@ export default function PublicRiskMapPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+            <Card className="bg-linear-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/30 border-2 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-2">
                   <div className="p-1.5 bg-green-200 dark:bg-green-800/50 rounded-lg">
@@ -378,7 +379,7 @@ export default function PublicRiskMapPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
+            <Card className="bg-linear-to-br from-orange-50 to-orange-100 dark:from-orange-950/50 dark:to-orange-900/30 border-2 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all duration-300 hover:scale-105">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-center gap-2">
                   <div className="p-1.5 bg-orange-200 dark:bg-orange-800/50 rounded-lg">
@@ -403,7 +404,7 @@ export default function PublicRiskMapPage() {
 
         {/* Main Tabbed Content */}
         <Tabs defaultValue="risk-map" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
+          <TabsList className="hidden md:grid w-full grid-cols-3 h-14 p-1 bg-muted/50 backdrop-blur-sm">
             <TabsTrigger
               value="risk-map"
               className="text-sm md:text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-md transition-all"
@@ -437,8 +438,15 @@ export default function PublicRiskMapPage() {
           {/* ===== RISK MAP TAB ===== */}
           <TabsContent
             value="risk-map"
-            className="space-y-6 animate-in fade-in-50 duration-500"
+            forceMount
+            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
           >
+            <div className="md:hidden border-b pb-3 mb-1">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                Where is dengue now?
+              </h2>
+            </div>
             {/* Refresh */}
             <div className="flex justify-end">
               <Button
@@ -457,11 +465,11 @@ export default function PublicRiskMapPage() {
             </div>
 
             {/* Interactive Map */}
-            <Card className="border-2 border-primary/20 shadow-xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
+            <Card className="border-2 border-primary/20 shadow-xl bg-linear-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                    <div className="p-2 bg-linear-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
                       <MapPin className="h-6 w-6 text-white" />
                     </div>
                     <div>
@@ -500,13 +508,63 @@ export default function PublicRiskMapPage() {
                         onSelect={handleDistrictClick}
                       />
                     </div>
-                    <div className="h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner">
+                    {/* Map / List toggle — visible on mobile only */}
+                    <div className="flex gap-2 md:hidden">
+                      <Button
+                        variant={!showListView ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setShowListView(false)}
+                      >
+                        <MapPin className="h-4 w-4 mr-1.5" />
+                        Map
+                      </Button>
+                      <Button
+                        variant={showListView ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setShowListView(true)}
+                      >
+                        <Activity className="h-4 w-4 mr-1.5" />
+                        List
+                      </Button>
+                    </div>
+
+                    {/* Map — always shown on desktop; hidden on mobile when list view is active */}
+                    <div className={`${showListView ? "hidden md:block" : ""} h-[400px] md:h-[600px] w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-inner`}>
                       <SriLankaMap
                         data={predictions}
                         onDistrictClick={handleDistrictClick}
                         publicMode
                       />
                     </div>
+
+                    {/* List view — mobile only, shown when toggled */}
+                    {showListView && (
+                      <div className="md:hidden space-y-3">
+                        {topRiskDistricts.map((district, index) => {
+                          const risk = getRiskLevel(district.predicted_cases);
+                          return (
+                            <div
+                              key={district.district}
+                              className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent cursor-pointer transition-colors"
+                              onClick={() => handleDistrictClick(district.district)}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                                  {index + 1}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{district.district}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {district.predicted_cases.toLocaleString()} expected cases
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge variant={risk.color as any}>{risk.level}</Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Selected District Details */}
                     {selectedDistrict && districtTimeseries.length > 0 && (
@@ -671,8 +729,15 @@ export default function PublicRiskMapPage() {
           {/* ===== PREDICTIONS & TRENDS TAB ===== */}
           <TabsContent
             value="predictions"
-            className="space-y-6 animate-in fade-in-50 duration-500"
+            forceMount
+            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
           >
+            <div className="md:hidden border-b pb-3 mb-1">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Is it getting better or worse?
+              </h2>
+            </div>
             {/* 12-Week Trend Chart */}
             {trends.length > 0 && <TrendStoryChart data={trends} />}
 
@@ -686,8 +751,15 @@ export default function PublicRiskMapPage() {
           {/* ===== HOW CAN I PROTECT MYSELF TAB ===== */}
           <TabsContent
             value="analysis"
-            className="space-y-6 animate-in fade-in-50 duration-500"
+            forceMount
+            className="space-y-6 animate-in fade-in-50 duration-500 max-md:[[hidden]]:block"
           >
+            <div className="md:hidden border-b pb-3 mb-1">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                How can I protect myself?
+              </h2>
+            </div>
             <div className="grid gap-6 md:grid-cols-2">
               <PreventionChecklist
                 riskLevel={
