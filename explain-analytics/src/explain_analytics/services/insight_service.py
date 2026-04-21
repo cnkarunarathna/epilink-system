@@ -642,121 +642,29 @@ class ExplainabilityService:
 # ══════════════════════════════════════════════════════════════════════
 
 AGENT_SYSTEM_PROMPT = """\
-You are the **EpiLink AI Analyst**, a senior epidemiologist and data \
-scientist specialising in dengue fever surveillance for Sri Lanka's \
-Ministry of Health.
+You are the **EpiLink AI Analyst**, a senior epidemiologist specialising \
+in dengue fever surveillance for Sri Lanka's Ministry of Health.
 
 ## Epidemiological Context — Sri Lanka
-- **Transmission seasons**: southwest monsoon (May–Sep) affects western, \
-southern, and central provinces; northeast monsoon (Oct–Jan) affects \
-eastern and northern provinces.
-- **Vector biology**: Aedes aegypti breeds in clean standing water; larval \
-development accelerates above 28 °C. Extrinsic incubation period is \
-8–12 days at 28–32 °C.
-- **Alert thresholds**: WoW increase ≥ 15 % = early warning; current cases \
-≥ 2× 4-week average = outbreak alert; ≥ 100 cases/week = high-burden district.
-- **Key risk provinces**: Colombo, Gampaha, Kalutara, Kandy, and Ratnapura \
-historically account for the majority of national cases.
+- **Seasons**: SW monsoon (May–Sep) → western/southern/central provinces; \
+NE monsoon (Oct–Jan) → eastern/northern provinces.
+- **Vector**: Aedes aegypti breeds in clean standing water; larval \
+development accelerates above 28 °C (EIP 8–12 days at 28–32 °C).
+- **Thresholds**: WoW ≥ 15% = early warning; cases ≥ 2× 4-week avg = \
+outbreak alert; ≥ 100 cases/week = high-burden district.
+- **High-risk provinces**: Colombo, Gampaha, Kalutara, Kandy, Ratnapura.
 
-## Available Analytics Tools
-- **get_national_briefing**: National-level aggregate — total cases, critical/\
-high-risk district counts, top hotspots, national WoW%, trend direction. \
-No parameters needed. Use first for country-wide questions.
-- **get_weekly_ml_forecast**: ML model's 1-week-ahead case forecast for one or \
-all districts — predicted cases, confidence, forecast vs current comparison, \
-trend direction. Use for forward-looking / prediction questions.
-- **get_rapid_hotspots**: Priority-ranked triage of top N districts by case \
-magnitude + trajectory (hotspot score). Use for "where should resources go?" \
-or "which districts are worst?". Different from outbreak alerts — ranks by \
-absolute burden, not ratio thresholds.
-- **compare_districts**: Side-by-side latest cases, WoW%, 4-week avg, and \
-risk level for multiple districts. Pass an empty string to compare all.
-- **year_over_year**: 12-week timeseries with WoW changes, peak detection, \
-and momentum for a single district. Use for trend or seasonal questions.
-- **get_weather_correlation**: Pearson correlation (temp & rainfall vs \
-dengue) per district, with strength classification and ranked insights.
-- **get_outbreak_alerts**: Current outbreak/warning alerts with ratio-to-\
-average metrics for all flagged districts.
-- **get_growth_rate**: Avg growth rate per district over N weeks, ranked \
-fastest-growing first, with accelerating/stable/declining counts.
-- **get_district_details**: Comprehensive single-district snapshot — latest \
-cases, WoW, 8-week history, peak, weather, and risk level. Use first when \
-answering detailed questions about one specific district.
-- **get_seasonal_pattern**: Multi-year week-by-week seasonal overlay showing \
-peak season windows, current vs baseline comparison for a district.
-- **get_cross_district_spillover**: Geographic spillover risk — focal district \
-plus all neighbouring districts, simultaneous-rise detection.
-- **get_intervention_history**: Inferred past intervention response events \
-from post-peak case declines (≥30% drops) in the timeseries.
-- **get_model_performance_metrics**: ML prediction accuracy — predicted vs \
-actual cases, absolute/percentage error, naive-persistence MAE benchmark.
-- **get_demographic_hotspots**: Sub-district zone risk breakdown with \
-intervention priority ranking by settlement type (urban/coastal/rural).
-- **get_historical_range**: Case data for a custom date range for a district \
-(start_year, start_week, end_year, end_week). Use when the user specifies a \
-specific time window outside the standard recent weeks.
-- **get_year_over_year_comparison**: Annual dengue totals for a district across \
-multiple years — total cases, peak week, avg weekly, YoY% change, multi-year trend \
-direction. Use for "is this year worse than last?", "annual totals", year-level aggregates.
-- **get_colombo_ds_breakdown**: Intra-district breakdown for Colombo by Divisional \
-Secretariat (DS) zone — predicted cases, risk level, share of district burden, \
-confidence interval per zone. Use ONLY for Colombo sub-district questions: "which \
-part of Colombo is worst?", "DS zone breakdown", resource allocation within Colombo.
-- **get_field_response_capacity**: PHI headcount, task backlog by status, overdue \
-tasks, completion rate, and capacity assessment (adequate/strained/overwhelmed) for \
-a district or nationally. Use for operational questions: "are field teams coping?", \
-"PHI workload in Kandy", "task completion rate", "uninvestigated cases", \
-"is the response capacity sufficient?".
-- **evaluate_national_intervention_effectiveness**: Ranks all 25 Sri Lanka districts \
-by outbreak control effectiveness — effectiveness score, avg weeks to post-peak trough, \
-avg decline %, response event count. Returns top-N best and worst responders with \
-national averages. Use for "which districts respond best?", "where is vector control \
-most effective?", "which districts need capacity support?", or any national \
-intervention benchmark question. Note: aggregates ~25 backend calls; slower than \
-single-district tools.
-
-## Analytical Methodology
-1. **Identify the question type** — single-district detail, multi-district \
-comparison, trend/seasonal, weather impact, alert status, or geographic spread.
-2. **Call the right tool(s)** — always fetch live data before answering; \
-never guess statistics.
-3. **Analyse the data** — identify trends, anomalies, ratios, thresholds.
-4. **Quantify every finding** — "cases rose 23 % from 145 to 178", not \
-"cases increased".
-5. **Recommend action** — end with 1–2 specific, evidence-based public \
-health actions.
-
-## Tool Selection Guide
-| Question type | Primary tool | Secondary tool |
-|---|---|---|
-| National/country-wide situation | get_national_briefing | compare_districts |
-| ML forecast / predicted cases | get_weekly_ml_forecast | get_district_details |
-| Resource deployment / worst districts | get_rapid_hotspots | get_outbreak_alerts |
-| Current status for one district | get_district_details | year_over_year |
-| Compare two or more districts | compare_districts | get_growth_rate |
-| Weather / climate impact | get_weather_correlation | get_district_details |
-| Active outbreaks | get_outbreak_alerts | compare_districts |
-| Fastest growing / accelerating | get_growth_rate | compare_districts |
-| Historical trend / seasonal | year_over_year | get_seasonal_pattern |
-| Seasonal peak timing | get_seasonal_pattern | year_over_year |
-| Spread to neighbours | get_cross_district_spillover | compare_districts |
-| Past interventions / control | get_intervention_history | year_over_year |
-| Model prediction accuracy | get_model_performance_metrics | get_district_details |
-| Sub-district zone targeting | get_demographic_hotspots | get_district_details |
-| Specific time window / outbreak period | get_historical_range | year_over_year |
-| Annual totals / year-over-year comparison | get_year_over_year_comparison | year_over_year |
-| Colombo sub-district / DS zone targeting | get_colombo_ds_breakdown | get_demographic_hotspots |
-| Field team capacity / PHI workload | get_field_response_capacity | get_outbreak_alerts |
-| Best/worst outbreak responders nationally | evaluate_national_intervention_effectiveness | get_intervention_history |
+## Instructions
+- Always call a tool to fetch live data — never guess statistics.
+- Quantify every finding: "cases rose 23% from 145 to 178", not "cases increased".
+- For clinical/protocol/prevention questions, call search_knowledge_base first.
+- End every response with 1–2 specific, evidence-based public health actions.
 
 ## Response Format
-- **Lead with the key finding** — state the single most important insight first.
-- **Use specific numbers** — ratios, percentages, absolute counts from tool results.
-- **Structure with markdown** — bold key terms, use bullet lists for \
-multiple items.
-- **2–4 paragraphs** — concise; do not pad with disclaimers or repetition.
-- **End with action** — at least one concrete public health recommendation.
-- Do NOT disclaim being an AI or hedge with "I think / I believe".
+- Lead with the single most important finding.
+- Use specific numbers from tool results; bold key terms; bullet lists for multiple items.
+- 2–4 paragraphs, no padding or disclaimers.
+- Do NOT hedge with "I think / I believe" or disclaim being an AI.
 """
 
 # ── Gemini function declarations for all 11 tools ────────────────────
@@ -774,19 +682,13 @@ def _build_gemini_tools():
         function_declarations=[
             _t.FunctionDeclaration(
                 name="compare_districts",
-                description=(
-                    "Compare dengue statistics across multiple districts. "
-                    "Returns latest cases, WoW change, 4-week average, and risk level per district."
-                ),
+                description="Side-by-side latest cases, WoW%, 4-week avg, and risk level for multiple districts.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
                         "districts": _t.Schema(
                             type=_t.Type.STRING,
-                            description=(
-                                "Comma-separated district names, e.g. 'Colombo,Gampaha,Kandy'. "
-                                "Pass an empty string '' to compare all districts."
-                            ),
+                            description="Comma-separated district names, e.g. 'Colombo,Gampaha'. Pass '' for all.",
                         )
                     },
                     required=["districts"],
@@ -794,10 +696,7 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="year_over_year",
-                description=(
-                    "Get 12-week timeseries with WoW changes, peak detection, and momentum "
-                    "for a single district. Use for trend, historical, or seasonal questions."
-                ),
+                description="12-week timeseries with WoW changes, peak detection, and momentum for one district.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -806,48 +705,27 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_weather_correlation",
-                description=(
-                    "Pearson correlation between weather variables (temperature, rainfall) "
-                    "and dengue cases across all districts, ranked by correlation strength."
-                ),
-                parameters=_t.Schema(
-                    type=_t.Type.OBJECT,
-                    properties={},
-                ),
+                description="Pearson correlation of temperature and rainfall vs dengue cases, ranked by strength.",
+                parameters=_t.Schema(type=_t.Type.OBJECT, properties={}),
             ),
             _t.FunctionDeclaration(
                 name="get_outbreak_alerts",
-                description=(
-                    "Current outbreak/warning alert status for all districts. "
-                    "Returns ratio-to-4-week-average metrics and alert severity."
-                ),
-                parameters=_t.Schema(
-                    type=_t.Type.OBJECT,
-                    properties={},
-                ),
+                description="Current outbreak/warning alerts with ratio-to-4-week-average for all flagged districts.",
+                parameters=_t.Schema(type=_t.Type.OBJECT, properties={}),
             ),
             _t.FunctionDeclaration(
                 name="get_growth_rate",
-                description=(
-                    "Average case growth rate per district over N weeks, "
-                    "ranked fastest-growing first, with accelerating/stable/declining counts."
-                ),
+                description="Average case growth rate per district over N weeks, ranked fastest-growing first.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "weeks": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="Number of weeks to compute growth over (default: 4).",
-                        )
+                        "weeks": _t.Schema(type=_t.Type.INTEGER, description="Weeks to compute growth over (default 4).")
                     },
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_district_details",
-                description=(
-                    "Comprehensive single-district snapshot: latest cases, WoW change, "
-                    "8-week history, peak, weather context, and risk level."
-                ),
+                description="Comprehensive single-district snapshot: latest cases, WoW, 8-week history, peak, weather, risk.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -856,29 +734,19 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_seasonal_pattern",
-                description=(
-                    "Multi-year week-by-week seasonal overlay: identifies peak season windows, "
-                    "current week vs historical baseline, and whether district is in peak season."
-                ),
+                description="Multi-year week-by-week seasonal overlay showing peak windows and current vs baseline.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
                         "district": district_param,
-                        "years": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="Number of past years to overlay (default: 3, max: 10).",
-                        ),
+                        "years": _t.Schema(type=_t.Type.INTEGER, description="Past years to overlay (default 3, max 10)."),
                     },
                     required=["district"],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_cross_district_spillover",
-                description=(
-                    "Geographic spillover risk for a focal district: fetches the focal district "
-                    "plus all its land-border neighbours, detects simultaneous rises, "
-                    "and classifies spillover risk as low/moderate/high."
-                ),
+                description="Geographic spillover risk for a focal district plus all land-border neighbours.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -887,10 +755,7 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_intervention_history",
-                description=(
-                    "Infers past vector-control intervention response events from the timeseries: "
-                    "identifies peaks ≥25 cases followed by ≥30% case decline within 6 weeks."
-                ),
+                description="Infers past vector-control response events from ≥30% post-peak case declines.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -899,11 +764,7 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_model_performance_metrics",
-                description=(
-                    "Evaluates ML prediction accuracy for a district: compares the latest "
-                    "ML-predicted case count against actual reported cases and computes "
-                    "absolute error, percentage error, accuracy class, and naive-persistence MAE."
-                ),
+                description="ML prediction accuracy: predicted vs actual cases, absolute/percentage error, naive MAE.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -912,11 +773,7 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_demographic_hotspots",
-                description=(
-                    "Sub-district zone risk breakdown using MOH divisional classification. "
-                    "Distributes district case load across urban/coastal/rural zones with "
-                    "intervention priority ranking and weather-adjusted context flags."
-                ),
+                description="Sub-district zone risk breakdown with intervention priority ranking by settlement type.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={"district": district_param},
@@ -925,57 +782,34 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_rapid_hotspots",
-                description=(
-                    "Identify the top dengue hotspot districts ranked by current case magnitude "
-                    "and trajectory. Use for 'where should resources go?', 'which districts are "
-                    "worst?', or quick priority triage. Distinct from outbreak alerts — this ranks "
-                    "by absolute burden, not ratio thresholds."
-                ),
+                description="Top N districts ranked by current case magnitude and trajectory (absolute burden, not ratio).",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "top_n": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="Number of top hotspot districts to return. Default 5, max 10.",
-                        ),
+                        "top_n": _t.Schema(type=_t.Type.INTEGER, description="Number of districts to return (default 5, max 10)."),
                     },
                     required=[],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_weekly_ml_forecast",
-                description=(
-                    "Get the ML model's 1-week-ahead dengue case forecast for one or all districts. "
-                    "Use when the user asks about predicted/forecast cases, what the model expects "
-                    "next week, or wants to compare current actuals to the prediction."
-                ),
+                description="ML model 1-week-ahead case forecast for one or all districts.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "district": _t.Schema(
-                            type=_t.Type.STRING,
-                            description="District name (e.g. 'Colombo'). Leave empty for all districts.",
-                        ),
+                        "district": _t.Schema(type=_t.Type.STRING, description="District name. Leave empty for all."),
                     },
                     required=[],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_national_briefing",
-                description=(
-                    "Get a national-level dengue situation summary across all Sri Lanka districts. "
-                    "Use for questions about the overall country situation, total case burden, "
-                    "how many districts are high-risk, or a national briefing. No parameters needed."
-                ),
+                description="National-level summary: total cases, critical/high-risk district counts, top hotspots, WoW trend.",
                 parameters=_t.Schema(type=_t.Type.OBJECT, properties={}, required=[]),
             ),
             _t.FunctionDeclaration(
                 name="get_historical_range",
-                description=(
-                    "Fetch dengue case data for a custom date range for a district. Use when the "
-                    "user specifies a specific time window: 'show me June to September 2024', "
-                    "'what happened in weeks 20–35', or any question outside the standard recent window."
-                ),
+                description="Case data for a specific date range (start_year/week to end_year/week) for one district.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
@@ -990,119 +824,63 @@ def _build_gemini_tools():
             ),
             _t.FunctionDeclaration(
                 name="get_year_over_year_comparison",
-                description=(
-                    "Compare annual dengue totals for a district across multiple years. Use when "
-                    "asked 'how does this year compare to last year?', 'annual totals', 'is 2025 "
-                    "worse than previous years?'. Different from seasonal pattern — this aggregates "
-                    "full calendar years, not weekly overlays."
-                ),
+                description="Annual dengue totals for a district across multiple years with YoY% change and multi-year trend.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
                         "district": _t.Schema(type=_t.Type.STRING, description="District name."),
-                        "years": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="Number of past years to include (default 3).",
-                        ),
+                        "years": _t.Schema(type=_t.Type.INTEGER, description="Past years to include (default 3)."),
                     },
                     required=["district"],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_field_response_capacity",
-                description=(
-                    "Get PHI field team headcount, task backlog by status, overdue tasks, "
-                    "completion rate, and capacity assessment for a district or nationally. "
-                    "Use for operational questions: 'are field teams coping?', 'PHI workload "
-                    "in Kandy', 'task completion rate', 'uninvestigated/overdue cases', or "
-                    "'is the response capacity sufficient?'."
-                ),
+                description="PHI headcount, task backlog, overdue tasks, completion rate, and capacity assessment.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "district": _t.Schema(
-                            type=_t.Type.STRING,
-                            description="District name (e.g. 'Kandy'). Leave empty for national overview.",
-                        ),
+                        "district": _t.Schema(type=_t.Type.STRING, description="District name. Leave empty for national overview."),
                     },
                     required=[],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="get_colombo_ds_breakdown",
-                description=(
-                    "Get dengue case breakdown by Divisional Secretariat (DS) zones within "
-                    "Colombo district. Use ONLY for Colombo sub-district questions: 'which "
-                    "part of Colombo is worst?', 'DS zone breakdown', 'sub-district hotspots "
-                    "in Colombo', or resource allocation within Colombo. Not applicable to "
-                    "other districts."
-                ),
+                description="Dengue case breakdown by Divisional Secretariat zones within Colombo district only.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "year": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="ISO year. Default: current year (omit or pass 0).",
-                        ),
-                        "week": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="ISO week number. Default: latest available (omit or pass 0).",
-                        ),
+                        "year": _t.Schema(type=_t.Type.INTEGER, description="ISO year (default current; pass 0 to omit)."),
+                        "week": _t.Schema(type=_t.Type.INTEGER, description="ISO week (default latest; pass 0 to omit)."),
                     },
                     required=[],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="evaluate_national_intervention_effectiveness",
-                description=(
-                    "Rank all 25 Sri Lanka districts by how effectively they control dengue "
-                    "outbreaks — effectiveness score, avg weeks to post-peak trough, avg decline %, "
-                    "response events. Use for 'which districts respond best?', 'where is vector "
-                    "control most effective?', 'national intervention benchmark', or to identify "
-                    "districts needing capacity support. Note: aggregates ~25 calls; slower than "
-                    "single-district tools."
-                ),
+                description="Ranks all 25 districts by outbreak control effectiveness score, decline%, response events. Aggregates ~25 calls; slower.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
-                        "top_n": _t.Schema(
-                            type=_t.Type.INTEGER,
-                            description="Number of top and bottom performers to return (default 5, max 12).",
-                        ),
+                        "top_n": _t.Schema(type=_t.Type.INTEGER, description="Top and bottom performers to return (default 5, max 12)."),
                     },
                     required=[],
                 ),
             ),
             _t.FunctionDeclaration(
                 name="search_knowledge_base",
-                description=(
-                    "Search the dengue knowledge base (Qdrant RAG corpus) for authoritative "
-                    "guidelines, clinical protocols, vector control procedures, epidemiological "
-                    "references, and general dengue information. Use this tool to answer questions "
-                    "about dengue symptoms, treatment, prevention, vector biology, vaccines, "
-                    "clinical management, outbreak response protocols, or any topic requiring "
-                    "factual dengue knowledge beyond live surveillance data. "
-                    "Examples: 'What are dengue warning signs?', 'How is fogging done?', "
-                    "'What is the dengue vaccine?', 'How does dengue spread?'"
-                ),
+                description="Search the dengue knowledge base for clinical guidelines, protocols, vector biology, and factual dengue information.",
                 parameters=_t.Schema(
                     type=_t.Type.OBJECT,
                     properties={
                         "query": _t.Schema(
                             type=_t.Type.STRING,
-                            description=(
-                                "Natural-language question or keyword phrase to search. "
-                                "Be specific, e.g. 'dengue warning signs hospitalisation criteria' "
-                                "or 'Aedes aegypti larval control temephos'."
-                            ),
+                            description="Natural-language question or keyword phrase, e.g. 'dengue warning signs' or 'Aedes larval control'.",
                         ),
                         "source_type": _t.Schema(
                             type=_t.Type.STRING,
-                            description=(
-                                "Optional filter: 'knowledge' for guidelines/clinical docs, "
-                                "'surveillance' for live case data, 'guideline' for MoH docs. "
-                                "Omit to search all document types."
-                            ),
+                            description="Optional filter: 'knowledge', 'surveillance', or 'guideline'. Omit to search all.",
                         ),
                     },
                     required=["query"],
@@ -1358,34 +1136,6 @@ class AgenticInsightService:
                 print(f"[AgenticInsightService] Summarisation error: {exc}")
 
         # ── Build Gemini contents list from stored history ───────────
-        # ── Pre-retrieve RAG documents for the user's question ──────────
-        rag_docs = []
-        if self._rag_service and self._rag_service.is_ready:
-            try:
-                rag_docs = self._rag_service.retrieve_for_query(
-                    query=new_message,
-                    top_k=settings.rag_top_k,
-                )
-                print(f"[AgenticInsightService] Pre-retrieved {len(rag_docs)} RAG docs for query.")
-            except Exception as exc:
-                print(f"[AgenticInsightService] Pre-retrieval error: {exc}")
-
-        # Build RAG context block to inject into system instruction
-        rag_context_block = ""
-        if rag_docs:
-            rag_context_block = "\n\n## Retrieved Knowledge Base Context\n"
-            rag_context_block += (
-                "The following documents were retrieved from the dengue knowledge base "
-                "as potentially relevant to the user's question. Use them to ground your "
-                "answer in authoritative sources. Cite document titles when using their content.\n\n"
-            )
-            for i, doc in enumerate(rag_docs):
-                rag_context_block += (
-                    f"[{i + 1}] **{doc.title}** ({doc.source}"
-                    + (f", {doc.published_date}" if doc.published_date else "")
-                    + f")\n{doc.excerpt}\n\n"
-                )
-
         context_header = (
             f"Current district context: {district}"
             + (
@@ -1414,7 +1164,6 @@ class AgenticInsightService:
             system_instruction = (
                 AGENT_SYSTEM_PROMPT
                 + f"\n\n## Session Context\n{context_header}"
-                + rag_context_block
             )
             config = _t.GenerateContentConfig(
                 tools=[self._gemini_tool],
@@ -1496,16 +1245,7 @@ class AgenticInsightService:
                 "session_id": session_id,
                 "turn_count": turn_count,
                 "context_compressed": context_compressed,
-                "document_references": [
-                    {
-                        "title": d.title,
-                        "source": d.source,
-                        "published_date": d.published_date,
-                        "excerpt": d.excerpt[:300],
-                        "relevance_score": d.relevance_score,
-                    }
-                    for d in rag_docs
-                ],
+                "document_references": [],
             }
 
         except Exception as exc:
