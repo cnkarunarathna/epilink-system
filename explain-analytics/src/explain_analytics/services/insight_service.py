@@ -1172,6 +1172,31 @@ class AgenticInsightService:
     """
 
     _MAX_TOOL_ROUNDS = 5  # prevent runaway loops
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = (5, 15, 30)  # seconds between retries on 429
+
+    @staticmethod
+    def _generate_with_retry(client, model, contents, config):
+        """Call generate_content with exponential backoff on 429 RESOURCE_EXHAUSTED."""
+        import time
+
+        last_exc = None
+        delays = AgenticInsightService._RETRY_DELAYS
+        for attempt, delay in enumerate((*delays, None), start=1):
+            try:
+                return client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as exc:
+                last_exc = exc
+                is_429 = "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
+                if not is_429 or delay is None:
+                    raise
+                print(f"[AgenticInsightService] 429 quota hit (attempt {attempt}), retrying in {delay}s…")
+                time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
 
     def __init__(self, session_service=None, rag_service=None) -> None:
         self._tool_map: dict = {}
@@ -1417,10 +1442,8 @@ class AgenticInsightService:
 
             # ── Agentic tool-calling loop ─────────────────────────────
             for _ in range(self._MAX_TOOL_ROUNDS):
-                response = client.models.generate_content(
-                    model=settings.llm_model,
-                    contents=contents,
-                    config=config,
+                response = self._generate_with_retry(
+                    client, settings.llm_model, contents, config
                 )
 
                 function_calls = response.function_calls or []
