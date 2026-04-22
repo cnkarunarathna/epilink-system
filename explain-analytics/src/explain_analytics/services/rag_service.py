@@ -386,13 +386,15 @@ class RAGService:
             return model
 
     def _embed_dense(self, text: str) -> list[float]:
-        """768-dimensional dense embedding via Google text-embedding-004."""
+        """768-dimensional dense embedding via gemini-embedding-001."""
         from google import genai
+        from google.genai import types as _gt
 
         client = genai.Client(api_key=settings.gemini_api_key)
         result = client.models.embed_content(
             model=settings.rag_embedding_model,
             contents=text,
+            config=_gt.EmbedContentConfig(output_dimensionality=768),
         )
         return list(result.embeddings[0].values)
 

@@ -3,14 +3,16 @@
  *
  * Layout:
  *   ┌──────────────────────────────┐
- *   │  MapView with road polyline  │  (flex 1, ~55% of screen)
+ *   │  MapView with road polyline  │  (flex 7, ~58% of screen)
  *   │  Numbered markers per stop   │
+ *   │  Floating recenter button    │
  *   └──────────────────────────────┘
- *   ┌──────────────────────────────┐
+ *   ┌──────────────────────────────┐  ← floats over map with rounded top + shadow
+ *   │  Drag handle                 │
  *   │  Summary bar (dist / time)   │
- *   │  Scrollable ordered stop list│  (flex 1, ~45% of screen)
- *   │   • Navigate button          │
- *   │   • Mark In-Progress shortcut│
+ *   │  Scrollable ordered stop list│  (flex 5, ~42% of screen)
+ *   │   • Status chip              │
+ *   │   • Navigate / Mark buttons  │
  *   └──────────────────────────────┘
  */
 
@@ -57,6 +59,28 @@ function formatDistance(meters: number): string {
   return `${meters} m`;
 }
 
+function getStatusColor(status: TaskStatus): string {
+  switch (status) {
+    case TaskStatus.ASSIGNED: return colors.status.assigned;
+    case TaskStatus.IN_PROGRESS: return colors.status.in_progress;
+    case TaskStatus.PENDING: return colors.status.pending;
+    case TaskStatus.REJECTED: return colors.status.rejected;
+    case TaskStatus.COMPLETED: return colors.status.completed;
+    case TaskStatus.VERIFIED: return colors.status.verified;
+    default: return colors.mutedForeground;
+  }
+}
+
+function getStatusLabel(status: TaskStatus): string {
+  switch (status) {
+    case TaskStatus.IN_PROGRESS: return "In Progress";
+    case TaskStatus.ASSIGNED: return "Assigned";
+    case TaskStatus.PENDING: return "Pending";
+    case TaskStatus.REJECTED: return "Rejected";
+    default: return "";
+  }
+}
+
 const ACTIVE_STATUSES: TaskStatus[] = [
   TaskStatus.ASSIGNED,
   TaskStatus.IN_PROGRESS,
@@ -71,26 +95,30 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 1.5,
 };
 
+const PANEL_OVERLAP = 24;
+
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
 const RouteScreenSkeleton: React.FC = () => (
   <View style={skeletonStyles.container}>
-    {/* Map placeholder */}
-    <ShimmerPlaceholder height={240} borderRadiusValue={0} style={skeletonStyles.mapBlock} />
-    {/* Summary bar */}
-    <View style={skeletonStyles.summaryRow}>
-      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
-      <ShimmerPlaceholder width={80} height={14} borderRadiusValue={6} />
+    <ShimmerPlaceholder height={260} borderRadiusValue={0} style={skeletonStyles.mapBlock} />
+    <View style={skeletonStyles.panelHandle}>
+      <View style={skeletonStyles.handleBar} />
     </View>
-    {/* Stop cards */}
+    <View style={skeletonStyles.summaryRow}>
+      <ShimmerPlaceholder width={60} height={32} borderRadiusValue={8} />
+      <ShimmerPlaceholder width={60} height={32} borderRadiusValue={8} />
+      <ShimmerPlaceholder width={60} height={32} borderRadiusValue={8} />
+    </View>
     {[0, 1, 2, 3].map((i) => (
       <View key={i} style={skeletonStyles.stopCard}>
-        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={16} />
+        <ShimmerPlaceholder width={34} height={34} borderRadiusValue={17} />
         <View style={skeletonStyles.stopInfo}>
-          <ShimmerPlaceholder width="60%" height={13} borderRadiusValue={6} />
-          <ShimmerPlaceholder width="40%" height={10} borderRadiusValue={6} style={skeletonStyles.gap} />
+          <ShimmerPlaceholder width="55%" height={13} borderRadiusValue={6} />
+          <ShimmerPlaceholder width="35%" height={10} borderRadiusValue={6} style={skeletonStyles.gap} />
+          <ShimmerPlaceholder width="45%" height={10} borderRadiusValue={6} style={skeletonStyles.gap} />
         </View>
-        <ShimmerPlaceholder width={32} height={32} borderRadiusValue={8} />
+        <ShimmerPlaceholder width={36} height={36} borderRadiusValue={18} />
       </View>
     ))}
   </View>
@@ -103,6 +131,18 @@ const skeletonStyles = StyleSheet.create({
   },
   mapBlock: {
     width: "100%",
+  },
+  panelHandle: {
+    alignItems: "center",
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.background,
+  },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
   },
   summaryRow: {
     flexDirection: "row",
@@ -169,7 +209,6 @@ export const RouteScreen: React.FC = () => {
 
       setRouteLoading(true);
 
-      // Try to get current location as origin
       let origin: { lat: number; lng: number } | undefined;
       try {
         const { status } = await Location.getForegroundPermissionsAsync();
@@ -190,7 +229,6 @@ export const RouteScreen: React.FC = () => {
         variant: "info",
       });
 
-      // Fit map to all task coordinates
       if (result.orderedTaskIds.length > 0) {
         const taskMap = new Map(active.map((t) => [t.id, t]));
         const coords = result.orderedTaskIds
@@ -202,7 +240,7 @@ export const RouteScreen: React.FC = () => {
           }));
         if (coords.length > 0) {
           mapRef.current?.fitToCoordinates(coords, {
-            edgePadding: { top: 60, right: 40, bottom: 40, left: 40 },
+            edgePadding: { top: 60, right: 40, bottom: PANEL_OVERLAP + 80, left: 40 },
             animated: true,
           });
         }
@@ -231,13 +269,31 @@ export const RouteScreen: React.FC = () => {
       .filter((t): t is Task => t !== undefined);
   }, [routeResult, taskById]);
 
-  // Polyline: backend returns [lng, lat]; react-native-maps expects { latitude, longitude }
   const polylineCoords = useMemo(() => {
     if (!routeResult || routeResult.polyline.length < 2) return [];
     return routeResult.polyline.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
   }, [routeResult]);
 
+  const hasAnyInProgress = useMemo(
+    () => orderedTasks.some((t) => t.status === TaskStatus.IN_PROGRESS),
+    [orderedTasks],
+  );
+
   // ── Actions ──────────────────────────────────────────────────────────────
+
+  const handleRecenter = useCallback(() => {
+    if (orderedTasks.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const coords = orderedTasks
+      .filter((t) => t.latitude !== null && t.longitude !== null)
+      .map((t) => ({ latitude: Number(t.latitude), longitude: Number(t.longitude) }));
+    if (coords.length > 0) {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 60, right: 40, bottom: PANEL_OVERLAP + 80, left: 40 },
+        animated: true,
+      });
+    }
+  }, [orderedTasks]);
 
   const handleNavigate = useCallback((task: Task) => {
     if (!task.latitude || !task.longitude) return;
@@ -250,14 +306,8 @@ export const RouteScreen: React.FC = () => {
 
     if (Platform.OS === "ios") {
       Alert.alert("Open in Maps", "Choose a navigation app", [
-        {
-          text: "Apple Maps",
-          onPress: () => Linking.openURL(appleMapsUrl),
-        },
-        {
-          text: "Google Maps",
-          onPress: () => Linking.openURL(googleUrl),
-        },
+        { text: "Apple Maps", onPress: () => Linking.openURL(appleMapsUrl) },
+        { text: "Google Maps", onPress: () => Linking.openURL(googleUrl) },
         { text: "Cancel", style: "cancel" },
       ]);
     } else {
@@ -302,17 +352,27 @@ export const RouteScreen: React.FC = () => {
     const isCompleted =
       task.status === TaskStatus.COMPLETED || task.status === TaskStatus.VERIFIED;
     const isMarking = markingId === task.id;
+    const isNext = index === 0 && !hasAnyInProgress;
+    const statusLabel = getStatusLabel(task.status);
 
     return (
       <TouchableOpacity
-        style={styles.stopCard}
+        style={[styles.stopCard, isInProgress && styles.stopCardInProgress]}
         onPress={() => handleGoToDetail(task.id)}
-        activeOpacity={0.85}
+        activeOpacity={0.8}
       >
         {/* Step number badge */}
-        <View style={[styles.stepBadge, isCompleted && styles.stepBadgeDone]}>
+        <View
+          style={[
+            styles.stepBadge,
+            isCompleted && styles.stepBadgeDone,
+            isInProgress && styles.stepBadgeActive,
+          ]}
+        >
           {isCompleted ? (
-            <MaterialCommunityIcons name="check" size={14} color={colors.primaryForeground} />
+            <MaterialCommunityIcons name="check" size={15} color={colors.primaryForeground} />
+          ) : isInProgress ? (
+            <MaterialCommunityIcons name="progress-clock" size={15} color={colors.primaryForeground} />
           ) : (
             <Text style={styles.stepNumber}>{index + 1}</Text>
           )}
@@ -320,18 +380,54 @@ export const RouteScreen: React.FC = () => {
 
         {/* Task info */}
         <View style={styles.stopInfo}>
-          <Text style={styles.stopTitle} numberOfLines={1}>
-            {task.title}
-          </Text>
+          {/* Title + status chip row */}
+          <View style={styles.stopTitleRow}>
+            <Text style={styles.stopTitle} numberOfLines={1}>
+              {task.title}
+            </Text>
+            {isNext && (
+              <View style={styles.nextChip}>
+                <Text style={styles.nextChipText}>NEXT</Text>
+              </View>
+            )}
+            {!isNext && !isCompleted && statusLabel ? (
+              <View
+                style={[styles.statusChip, { backgroundColor: getStatusColor(task.status) + "22" }]}
+              >
+                <Text style={[styles.statusChipText, { color: getStatusColor(task.status) }]}>
+                  {statusLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Address */}
           {task.address ? (
-            <Text style={styles.stopAddress} numberOfLines={1}>
-              {task.address}
-            </Text>
+            <View style={styles.addressRow}>
+              <MaterialCommunityIcons
+                name="map-marker-outline"
+                size={12}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.stopAddress} numberOfLines={1}>
+                {task.address}
+              </Text>
+            </View>
           ) : null}
+
+          {/* Leg info */}
           {leg ? (
-            <Text style={styles.stopMeta}>
-              {formatDuration(leg.durationSecs)} · {formatDistance(leg.distanceMeters)}
-            </Text>
+            <View style={styles.legRow}>
+              <View style={styles.legItem}>
+                <MaterialCommunityIcons name="clock-fast" size={11} color={colors.mutedForeground} />
+                <Text style={styles.legText}>{formatDuration(leg.durationSecs)}</Text>
+              </View>
+              <View style={styles.legDot} />
+              <View style={styles.legItem}>
+                <MaterialCommunityIcons name="road-variant" size={11} color={colors.mutedForeground} />
+                <Text style={styles.legText}>{formatDistance(leg.distanceMeters)}</Text>
+              </View>
+            </View>
           ) : null}
         </View>
 
@@ -342,11 +438,7 @@ export const RouteScreen: React.FC = () => {
             onPress={() => handleNavigate(task)}
             disabled={!task.latitude}
           >
-            <MaterialCommunityIcons
-              name="navigation"
-              size={18}
-              color={colors.primary}
-            />
+            <MaterialCommunityIcons name="navigation-variant" size={18} color={colors.primary} />
           </TouchableOpacity>
 
           {!isCompleted && (
@@ -359,7 +451,7 @@ export const RouteScreen: React.FC = () => {
                 <ActivityIndicator size="small" color={colors.primaryForeground} />
               ) : (
                 <MaterialCommunityIcons
-                  name={isInProgress ? "progress-clock" : "play-circle-outline"}
+                  name={isInProgress ? "progress-check" : "play-circle-outline"}
                   size={18}
                   color={isInProgress ? colors.primaryForeground : colors.primary}
                 />
@@ -384,10 +476,10 @@ export const RouteScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.centered} edges={["top"]}>
-        <MaterialCommunityIcons name="alert-circle-outline" size={48} color={colors.destructive} />
+        <MaterialCommunityIcons name="alert-circle-outline" size={52} color={colors.destructive} />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={loadRoute}>
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>Try Again</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -410,14 +502,15 @@ export const RouteScreen: React.FC = () => {
 
   // ── Main render ──────────────────────────────────────────────────────────
 
-  const mapCenter: Region = orderedTasks.length > 0 && orderedTasks[0].latitude
-    ? {
-        latitude: Number(orderedTasks[0].latitude),
-        longitude: Number(orderedTasks[0].longitude),
-        latitudeDelta: 0.3,
-        longitudeDelta: 0.3,
-      }
-    : DEFAULT_REGION;
+  const mapCenter: Region =
+    orderedTasks.length > 0 && orderedTasks[0].latitude
+      ? {
+          latitude: Number(orderedTasks[0].latitude),
+          longitude: Number(orderedTasks[0].longitude),
+          latitudeDelta: 0.3,
+          longitudeDelta: 0.3,
+        }
+      : DEFAULT_REGION;
 
   return (
     <View style={styles.container}>
@@ -432,20 +525,20 @@ export const RouteScreen: React.FC = () => {
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {/* Road polyline */}
           {polylineCoords.length > 1 && (
             <Polyline
               coordinates={polylineCoords}
               strokeColor={colors.primary}
               strokeWidth={4}
+              lineDashPattern={undefined}
             />
           )}
 
-          {/* Numbered markers */}
           {orderedTasks.map((task, index) => {
             if (!task.latitude || !task.longitude) return null;
             const isCompleted =
               task.status === TaskStatus.COMPLETED || task.status === TaskStatus.VERIFIED;
+            const isInProgress = task.status === TaskStatus.IN_PROGRESS;
             return (
               <Marker
                 key={task.id}
@@ -455,9 +548,15 @@ export const RouteScreen: React.FC = () => {
                 }}
                 onPress={() => handleGoToDetail(task.id)}
               >
-                <View style={[styles.mapMarker, isCompleted && styles.mapMarkerDone]}>
+                <View
+                  style={[
+                    styles.mapMarker,
+                    isCompleted && styles.mapMarkerDone,
+                    isInProgress && styles.mapMarkerActive,
+                  ]}
+                >
                   {isCompleted ? (
-                    <MaterialCommunityIcons name="check" size={12} color={colors.primaryForeground} />
+                    <MaterialCommunityIcons name="check" size={13} color="#fff" />
                   ) : (
                     <Text style={styles.mapMarkerText}>{index + 1}</Text>
                   )}
@@ -467,33 +566,45 @@ export const RouteScreen: React.FC = () => {
           })}
         </MapView>
 
-        {/* Recalculate overlay */}
-        {routeLoading && (
-          <View style={[styles.recalcOverlay, { top: insets.top + spacing.sm }]}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.recalcText}>Recalculating…</Text>
-          </View>
-        )}
+        {/* Map overlay banners — stacked vertically */}
+        <View style={[styles.mapBanners, { top: insets.top + spacing.sm }]}>
+          {routeLoading && (
+            <View style={styles.recalcPill}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.recalcText}>Recalculating…</Text>
+            </View>
+          )}
+          {routeResult?.usedSavedOrder && (
+            <View style={styles.savedOrderPill}>
+              <MaterialCommunityIcons name="shield-check" size={13} color={colors.primary} />
+              <Text style={styles.savedOrderText}>Route set by supervisor</Text>
+            </View>
+          )}
+          {routeResult?.routingUnavailable && !routeResult.usedSavedOrder && (
+            <View style={styles.warningPill}>
+              <MaterialCommunityIcons name="alert" size={13} color={colors.warning} />
+              <Text style={styles.warningText}>Estimated order shown</Text>
+            </View>
+          )}
+        </View>
 
-        {/* Supervisor route badge */}
-        {routeResult?.usedSavedOrder && (
-          <View style={[styles.savedOrderBanner, { top: insets.top + spacing.sm }]}>
-            <MaterialCommunityIcons name="shield-check" size={14} color={colors.primary} />
-            <Text style={styles.savedOrderText}>Route set by supervisor</Text>
-          </View>
-        )}
-
-        {/* Unavailable warning (only shown when not a saved route) */}
-        {routeResult?.routingUnavailable && !routeResult.usedSavedOrder && (
-          <View style={[styles.warningBanner, { top: insets.top + spacing.sm }]}>
-            <MaterialCommunityIcons name="alert" size={14} color={colors.warning} />
-            <Text style={styles.warningText}>Road routing unavailable — estimated order shown</Text>
-          </View>
-        )}
+        {/* Recenter button */}
+        <TouchableOpacity
+          style={[styles.recenterBtn, { bottom: PANEL_OVERLAP + spacing.md }]}
+          onPress={handleRecenter}
+          activeOpacity={0.85}
+        >
+          <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
-      {/* ── Stop list ── */}
-      <View style={styles.listContainer}>
+      {/* ── Stop list panel — floats over map ── */}
+      <View style={styles.listPanel}>
+        {/* Drag handle */}
+        <View style={styles.panelHandleArea}>
+          <View style={styles.handleBar} />
+        </View>
+
         {/* Summary bar */}
         <LinearGradient
           colors={colors.gradient.header}
@@ -501,33 +612,63 @@ export const RouteScreen: React.FC = () => {
           end={{ x: 1, y: 0 }}
           style={styles.summaryBar}
         >
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="map-marker-multiple" size={16} color={colors.primaryForeground} />
-            <Text style={styles.summaryText}>
-              {orderedTasks.length} stop{orderedTasks.length !== 1 ? "s" : ""}
-            </Text>
+          <View style={styles.summaryStats}>
+            <View style={styles.summaryStat}>
+              <MaterialCommunityIcons
+                name="map-marker-multiple"
+                size={14}
+                color="rgba(255,255,255,0.75)"
+              />
+              <Text style={styles.summaryStatValue}>{orderedTasks.length}</Text>
+              <Text style={styles.summaryStatLabel}>
+                stop{orderedTasks.length !== 1 ? "s" : ""}
+              </Text>
+            </View>
+
+            {routeResult?.totalDurationSecs != null && (
+              <>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryStat}>
+                  <MaterialCommunityIcons
+                    name="clock-outline"
+                    size={14}
+                    color="rgba(255,255,255,0.75)"
+                  />
+                  <Text style={styles.summaryStatValue}>
+                    {formatDuration(routeResult.totalDurationSecs)}
+                  </Text>
+                  <Text style={styles.summaryStatLabel}>est.</Text>
+                </View>
+              </>
+            )}
+
+            {routeResult?.totalDistanceMeters != null && (
+              <>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryStat}>
+                  <MaterialCommunityIcons
+                    name="road"
+                    size={14}
+                    color="rgba(255,255,255,0.75)"
+                  />
+                  <Text style={styles.summaryStatValue}>
+                    {formatDistance(routeResult.totalDistanceMeters)}
+                  </Text>
+                  <Text style={styles.summaryStatLabel}>total</Text>
+                </View>
+              </>
+            )}
           </View>
-          {routeResult?.totalDurationSecs != null && (
-            <View style={styles.summaryItem}>
-              <MaterialCommunityIcons name="clock-outline" size={16} color={colors.primaryForeground} />
-              <Text style={styles.summaryText}>
-                {formatDuration(routeResult.totalDurationSecs)}
-              </Text>
-            </View>
-          )}
-          {routeResult?.totalDistanceMeters != null && (
-            <View style={styles.summaryItem}>
-              <MaterialCommunityIcons name="road" size={16} color={colors.primaryForeground} />
-              <Text style={styles.summaryText}>
-                {formatDistance(routeResult.totalDistanceMeters)}
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={loadRoute} style={styles.refreshBtn} disabled={routeLoading}>
+
+          <TouchableOpacity
+            onPress={loadRoute}
+            style={styles.refreshBtn}
+            disabled={routeLoading}
+          >
             <MaterialCommunityIcons
               name="refresh"
               size={18}
-              color={routeLoading ? "rgba(255,255,255,0.4)" : colors.primaryForeground}
+              color={routeLoading ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.95)"}
             />
           </TouchableOpacity>
         </LinearGradient>
@@ -551,7 +692,7 @@ export const RouteScreen: React.FC = () => {
               ? (
                 <Text style={styles.excludedNote}>
                   {routeResult.tasksWithoutLocation.length} task
-                  {routeResult.tasksWithoutLocation.length !== 1 ? "s" : ""} excluded (no location set)
+                  {routeResult.tasksWithoutLocation.length !== 1 ? "s" : ""} excluded — no location set
                 </Text>
               )
               : null
@@ -576,43 +717,40 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     backgroundColor: colors.background,
   },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-  },
   errorText: {
     marginTop: spacing.md,
     fontSize: typography.fontSize.base,
     color: colors.destructive,
     textAlign: "center",
+    lineHeight: typography.fontSize.base * 1.5,
   },
   retryBtn: {
     marginTop: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.xl,
     backgroundColor: colors.primary,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.full,
   },
   retryText: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
     color: colors.primaryForeground,
   },
-  // Map
+
+  // ── Map ──
   mapContainer: {
-    flex: 1,
+    flex: 7,
   },
   map: {
     flex: 1,
   },
   mapMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.card,
+    borderWidth: 2.5,
+    borderColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     ...shadows.md,
@@ -620,14 +758,25 @@ const styles = StyleSheet.create({
   mapMarkerDone: {
     backgroundColor: colors.success,
   },
-  mapMarkerText: {
-    fontSize: 11,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primaryForeground,
+  mapMarkerActive: {
+    backgroundColor: colors.status.in_progress,
+    borderColor: "#fff",
   },
-  recalcOverlay: {
+  mapMarkerText: {
+    fontSize: 12,
+    fontWeight: typography.fontWeight.bold,
+    color: "#fff",
+  },
+
+  // Overlay banners stacked vertically
+  mapBanners: {
     position: "absolute",
-    alignSelf: "center",
+    left: spacing.lg,
+    right: spacing.lg,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  recalcPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
@@ -641,15 +790,13 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
   },
-  savedOrderBanner: {
-    position: "absolute",
-    alignSelf: "center",
+  savedOrderPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.primary + "40",
+    borderColor: colors.primary + "35",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
@@ -660,73 +807,129 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.primary,
   },
-  warningBanner: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
+  warningPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     backgroundColor: colors.card,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.warning,
+    borderWidth: 1,
+    borderColor: colors.warning + "50",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
     ...shadows.sm,
   },
   warningText: {
-    flex: 1,
     fontSize: typography.fontSize.xs,
-    color: colors.text,
+    color: colors.warning,
+    fontWeight: typography.fontWeight.medium,
   },
 
-  // Stop list
-  listContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+  // Recenter button
+  recenterBtn: {
+    position: "absolute",
+    right: spacing.md,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.lg,
   },
+
+  // ── Floating list panel ──
+  listPanel: {
+    flex: 5,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: PANEL_OVERLAP,
+    borderTopRightRadius: PANEL_OVERLAP,
+    marginTop: -PANEL_OVERLAP,
+    // iOS upward shadow
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    // Android elevation
+    elevation: 8,
+  },
+  panelHandleArea: {
+    alignItems: "center",
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+
+  // Summary bar
   summaryBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.md,
   },
-  summaryItem: {
+  summaryStats: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: spacing.sm,
+    flexWrap: "wrap",
   },
-  summaryText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
+  summaryStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  summaryStatValue: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
     color: colors.primaryForeground,
   },
-  refreshBtn: {
-    marginLeft: "auto",
-    padding: spacing.xs,
+  summaryStatLabel: {
+    fontSize: typography.fontSize.xs,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: typography.fontWeight.regular,
   },
+  summaryDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: "rgba(255,255,255,0.28)",
+    marginHorizontal: 2,
+  },
+  refreshBtn: {
+    padding: spacing.xs,
+    marginLeft: spacing.xs,
+  },
+
+  // Stop list
   listContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xl,
     gap: spacing.sm,
   },
   stopCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     gap: spacing.md,
     ...shadows.sm,
   },
+  stopCardInProgress: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.status.in_progress,
+    paddingLeft: spacing.md - 3,
+  },
+
+  // Step badge
   stepBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -735,58 +938,119 @@ const styles = StyleSheet.create({
   stepBadgeDone: {
     backgroundColor: colors.success,
   },
+  stepBadgeActive: {
+    backgroundColor: colors.status.in_progress,
+  },
   stepNumber: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
     color: colors.primaryForeground,
   },
+
+  // Stop info
   stopInfo: {
     flex: 1,
-    gap: 2,
+    gap: 3,
+  },
+  stopTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexWrap: "wrap",
   },
   stopTitle: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
+    flexShrink: 1,
+  },
+  nextChip: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  nextChipText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryForeground,
+    letterSpacing: 0.5,
+  },
+  statusChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  statusChipText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.semibold,
+    letterSpacing: 0.2,
+  },
+  addressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   stopAddress: {
+    flex: 1,
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
   },
-  stopMeta: {
+  legRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 1,
+  },
+  legItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  legDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.mutedForeground,
+  },
+  legText: {
     fontSize: typography.fontSize.xs,
     color: colors.mutedForeground,
-    marginTop: 2,
   },
+
+  // Action buttons
   stopActions: {
     flexDirection: "row",
     gap: spacing.sm,
     flexShrink: 0,
+    alignSelf: "center",
   },
   navButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary + "15",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary + "18",
     alignItems: "center",
     justifyContent: "center",
   },
   markButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary + "15",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary + "18",
     alignItems: "center",
     justifyContent: "center",
   },
   markButtonActive: {
     backgroundColor: colors.primary,
   },
+
   excludedNote: {
     textAlign: "center",
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
 });
 
