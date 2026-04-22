@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     qdrant_collection: str = "epilink_rag"
     rag_enabled: bool = False
     rag_top_k: int = 5
-    rag_embedding_model: str = "models/text-embedding-004"
+    rag_embedding_model: str = "gemini-embedding-001"
     rag_retrieval_mode: str = "hybrid"  # "hybrid" | "dense" | "sparse"
     rag_recency_decay_lambda: float = 0.001          # default fallback (~2-year half-life)
     rag_recency_decay_surveillance: float = 0.05     # ~14-day half-life for case data
