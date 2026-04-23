@@ -1115,7 +1115,7 @@ export class AnalyticsService implements OnModuleInit {
    * for the exact week specified. Used for past-week reports so they reflect
    * what actually happened rather than a forecast based on that week's data.
    */
-  async getActualWeekData(year: number, weekNumber: number) {
+  async getStoredWeekData(year: number, weekNumber: number) {
     const manager = this.dataSource.manager;
     const data = await manager.query(
       `

@@ -136,14 +136,14 @@ export class ReportsService {
     const [forecast, alerts, hotspots, summary, nationalSummary, prevWeekData] =
       await Promise.all([
         // Always read stored cases for the target week — no formula re-computation
-        this.analyticsService.getActualWeekData(dto.year, dto.weekNumber),
+        this.analyticsService.getStoredWeekData(dto.year, dto.weekNumber),
         this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
         this.analyticsService.getHotspots(dto.year, dto.weekNumber),
         this.analyticsService.getDashboardSummary(dto.year, dto.weekNumber),
         this.analyticsService.getNationalSummary(weekLabel, user),
         // Always fetch previous week data — used for per-district current_cases
         // enrichment (both historical and predicted) and totalCurrentCases stat
-        this.analyticsService.getActualWeekData(prevYear, prevWeek),
+        this.analyticsService.getStoredWeekData(prevYear, prevWeek),
       ]);
 
     // Raw rows from the target week: forecast = actual_cases (same as current_cases)

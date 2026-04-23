@@ -371,9 +371,16 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                           </p>
                         )}
                       </div>
-                      <Badge variant="outline" className="text-xs uppercase">
-                        {alert.severity}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!isHistorical && (
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-700">
+                            Forecast-based
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs uppercase">
+                          {alert.severity}
+                        </Badge>
+                      </div>
                     </div>
                     {alert.message && (
                       <p className="text-xs mt-2 opacity-90">{alert.message}</p>

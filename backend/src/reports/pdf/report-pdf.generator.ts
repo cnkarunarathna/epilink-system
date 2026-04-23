@@ -295,6 +295,13 @@ export class ReportPdfGenerator {
   <p class="report-title">Weekly Dengue ${isHistorical ? 'Historical' : 'Surveillance &amp; Prediction'} Report — Week ${data.weekNumber}, ${data.year}</p>
 </div>
 
+${!isHistorical ? `
+<!-- FORECAST DISCLAIMER -->
+<div style="margin:10px 24px 0;padding:8px 12px;background:#fffbeb;border:1px solid #f59e0b;border-left:4px solid #d97706;border-radius:4px;display:flex;align-items:flex-start;gap:8px;">
+  <span style="font-size:13px;line-height:1.4;">&#9888;</span>
+  <span style="font-size:9.5px;color:#92400e;line-height:1.5;"><strong>Forecast Report:</strong> Case counts in this report are model-generated predictions for the upcoming week. They are subject to change and do not reflect confirmed surveillance data.</span>
+</div>` : ''}
+
 <!-- EXECUTIVE SUMMARY -->
 <div class="stats-grid">
   <div class="stat-card">

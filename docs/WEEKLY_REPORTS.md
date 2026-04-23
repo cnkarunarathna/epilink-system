@@ -922,8 +922,8 @@ No change to SQL or return shape — pure rename. Add a JSDoc clarification:
 | P1 | ENH-01 — Stable `ForecastRow` field names + backward shim | M | Removes column-meaning swap; all consumers read the same field for the same thing | ✅ Done |
 | P1 | ENH-02 — `confidence` badge reads from row field | XS | Badge shows "Actual" vs "Forecast" correctly | ✅ Done (covered by ENH-01) |
 | P2 | ENH-03 — Split `totalPredictedCases` into actual + forecast columns | S | Correct labels in table, PDF, and email for both report types | ✅ Done |
-| P2 | ENH-04 — Forecast disclaimer banner in PDF + alert badge in UI | S | Clear signal that predicted alerts are model-derived, not verified data | ☐ |
-| P3 | ENH-05 — Rename `getActualWeekData` → `getStoredWeekData` | XS | Removes misleading internal name | ☐ |
+| P2 | ENH-04 — Forecast disclaimer banner in PDF + alert badge in UI | S | Clear signal that predicted alerts are model-derived, not verified data | ✅ Done |
+| P3 | ENH-05 — Rename `getActualWeekData` → `getStoredWeekData` | XS | Removes misleading internal name | ✅ Done |
 
 **Effort:** XS < 1h | S = 1-2h | M = 2-4h | L = 4h+
 
