@@ -1,14 +1,14 @@
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 
-export type MockRepository<T = any> = Partial<
+export type MockRepository<T extends ObjectLiteral = any> = Partial<
   Record<keyof Repository<T>, jest.Mock>
 >;
 
-export type MockQueryBuilder<T = any> = Partial<
+export type MockQueryBuilder<T extends ObjectLiteral = any> = Partial<
   Record<keyof SelectQueryBuilder<T>, jest.Mock>
 >;
 
-export function createMockQueryBuilder<T = any>(): MockQueryBuilder<T> {
+export function createMockQueryBuilder<T extends ObjectLiteral = any>(): MockQueryBuilder<T> {
   const qb: MockQueryBuilder<T> = {
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
@@ -39,13 +39,12 @@ export function createMockQueryBuilder<T = any>(): MockQueryBuilder<T> {
     getCount: jest.fn().mockResolvedValue(0),
     execute: jest.fn().mockResolvedValue({ affected: 0 }),
     update: jest.fn().mockReturnThis(),
-    set: jest.fn().mockReturnThis(),
     delete: jest.fn().mockReturnThis(),
   };
   return qb;
 }
 
-export function createMockRepository<T = any>(): MockRepository<T> {
+export function createMockRepository<T extends ObjectLiteral = any>(): MockRepository<T> {
   return {
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue(null),
