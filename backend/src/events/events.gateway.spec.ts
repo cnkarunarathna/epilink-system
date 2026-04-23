@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { EventsGateway, AuthenticatedSocket } from './events.gateway';
+import { Task } from '../tasks/entities/task.entity';
 
 describe('EventsGateway', () => {
   let eventsGateway: EventsGateway;
@@ -15,6 +17,7 @@ describe('EventsGateway', () => {
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue('test-secret'),
+    getOrThrow: jest.fn().mockReturnValue('test-secret'),
   };
 
   const mockServer = {
@@ -41,6 +44,10 @@ describe('EventsGateway', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: getRepositoryToken(Task),
+          useValue: { findOne: jest.fn() },
         },
       ],
     }).compile();
