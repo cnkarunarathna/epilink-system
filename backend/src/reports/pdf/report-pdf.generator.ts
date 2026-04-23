@@ -26,9 +26,13 @@ export interface ReportPdfData {
   startDate: string;
   endDate: string;
   reportType: 'historical' | 'predicted';
-  /** For predicted: SUM(forecast per district). For historical: SUM(actual_cases). */
+  /** Legacy aggregate — kept for backward compat. Prefer totalActualCases / totalForecastCases. */
   totalPredictedCases: number;
-  /** Predicted reports only: SUM(current_cases) = actual recorded cases this week (matches analytics page). */
+  /** Historical reports: sum of actual surveillance cases for the target week. */
+  totalActualCases?: number;
+  /** Predicted reports: sum of model-generated case counts for the target week. */
+  totalForecastCases?: number;
+  /** Predicted reports only: SUM(current_cases) = actual recorded cases this week. */
   totalCurrentCases?: number;
   totalDistricts: number;
   highRiskDistricts: number;
@@ -294,8 +298,11 @@ export class ReportPdfGenerator {
 <!-- EXECUTIVE SUMMARY -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">${isHistorical ? 'Total Reported Cases' : 'Predicted Cases (Next Week)'}</div>
-    <div class="stat-value">${data.totalPredictedCases.toLocaleString()}</div>
+    <div class="stat-label">${isHistorical ? 'Total Reported Cases' : 'Forecast Cases (Next Week)'}</div>
+    <div class="stat-value">${(isHistorical
+      ? (data.totalActualCases ?? data.totalPredictedCases)
+      : (data.totalForecastCases ?? data.totalPredictedCases)
+    ).toLocaleString()}</div>
     <div class="stat-sub">${isHistorical ? 'Actual recorded' : 'Model forecast'}</div>
   </div>
   ${!isHistorical && data.totalCurrentCases !== undefined ? `

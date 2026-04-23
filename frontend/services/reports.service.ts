@@ -17,6 +17,10 @@ export interface WeeklyReport {
   status: ReportStatus;
   reportType: 'historical' | 'predicted';
   totalPredictedCases: number;
+  /** Historical: sum of actual surveillance cases. Null for predicted reports. */
+  totalActualCases: number | null;
+  /** Predicted: sum of model-generated case counts. Null for historical reports. */
+  totalForecastCases: number | null;
   totalCurrentCases: number | null;
   totalDistricts: number;
   highRiskDistricts: number;
