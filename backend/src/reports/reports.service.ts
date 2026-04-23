@@ -68,6 +68,14 @@ export class ReportsService {
       relations: ['approvedBy', 'createdBy'],
     });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
+    // Normalise forecast rows saved before the ENH-01 field rename so older
+    // reports surface the same shape (reported_cases / predicted_cases) as new ones.
+    if (Array.isArray(report.reportData?.forecast)) {
+      report.reportData.forecast = this.normaliseForecastRows(
+        report.reportData.forecast,
+        report.reportType,
+      );
+    }
     return report;
   }
 
@@ -128,14 +136,14 @@ export class ReportsService {
     const [forecast, alerts, hotspots, summary, nationalSummary, prevWeekData] =
       await Promise.all([
         // Always read stored cases for the target week — no formula re-computation
-        this.analyticsService.getActualWeekData(dto.year, dto.weekNumber),
+        this.analyticsService.getStoredWeekData(dto.year, dto.weekNumber),
         this.analyticsService.getOutbreakAlertsForWeek(dto.year, dto.weekNumber),
         this.analyticsService.getHotspots(dto.year, dto.weekNumber),
         this.analyticsService.getDashboardSummary(dto.year, dto.weekNumber),
         this.analyticsService.getNationalSummary(weekLabel, user),
         // Always fetch previous week data — used for per-district current_cases
         // enrichment (both historical and predicted) and totalCurrentCases stat
-        this.analyticsService.getActualWeekData(prevYear, prevWeek),
+        this.analyticsService.getStoredWeekData(prevYear, prevWeek),
       ]);
 
     // Raw rows from the target week: forecast = actual_cases (same as current_cases)
@@ -157,20 +165,35 @@ export class ReportsService {
           0,
         );
 
-    // Enrich per-district rows so the Districts table shows two distinct values:
-    //   Predicted report  — "Current" col = prior-week actual; "Predicted" col = this-week stored prediction
-    //   Historical report — "Reported" col = this-week actual; "vs Prior Wk" col = prior-week actual
+    // Build per-district rows with stable, type-specific field names so every
+    // consumer reads the same field for the same concept regardless of reportType.
+    //
+    // Historical:  reported_cases = this week's actual | prior_cases = prior week actual
+    // Predicted:   reported_cases = prior week actual  | predicted_cases = model output
     const prevByDistrict = new Map<string, number>(
       prevWeekArr.map((r: any) => [r.district as string, Number(r.current_cases) || 0]),
     );
-    const forecastArr = rawForecastArr.map((row: any) => ({
-      ...row,
-      ...(isHistorical
-        // Historical: keep current_cases (this week's reported); replace forecast with prior week
-        ? { forecast: prevByDistrict.get(row.district) ?? row.forecast }
-        // Predicted: replace current_cases with prior-week actual; keep forecast (this week's prediction)
-        : { current_cases: prevByDistrict.get(row.district) ?? row.current_cases }),
-    }));
+    const forecastArr = rawForecastArr.map((row: any) => {
+      const priorActual = prevByDistrict.get(row.district) ?? null;
+      if (isHistorical) {
+        return {
+          district:       row.district,
+          reported_cases: Number(row.current_cases) || 0,
+          prior_cases:    priorActual,
+          avg_4week:      row.avg_4week,
+          trend:          row.trend,
+          confidence:     'actual' as const,
+        };
+      }
+      return {
+        district:        row.district,
+        reported_cases:  priorActual,
+        predicted_cases: Number(row.forecast) || 0,
+        avg_4week:       row.avg_4week,
+        trend:           row.trend,
+        confidence:      'medium' as const,
+      };
+    });
     const totalDistricts = forecastArr.length;
     // Rising trend: cases > prior 4-week avg × 1.3 — matches the anchored
     // high_risk CTE in getDashboardSummary so both numbers agree in reports.
@@ -188,6 +211,8 @@ export class ReportsService {
       status: ReportStatus.PENDING,
       reportType,
       totalPredictedCases,
+      totalActualCases:   isHistorical ? totalPredictedCases : null,
+      totalForecastCases: isHistorical ? null : totalPredictedCases,
       totalCurrentCases: totalCurrentCases ?? null,
       totalDistricts,
       highRiskDistricts,
@@ -220,6 +245,8 @@ export class ReportsService {
       endDate,
       reportType,
       totalPredictedCases,
+      totalActualCases:   isHistorical ? totalPredictedCases : undefined,
+      totalForecastCases: isHistorical ? undefined : totalPredictedCases,
       totalCurrentCases,
       totalDistricts,
       highRiskDistricts,
@@ -247,6 +274,8 @@ export class ReportsService {
       year: dto.year,
       reportType: final.reportType,
       totalPredictedCases: final.totalPredictedCases,
+      totalActualCases: final.totalActualCases,
+      totalForecastCases: final.totalForecastCases,
       totalCurrentCases: final.totalCurrentCases,
       highRiskDistricts: final.highRiskDistricts,
       totalDistricts: final.totalDistricts,
@@ -376,6 +405,31 @@ export class ReportsService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
+
+  /** Maps legacy forecast row field names to the ENH-01 stable shape. */
+  private normaliseForecastRows(rows: any[], reportType: string): any[] {
+    return rows.map((r) => {
+      if ('reported_cases' in r) return r;
+      if (reportType === 'historical') {
+        return {
+          district:       r.district,
+          reported_cases: r.current_cases ?? 0,
+          prior_cases:    r.forecast ?? null,
+          avg_4week:      r.avg_4week,
+          trend:          r.trend,
+          confidence:     'actual',
+        };
+      }
+      return {
+        district:        r.district,
+        reported_cases:  r.current_cases ?? null,
+        predicted_cases: r.forecast ?? 0,
+        avg_4week:       r.avg_4week,
+        trend:           r.trend,
+        confidence:      'medium',
+      };
+    });
+  }
 
   /** Returns the ISO 8601 week number for the given date. */
   private getCurrentISOWeek(date: Date): number {

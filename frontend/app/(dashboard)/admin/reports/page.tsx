@@ -239,7 +239,11 @@ export default function ReportsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {latestReport.year} &mdash;{" "}
-                  {latestReport.totalPredictedCases.toLocaleString()} predicted
+                  {(latestReport.reportType === 'historical'
+                    ? (latestReport.totalActualCases ?? latestReport.totalPredictedCases)
+                    : (latestReport.totalForecastCases ?? latestReport.totalPredictedCases)
+                  ).toLocaleString()}{" "}
+                  {latestReport.reportType === 'historical' ? 'reported' : 'forecast'}
                 </p>
               </>
             ) : (
@@ -335,7 +339,10 @@ export default function ReportsPage() {
                     </TableCell>
 
                     <TableCell className="text-right font-medium tabular-nums">
-                      {report.totalPredictedCases.toLocaleString()}
+                      {(report.reportType === 'historical'
+                        ? (report.totalActualCases ?? report.totalPredictedCases)
+                        : (report.totalForecastCases ?? report.totalPredictedCases)
+                      ).toLocaleString()}
                     </TableCell>
 
                     <TableCell className="text-right">

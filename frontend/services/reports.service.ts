@@ -17,6 +17,10 @@ export interface WeeklyReport {
   status: ReportStatus;
   reportType: 'historical' | 'predicted';
   totalPredictedCases: number;
+  /** Historical: sum of actual surveillance cases. Null for predicted reports. */
+  totalActualCases: number | null;
+  /** Predicted: sum of model-generated case counts. Null for historical reports. */
+  totalForecastCases: number | null;
   totalCurrentCases: number | null;
   totalDistricts: number;
   highRiskDistricts: number;
@@ -50,11 +54,12 @@ export interface HotspotRow {
 
 export interface ForecastRow {
   district: string;
-  current_cases: number;
+  reported_cases: number | null;
+  prior_cases?: number | null;    // historical: prior week actual
+  predicted_cases?: number;       // predicted: model output for target week
   avg_4week: number;
-  forecast: number;
   trend: "Rising" | "Stable" | "Falling";
-  confidence?: string;
+  confidence: 'actual' | 'medium';
 }
 
 export interface OutbreakAlert {

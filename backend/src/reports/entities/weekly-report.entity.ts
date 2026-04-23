@@ -44,6 +44,14 @@ export class WeeklyReport {
   @Column({ name: 'total_predicted_cases', type: 'integer', default: 0 })
   totalPredictedCases: number;
 
+  /** Historical reports: sum of actual surveillance cases for the target week. */
+  @Column({ name: 'total_actual_cases', type: 'integer', nullable: true })
+  totalActualCases: number | null;
+
+  /** Predicted reports: sum of model-generated case counts for the target week. */
+  @Column({ name: 'total_forecast_cases', type: 'integer', nullable: true })
+  totalForecastCases: number | null;
+
   @Column({ name: 'total_districts', type: 'integer', default: 0 })
   totalDistricts: number;
 

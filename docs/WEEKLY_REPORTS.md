@@ -596,3 +596,353 @@ After implementing fixes, verify the following end-to-end scenarios:
 - [ ] `GET /api/reports?year=2025` returns only reports for that year
 - [ ] Newly generated report has `report_type` and `total_current_cases` columns populated in DB
 - [ ] Alerts tab shows both outbreak alerts and a hotspots table when hotspot data is present
+
+---
+
+## 8. Clarity Gaps: Historical vs Predicted Reports
+
+> Added: 2026-04-23 | All items in §2–§7 are complete. This section captures
+> the next layer of improvements to make historical and predicted reports
+> unambiguous at every layer — service, PDF, and UI.
+>
+> **Design note:** `dengue_cases` stores both actual government data (up to the
+> current date) and iterative predictions (upcoming weeks) in the same `cases`
+> column — intentionally. No schema change to that table is needed or planned.
+> The report type is determined at generation time by comparing the requested
+> `(year, weekNumber)` against the current ISO week derived from the generation
+> timestamp. All enhancements below operate at the service / interface / PDF
+> layer only.
+
+### Remaining clarity gaps
+
+| Location | Gap |
+|---|---|
+| `ForecastRow.current_cases` + `.forecast` | Field meaning **swaps** based on `reportType` — every consumer must know the type before reading either field |
+| `confidence: 'actual'` in `getActualWeekData` | Function always returns `'actual'`; for a predicted report the target week holds model output, not actual surveillance data |
+| `totalPredictedCases` column | For historical reports this holds the sum of **actual** reported cases — name is semantically wrong |
+| PDF & UI labels | No visible distinction that alerts and hotspot severities in a predicted report are model-derived, not verified measurements |
+| `reportData` top-level key naming | `reportData.forecast` is the per-district array for both types; within it, column meaning depends on context rather than the name |
+
+---
+
+## 9. Enhancement Items
+
+---
+
+### ENH-01 — Fix `ForecastRow` column semantics (service + interface layer)
+
+**Priority:** P1 — Most visible naming confusion; affects PDF, UI, and email
+
+**Problem:**
+
+The enrichment block in `reports.service.ts` (lines 163–173) already computes
+the right values for each report type, but writes them back under the same
+ambiguous field names:
+
+```
+Historical report stored in reportData.forecast[]:
+  current_cases  → this week's actual reported cases   ✓ correct value, ✗ ambiguous name
+  forecast       → prior week's actual cases           ✗ wrong name (nothing was forecast)
+
+Predicted report stored in reportData.forecast[]:
+  current_cases  → prior week's actual cases           ✗ wrong name (it's not the current week)
+  forecast       → this week's model prediction        ✓ correct value, ✓ name ok
+```
+
+Every consumer (PDF generator, `ReportDetailModal`, email template) must branch
+on `reportType` just to know what `current_cases` means.
+
+**Fix — rename at the service layer, no DB change:**
+
+In `reports.service.ts` lines 166–173, produce semantically stable field names
+when building `forecastArr`:
+
+```typescript
+const forecastArr = rawForecastArr.map((row: any) => {
+  const priorWeekActual = prevByDistrict.get(row.district) ?? null;
+  if (isHistorical) {
+    return {
+      district:       row.district,
+      reported_cases: Number(row.current_cases) || 0,  // this week's actual
+      prior_cases:    priorWeekActual,                  // prior week actual (comparison column)
+      avg_4week:      row.avg_4week,
+      trend:          row.trend,
+      confidence:     'actual' as const,
+    };
+  } else {
+    return {
+      district:         row.district,
+      reported_cases:   priorWeekActual,                // prior week actual (known data)
+      predicted_cases:  Number(row.forecast) || 0,      // this week model prediction
+      avg_4week:        row.avg_4week,
+      trend:            row.trend,
+      confidence:       'medium' as const,              // model output, not surveillance data
+    };
+  }
+});
+```
+
+**Updated `ForecastRow` interface** (used by PDF generator and frontend):
+
+```typescript
+// report-pdf.generator.ts & frontend/services/reports.service.ts
+export interface ForecastRow {
+  district:         string;
+  reported_cases:   number | null;   // actual surveillance value (both types; null = not yet reported)
+  prior_cases:      number | null;   // historical: prior week actual; predicted: same value as reported_cases
+  predicted_cases?: number;          // predicted reports only — model output for target week
+  avg_4week:        number;
+  trend:            'Rising' | 'Stable' | 'Falling';
+  confidence:       'actual' | 'medium';
+}
+```
+
+**Backward compatibility shim in `getReport()`:**
+
+Existing saved reports have the old `current_cases`/`forecast` fields. Add a
+normaliser before returning `reportData` so old and new reports look identical
+to the frontend:
+
+```typescript
+// reports.service.ts — inside getReport(), after loading from DB
+private normaliseForecastRows(rows: any[], reportType: string): ForecastRow[] {
+  return rows.map(r => {
+    if ('reported_cases' in r) return r;  // already new shape
+    // Legacy: map old names to new
+    if (reportType === 'historical') {
+      return { ...r, reported_cases: r.current_cases, prior_cases: r.forecast, confidence: 'actual' };
+    }
+    return { ...r, reported_cases: r.current_cases, predicted_cases: r.forecast, confidence: 'medium' };
+  });
+}
+```
+
+**Files to change:**
+
+- [backend/src/reports/reports.service.ts](backend/src/reports/reports.service.ts) lines 163–173 (enrichment) + `getReport()` (shim)
+- [backend/src/reports/pdf/report-pdf.generator.ts](backend/src/reports/pdf/report-pdf.generator.ts) — `ForecastRow` interface + `buildForecastTable` / `buildBarChart` column reads
+- [frontend/services/reports.service.ts](frontend/services/reports.service.ts) — `ForecastRow` interface
+- [frontend/components/dashboard/reports/ReportDetailModal.tsx](frontend/components/dashboard/reports/ReportDetailModal.tsx) — district table column reads
+
+---
+
+### ENH-02 — Fix `confidence` field for predicted target week
+
+**Priority:** P1 — Silently wrong signal on model-generated data
+
+**Problem:**
+
+`getActualWeekData(year, weekNumber)` is called for both historical and predicted
+report paths. It always returns `confidence: 'actual'` regardless of whether
+the target week is a past (surveillance) week or a future (model) week.
+
+For a predicted report the target week's rows in `dengue_cases` are model output.
+Returning `confidence: 'actual'` is factually wrong and misleads the UI badge.
+
+**Fix:**
+
+ENH-01 already resolves this: the enrichment block in `reports.service.ts` now
+sets `confidence: 'actual'` for historical and `confidence: 'medium'` for
+predicted, overriding whatever the analytics function returns. No change needed
+to `analytics.service.ts`.
+
+Ensure the UI badge in `ReportDetailModal` reads from `row.confidence` (not
+a hardcoded string):
+
+```tsx
+// ReportDetailModal — Districts table confidence cell
+<Badge variant={row.confidence === 'actual' ? 'success' : 'secondary'}>
+  {row.confidence === 'actual' ? 'Actual' : 'Forecast'}
+</Badge>
+```
+
+**Files to change:**
+
+- Covered by ENH-01 (service enrichment block)
+- [frontend/components/dashboard/reports/ReportDetailModal.tsx](frontend/components/dashboard/reports/ReportDetailModal.tsx) — confidence badge cell
+
+---
+
+### ENH-03 — Rename `totalPredictedCases` to type-specific columns
+
+**Priority:** P2 — Misleading label in admin table, emails, and PDFs
+
+**Problem:**
+
+`weekly_reports.total_predicted_cases` stores:
+- For **historical** reports: the sum of actual government-reported cases
+- For **predicted** reports: the sum of model-generated case counts
+
+Using the word "predicted" for actual surveillance totals is wrong. The admin
+table header and email body both display this as "Predicted Cases" even for
+verified historical data.
+
+**Fix — add two explicit columns to `weekly_reports`, keep old column for
+backward compat during transition:**
+
+```sql
+-- migration: AddWeeklyReportSplitCaseTotals
+ALTER TABLE weekly_reports
+  ADD COLUMN total_actual_cases   INTEGER,   -- historical reports: sum of surveillance cases
+  ADD COLUMN total_forecast_cases INTEGER;   -- predicted reports: sum of model predictions
+```
+
+Populate in `reports.service.ts` at generation time:
+
+```typescript
+total_actual_cases:   isHistorical ? totalPredictedCases : null,
+total_forecast_cases: isHistorical ? null : totalPredictedCases,
+```
+
+`total_predicted_cases` continues to be set (backward compat) until the
+frontend/PDF are updated, then deprecate it.
+
+**PDF header labels:**
+
+```typescript
+// report-pdf.generator.ts — stat cards
+isHistorical
+  ? { label: 'Total Reported Cases', value: data.totalActualCases }
+  : { label: 'Forecast Cases (Next Week)', value: data.totalForecastCases }
+```
+
+**Files to change:**
+
+- [backend/src/reports/entities/weekly-report.entity.ts](backend/src/reports/entities/weekly-report.entity.ts) — add `totalActualCases`, `totalForecastCases`
+- [backend/src/reports/reports.service.ts](backend/src/reports/reports.service.ts) lines 146–158 + `reportData` save block
+- [backend/src/reports/pdf/report-pdf.generator.ts](backend/src/reports/pdf/report-pdf.generator.ts) — `ReportPdfData` interface + stat card labels
+- [frontend/services/reports.service.ts](frontend/services/reports.service.ts) — `WeeklyReport` interface
+- [frontend/app/(dashboard)/admin/reports/page.tsx](frontend/app/(dashboard)/admin/reports/page.tsx) — table column header + value
+- New migration: `backend/src/migrations/<timestamp>-AddWeeklyReportSplitCaseTotals.ts`
+
+---
+
+### ENH-04 — Add predicted-data disclaimer to PDF and alert cards
+
+**Priority:** P2 — Alerts in predicted reports can trigger unwarranted field response
+
+**Problem:**
+
+Alerts and hotspot severities in a **predicted** report are derived from
+model-generated case counts, not verified surveillance data. The PDF and UI
+present them identically to alerts from a historical (verified) report. A
+"critical" outbreak alert based on a forecast could trigger unnecessary public
+health response.
+
+**Fix — service layer (no DB change):**
+
+In `reports.service.ts`, tag each alert and hotspot with `forecast_based`:
+
+```typescript
+const alertsArr = (Array.isArray(alerts) ? alerts : []).map((a: any) => ({
+  ...a,
+  forecast_based: !isHistorical,
+}));
+const hotspotsArr = (Array.isArray(hotspots) ? hotspots : []).map((h: any) => ({
+  ...h,
+  forecast_based: !isHistorical,
+}));
+```
+
+**PDF — conditional header banner and footnote:**
+
+```typescript
+// report-pdf.generator.ts — in buildHtml(), after the main header block
+if (!isHistorical) {
+  html += `
+    <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:8px 24px;font-size:9.5px;color:#92400e;">
+      ⚠ <strong>Forecast Report</strong> — Case counts, alerts, and hotspot severities
+      in this report are model-generated predictions for the upcoming week.
+      They are subject to revision once official surveillance data is reported.
+    </div>`;
+}
+```
+
+**UI — alert card disclaimer badge:**
+
+```tsx
+// ReportDetailModal — alert card
+{alert.forecast_based && (
+  <Badge variant="warning" className="text-xs">Forecast-based</Badge>
+)}
+```
+
+**Files to change:**
+
+- [backend/src/reports/reports.service.ts](backend/src/reports/reports.service.ts) — tag alerts and hotspots before `reportData` save
+- [backend/src/reports/pdf/report-pdf.generator.ts](backend/src/reports/pdf/report-pdf.generator.ts) — banner HTML + `OutbreakAlert.forecast_based`
+- [frontend/components/dashboard/reports/ReportDetailModal.tsx](frontend/components/dashboard/reports/ReportDetailModal.tsx) — alert card badge
+
+---
+
+### ENH-05 — Rename `getActualWeekData` in analytics service
+
+**Priority:** P3 — Misleading internal function name; low user impact
+
+**Problem:**
+
+`analyticsService.getActualWeekData(year, week)` reads `dengue_cases` for any
+given week — it does not distinguish "actual" from "predicted". When called for
+a future week in a predicted report it returns the model's stored case counts,
+not actual surveillance data. The name implies the data is always actual, which
+is only true for past weeks.
+
+**Fix:**
+
+Rename to `getStoredWeekData(year, week)` throughout. Update all callers and
+JSDoc.
+
+```typescript
+// analytics.service.ts
+async getStoredWeekData(year: number, weekNumber: number): Promise<ForecastRow[]>
+```
+
+No change to SQL or return shape — pure rename. Add a JSDoc clarification:
+
+```typescript
+/**
+ * Returns the stored case data for (year, weekNumber) from dengue_cases.
+ * For past weeks this is actual government surveillance data.
+ * For the current/upcoming week this is iterative model predictions.
+ * The caller determines which applies based on the generation timestamp.
+ */
+```
+
+**Files to change:**
+
+- [backend/src/analytics/analytics.service.ts](backend/src/analytics/analytics.service.ts) — method rename + JSDoc
+- [backend/src/reports/reports.service.ts](backend/src/reports/reports.service.ts) — two call sites (lines ~131, ~138)
+
+---
+
+## 10. Enhancement Priority Table
+
+| Priority | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| P1 | ENH-01 — Stable `ForecastRow` field names + backward shim | M | Removes column-meaning swap; all consumers read the same field for the same thing | ✅ Done |
+| P1 | ENH-02 — `confidence` badge reads from row field | XS | Badge shows "Actual" vs "Forecast" correctly | ✅ Done (covered by ENH-01) |
+| P2 | ENH-03 — Split `totalPredictedCases` into actual + forecast columns | S | Correct labels in table, PDF, and email for both report types | ✅ Done |
+| P2 | ENH-04 — Forecast disclaimer banner in PDF + alert badge in UI | S | Clear signal that predicted alerts are model-derived, not verified data | ✅ Done |
+| P3 | ENH-05 — Rename `getActualWeekData` → `getStoredWeekData` | XS | Removes misleading internal name | ✅ Done |
+
+**Effort:** XS < 1h | S = 1-2h | M = 2-4h | L = 4h+
+
+**Recommended implementation order:** ENH-01 + ENH-02 together (single PR,
+service + UI changes) → ENH-03 (one migration + label sweep) → ENH-04 (PDF
++ UI disclaimer, no migration) → ENH-05 (rename only).
+
+---
+
+## 11. Testing Checklist (Enhancement Items)
+
+- [ ] Historical report `reportData.forecast[]` rows contain `reported_cases` (this week actual) and `prior_cases` (prev week actual); no `predicted_cases` key
+- [ ] Predicted report rows contain `reported_cases` (prev week actual) and `predicted_cases` (model output); `confidence = 'medium'`
+- [ ] Reports saved before ENH-01 load correctly via the backward shim — `current_cases` mapped to `reported_cases`, `forecast` mapped to `predicted_cases`
+- [ ] Districts table confidence badge shows "Actual" (green) for historical rows and "Forecast" (grey) for predicted rows
+- [ ] Historical report admin table column header reads "Reported Cases" and value comes from `total_actual_cases`
+- [ ] Predicted report admin table column header reads "Forecast Cases" and value comes from `total_forecast_cases`
+- [ ] Historical PDF stat card label reads "Total Reported Cases"
+- [ ] Predicted PDF stat card label reads "Forecast Cases (Next Week)"
+- [ ] Predicted PDF shows yellow warning banner below header; historical PDF does not
+- [ ] Predicted report alert cards show "Forecast-based" badge; historical alert cards do not
+- [ ] `analyticsService.getStoredWeekData` is the only call site name — `getActualWeekData` no longer exists
