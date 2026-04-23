@@ -15,10 +15,16 @@
 <h2>{{reportTitle}}</h2>
 
 <table class="detail-list">
-  {{#if totalPredictedCases}}
+  {{#if totalActualCases}}
   <tr>
-    <td>Predicted Cases</td>
-    <td><strong>{{totalPredictedCases}}</strong></td>
+    <td>Reported Cases</td>
+    <td><strong>{{totalActualCases}}</strong></td>
+  </tr>
+  {{/if}}
+  {{#if totalForecastCases}}
+  <tr>
+    <td>Forecast Cases (Next Week)</td>
+    <td><strong>{{totalForecastCases}}</strong></td>
   </tr>
   {{/if}}
   {{#if totalCurrentCases}}

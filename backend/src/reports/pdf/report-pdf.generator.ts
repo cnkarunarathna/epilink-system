@@ -3,11 +3,12 @@ import * as puppeteer from 'puppeteer';
 
 export interface ForecastRow {
   district: string;
-  current_cases: number;
+  reported_cases: number | null;
+  prior_cases?: number | null;    // historical: prior week actual
+  predicted_cases?: number;       // predicted: model output for target week
   avg_4week: number;
-  forecast: number;
   trend: 'Rising' | 'Stable' | 'Falling';
-  confidence?: string;
+  confidence: 'actual' | 'medium';
 }
 
 export interface OutbreakAlert {
@@ -25,9 +26,13 @@ export interface ReportPdfData {
   startDate: string;
   endDate: string;
   reportType: 'historical' | 'predicted';
-  /** For predicted: SUM(forecast per district). For historical: SUM(actual_cases). */
+  /** Legacy aggregate — kept for backward compat. Prefer totalActualCases / totalForecastCases. */
   totalPredictedCases: number;
-  /** Predicted reports only: SUM(current_cases) = actual recorded cases this week (matches analytics page). */
+  /** Historical reports: sum of actual surveillance cases for the target week. */
+  totalActualCases?: number;
+  /** Predicted reports: sum of model-generated case counts for the target week. */
+  totalForecastCases?: number;
+  /** Predicted reports only: SUM(current_cases) = actual recorded cases this week. */
   totalCurrentCases?: number;
   totalDistricts: number;
   highRiskDistricts: number;
@@ -73,10 +78,12 @@ export class ReportPdfGenerator {
 
   private buildHtml(data: ReportPdfData): string {
     const isHistorical = data.reportType === 'historical';
+    const primaryVal = (row: ForecastRow) =>
+      isHistorical ? (row.reported_cases ?? 0) : (row.predicted_cases ?? 0);
     const top10 = [...data.forecast]
-      .sort((a, b) => b.forecast - a.forecast)
+      .sort((a, b) => primaryVal(b) - primaryVal(a))
       .slice(0, 10);
-    const maxForecast = Math.max(...top10.map((d) => d.forecast), 1);
+    const maxForecast = Math.max(...top10.map(primaryVal), 1);
 
     const barChart = this.buildBarChart(top10, maxForecast, isHistorical);
     const forecastTable = this.buildForecastTable(data.forecast, isHistorical);
@@ -288,11 +295,21 @@ export class ReportPdfGenerator {
   <p class="report-title">Weekly Dengue ${isHistorical ? 'Historical' : 'Surveillance &amp; Prediction'} Report — Week ${data.weekNumber}, ${data.year}</p>
 </div>
 
+${!isHistorical ? `
+<!-- FORECAST DISCLAIMER -->
+<div style="margin:10px 24px 0;padding:8px 12px;background:#fffbeb;border:1px solid #f59e0b;border-left:4px solid #d97706;border-radius:4px;display:flex;align-items:flex-start;gap:8px;">
+  <span style="font-size:13px;line-height:1.4;">&#9888;</span>
+  <span style="font-size:9.5px;color:#92400e;line-height:1.5;"><strong>Forecast Report:</strong> Case counts in this report are model-generated predictions for the upcoming week. They are subject to change and do not reflect confirmed surveillance data.</span>
+</div>` : ''}
+
 <!-- EXECUTIVE SUMMARY -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">${isHistorical ? 'Total Reported Cases' : 'Predicted Cases (Next Week)'}</div>
-    <div class="stat-value">${data.totalPredictedCases.toLocaleString()}</div>
+    <div class="stat-label">${isHistorical ? 'Total Reported Cases' : 'Forecast Cases (Next Week)'}</div>
+    <div class="stat-value">${(isHistorical
+      ? (data.totalActualCases ?? data.totalPredictedCases)
+      : (data.totalForecastCases ?? data.totalPredictedCases)
+    ).toLocaleString()}</div>
     <div class="stat-sub">${isHistorical ? 'Actual recorded' : 'Model forecast'}</div>
   </div>
   ${!isHistorical && data.totalCurrentCases !== undefined ? `
@@ -365,10 +382,8 @@ export class ReportPdfGenerator {
 
     return top10
       .map((row) => {
-        const pct = Math.max(
-          4,
-          Math.round((row.forecast / maxForecast) * 100),
-        );
+        const val = isHistorical ? (row.reported_cases ?? 0) : (row.predicted_cases ?? 0);
+        const pct = Math.max(4, Math.round((val / maxForecast) * 100));
         const trendClass = row.trend.toLowerCase();
         return `
         <div class="chart-row">
@@ -376,7 +391,7 @@ export class ReportPdfGenerator {
           <div class="chart-bar-bg">
             <div class="chart-bar ${trendClass}" style="width:${pct}%"></div>
           </div>
-          <div class="chart-val">${row.forecast.toLocaleString()}</div>
+          <div class="chart-val">${val.toLocaleString()}</div>
         </div>`;
       })
       .join('');
@@ -385,16 +400,23 @@ export class ReportPdfGenerator {
   private buildForecastTable(forecast: ForecastRow[], isHistorical: boolean): string {
     if (forecast.length === 0) return '<p class="no-data">No forecast data available.</p>';
 
-    const sorted = [...forecast].sort((a, b) => b.forecast - a.forecast);
+    const primaryVal = (row: ForecastRow) =>
+      isHistorical ? (row.reported_cases ?? 0) : (row.predicted_cases ?? 0);
+    const secondaryVal = (row: ForecastRow) =>
+      isHistorical ? (row.prior_cases ?? null) : (row.reported_cases ?? null);
+
+    const sorted = [...forecast].sort((a, b) => primaryVal(b) - primaryVal(a));
 
     const rows = sorted
       .map((row) => {
         const trendClass = `trend-${row.trend.toLowerCase()}`;
         const trendIcon =
           row.trend === 'Rising' ? '↑' : row.trend === 'Falling' ? '↓' : '→';
+        const pVal = primaryVal(row);
+        const sVal = secondaryVal(row);
 
         const risk =
-          row.trend === 'Rising' && row.forecast > 100
+          row.trend === 'Rising' && pVal > 100
             ? 'high'
             : row.trend === 'Rising'
             ? 'moderate'
@@ -405,8 +427,8 @@ export class ReportPdfGenerator {
         return `
         <tr>
           <td style="font-weight:600;">${this.escapeHtml(row.district)}</td>
-          <td style="text-align:right;">${row.current_cases.toLocaleString()}</td>
-          <td style="text-align:right;font-weight:600;">${row.forecast.toLocaleString()}</td>
+          <td style="text-align:right;">${pVal.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;">${sVal !== null ? sVal.toLocaleString() : '—'}</td>
           <td style="text-align:right;">${Math.round(row.avg_4week).toLocaleString()}</td>
           <td>
             <span class="trend-badge ${trendClass}">${trendIcon} ${row.trend}</span>
@@ -423,7 +445,7 @@ export class ReportPdfGenerator {
       <thead>
         <tr>
           <th>District</th>
-          <th style="text-align:right;">${isHistorical ? 'Reported Cases' : 'Current Cases'}</th>
+          <th style="text-align:right;">${isHistorical ? 'Reported Cases' : 'Current (Actual)'}</th>
           <th style="text-align:right;">${isHistorical ? 'vs Prior Week' : 'Predicted (Next Wk)'}</th>
           <th style="text-align:right;">4-Wk Avg</th>
           <th>Trend</th>

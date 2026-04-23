@@ -80,9 +80,17 @@ export default function ReportDetailModal({ report, onClose }: Props) {
       : (nationalSummary?.situation_report ?? "Summary not available.");
 
   const top10 = [...forecast]
-    .sort((a, b) => b.forecast - a.forecast)
+    .sort((a, b) => {
+      const bVal = isHistorical ? (b.reported_cases ?? 0) : (b.predicted_cases ?? 0);
+      const aVal = isHistorical ? (a.reported_cases ?? 0) : (a.predicted_cases ?? 0);
+      return bVal - aVal;
+    })
     .slice(0, 10)
-    .map((d) => ({ ...d, name: d.district }));
+    .map((d) => ({
+      ...d,
+      name: d.district,
+      displayVal: isHistorical ? (d.reported_cases ?? 0) : (d.predicted_cases ?? 0),
+    }));
 
   async function handleDownload() {
     if (!report) return;
@@ -230,7 +238,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                       isHistorical ? "Reported Cases" : "Predicted Cases",
                     ]}
                   />
-                  <Bar dataKey="forecast" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="displayVal" radius={[0, 4, 4, 0]}>
                     {top10.map((entry, i) => (
                       <Cell
                         key={i}
@@ -282,10 +290,15 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                 </thead>
                 <tbody>
                   {[...forecast]
-                    .sort((a, b) => b.forecast - a.forecast)
+                    .sort((a, b) => {
+                      const bVal = isHistorical ? (b.reported_cases ?? 0) : (b.predicted_cases ?? 0);
+                      const aVal = isHistorical ? (a.reported_cases ?? 0) : (a.predicted_cases ?? 0);
+                      return bVal - aVal;
+                    })
                     .map((row, i) => {
-                      const conf = row.confidence ?? (isHistorical ? 'actual' : 'medium');
-                      const isActual = conf === 'actual';
+                      const isActual = row.confidence === 'actual';
+                      const primaryVal = isHistorical ? (row.reported_cases ?? 0) : (row.predicted_cases ?? 0);
+                      const secondaryVal = isHistorical ? (row.prior_cases ?? null) : (row.reported_cases ?? null);
                       return (
                       <tr
                         key={i}
@@ -295,10 +308,10 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                           {row.district}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {row.current_cases.toLocaleString()}
+                          {primaryVal.toLocaleString()}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                          {row.forecast.toLocaleString()}
+                          {secondaryVal !== null ? secondaryVal.toLocaleString() : '—'}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                           {Math.round(row.avg_4week).toLocaleString()}
@@ -324,7 +337,7 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                                 : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
                             }`}
                           >
-                            {isActual ? 'Actual' : conf}
+                            {isActual ? 'Actual' : 'Forecast'}
                           </span>
                         </td>
                       </tr>
@@ -358,9 +371,16 @@ export default function ReportDetailModal({ report, onClose }: Props) {
                           </p>
                         )}
                       </div>
-                      <Badge variant="outline" className="text-xs uppercase">
-                        {alert.severity}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!isHistorical && (
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-700">
+                            Forecast-based
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs uppercase">
+                          {alert.severity}
+                        </Badge>
+                      </div>
                     </div>
                     {alert.message && (
                       <p className="text-xs mt-2 opacity-90">{alert.message}</p>
