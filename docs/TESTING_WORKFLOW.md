@@ -45,14 +45,16 @@ This document defines the phased testing strategy for the EpiLink NestJS backend
 
 ---
 
-## Target Coverage Goals
+## Coverage Thresholds
 
-| Layer | Target |
-|-------|--------|
-| Statements | ≥ 80% |
-| Branches | ≥ 75% |
-| Functions | ≥ 80% |
-| Lines | ≥ 80% |
+| Metric | Current (Phases 1–4) | Final Target (after Phase 5) |
+|--------|----------------------|------------------------------|
+| Statements | ≥ 35% | ≥ 80% |
+| Branches | ≥ 24% | ≥ 75% |
+| Functions | ≥ 28% | ≥ 80% |
+| Lines | ≥ 35% | ≥ 80% |
+
+Thresholds are set at just below the measured coverage so CI acts as a regression guard. Raise them progressively as Phase 5 (E2E) adds more coverage.
 
 ---
 
