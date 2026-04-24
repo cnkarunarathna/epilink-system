@@ -5,9 +5,13 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { User, UserRole } from '../entities/user.entity';
+import { NotificationPreference } from '../email/entities/notification-preference.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
+import { EmailService } from '../email/email.service';
+import { ConfigService } from '@nestjs/config';
 
 // Mock bcrypt
 jest.mock('bcrypt');
@@ -66,8 +70,29 @@ describe('UsersService', () => {
           useValue: mockUserRepository,
         },
         {
+          provide: getRepositoryToken(NotificationPreference),
+          useValue: { findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
+        },
+        {
           provide: EventsGateway,
           useValue: mockEventsGateway,
+        },
+        {
+          provide: CacheHelperService,
+          useValue: {
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(undefined),
+            del: jest.fn().mockResolvedValue(undefined),
+            delByPattern: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: EmailService,
+          useValue: { send: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('http://localhost:3000'), getOrThrow: jest.fn().mockReturnValue('http://localhost:3000') },
         },
       ],
     }).compile();
