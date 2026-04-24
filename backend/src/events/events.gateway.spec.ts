@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { EventsGateway, AuthenticatedSocket } from './events.gateway';
+import { Task } from '../tasks/entities/task.entity';
 
 describe('EventsGateway', () => {
   let eventsGateway: EventsGateway;
@@ -15,6 +17,7 @@ describe('EventsGateway', () => {
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue('test-secret'),
+    getOrThrow: jest.fn().mockReturnValue('test-secret'),
   };
 
   const mockServer = {
@@ -41,6 +44,10 @@ describe('EventsGateway', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: getRepositoryToken(Task),
+          useValue: { findOne: jest.fn() },
         },
       ],
     }).compile();
@@ -249,6 +256,262 @@ describe('EventsGateway', () => {
       const count = eventsGateway.getConnectedClients();
 
       expect(count).toBe(0);
+    });
+  });
+
+  // ── Task emit helpers ─────────────────────────────────────────────────────
+
+  describe('emitTaskCreated', () => {
+    it('should emit to district, supervisor, admin rooms and assigned PHI', () => {
+      const task = { id: 'task-1', assignedPhiId: 'phi-1' };
+
+      eventsGateway.emitTaskCreated(task, 'Colombo');
+
+      expect(mockServer.to).toHaveBeenCalledWith('district:Colombo');
+      expect(mockServer.to).toHaveBeenCalledWith('role:supervisor');
+      expect(mockServer.to).toHaveBeenCalledWith('role:admin');
+      expect(mockServer.to).toHaveBeenCalledWith('user:phi-1');
+      expect(mockServer.emit).toHaveBeenCalledWith('task:created', task);
+    });
+
+    it('should skip district and PHI rooms when not provided', () => {
+      const task = { id: 'task-1', assignedPhiId: null };
+
+      mockServer.to.mockClear();
+      eventsGateway.emitTaskCreated(task);
+
+      const calledRooms = mockServer.to.mock.calls.map(([r]: [string]) => r);
+      expect(calledRooms).not.toContain(expect.stringContaining('district:'));
+      expect(calledRooms).not.toContain(expect.stringContaining('user:'));
+    });
+  });
+
+  describe('emitTaskUpdated', () => {
+    it('should emit task:updated to district, roles, and assigned PHI', () => {
+      const task = { id: 'task-1', assignedPhiId: 'phi-1' };
+
+      eventsGateway.emitTaskUpdated(task, 'Gampaha');
+
+      expect(mockServer.to).toHaveBeenCalledWith('district:Gampaha');
+      expect(mockServer.emit).toHaveBeenCalledWith('task:updated', task);
+    });
+  });
+
+  describe('emitTaskStatusChanged', () => {
+    it('should emit task:status-changed with old and new status', () => {
+      const task = { id: 'task-1', assignedPhiId: null };
+
+      eventsGateway.emitTaskStatusChanged(task, 'pending', 'in_progress', 'Colombo');
+
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'task:status-changed',
+        expect.objectContaining({ oldStatus: 'pending', newStatus: 'in_progress' }),
+      );
+    });
+  });
+
+  describe('emitTaskAssigned', () => {
+    it('should emit task:assigned to district, roles, and the assigned PHI', () => {
+      const task = { id: 'task-1' };
+
+      eventsGateway.emitTaskAssigned(task, 'phi-1', 'Kalutara');
+
+      expect(mockServer.to).toHaveBeenCalledWith('district:Kalutara');
+      expect(mockServer.to).toHaveBeenCalledWith('user:phi-1');
+      expect(mockServer.emit).toHaveBeenCalledWith('task:assigned', { task, phiId: 'phi-1' });
+    });
+  });
+
+  describe('emitTaskDeleted', () => {
+    it('should emit task:deleted with taskId payload', () => {
+      eventsGateway.emitTaskDeleted('task-1', 'Colombo', 'phi-1');
+
+      expect(mockServer.emit).toHaveBeenCalledWith('task:deleted', { taskId: 'task-1' });
+    });
+  });
+
+  // ── Chat emit helpers ─────────────────────────────────────────────────────
+
+  describe('emitChatMessage', () => {
+    it('should emit chat:message to the task room', () => {
+      const message = { id: 'msg-1', content: 'Hello' } as any;
+
+      eventsGateway.emitChatMessage('task-1', message);
+
+      expect(mockServer.to).toHaveBeenCalledWith('task:task-1');
+      expect(mockServer.emit).toHaveBeenCalledWith('chat:message', message);
+    });
+  });
+
+  describe('emitChatRead', () => {
+    it('should emit chat:read with userId and messageIds', () => {
+      eventsGateway.emitChatRead('task-1', 'user-1', ['msg-1', 'msg-2']);
+
+      expect(mockServer.to).toHaveBeenCalledWith('task:task-1');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'chat:read',
+        expect.objectContaining({ taskId: 'task-1', userId: 'user-1', messageIds: ['msg-1', 'msg-2'] }),
+      );
+    });
+  });
+
+  describe('emitChatReaction', () => {
+    it('should emit chat:reaction to the task room', () => {
+      eventsGateway.emitChatReaction('task-1', 'msg-1', 'user-1', '👍', 'added', []);
+
+      expect(mockServer.to).toHaveBeenCalledWith('task:task-1');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'chat:reaction',
+        expect.objectContaining({ action: 'added', emoji: '👍' }),
+      );
+    });
+  });
+
+  describe('emitBroadcast', () => {
+    it('should emit chat:broadcast to the district room', () => {
+      const payload = { content: 'Alert!', senderName: 'Admin', districtName: 'Colombo', sentAt: new Date() };
+
+      eventsGateway.emitBroadcast('Colombo', payload);
+
+      expect(mockServer.to).toHaveBeenCalledWith('district:Colombo');
+      expect(mockServer.emit).toHaveBeenCalledWith('chat:broadcast', payload);
+    });
+  });
+
+  // ── Chat socket handlers ──────────────────────────────────────────────────
+
+  describe('handleChatJoin', () => {
+    let mockTaskRepo: any;
+
+    beforeEach(() => {
+      mockTaskRepo = (eventsGateway as any).taskRepository;
+      jest.clearAllMocks();
+      (eventsGateway as any).server = mockServer;
+    });
+
+    it('should join task room when user is the creator', async () => {
+      mockTaskRepo.findOne.mockResolvedValue({
+        id: 'task-1',
+        createdById: 'user-1',
+        assignedPhiId: null,
+      });
+
+      const client = {
+        user: { id: 'user-1', role: 'supervisor' },
+        join: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatJoin({ taskId: 'task-1' }, client);
+
+      expect(client.join).toHaveBeenCalledWith('task:task-1');
+    });
+
+    it('should join task room when user is an admin', async () => {
+      mockTaskRepo.findOne.mockResolvedValue({
+        id: 'task-1',
+        createdById: 'sup-1',
+        assignedPhiId: null,
+      });
+
+      const client = {
+        user: { id: 'admin-1', role: 'admin' },
+        join: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatJoin({ taskId: 'task-1' }, client);
+
+      expect(client.join).toHaveBeenCalledWith('task:task-1');
+    });
+
+    it('should not join when user is not a participant', async () => {
+      mockTaskRepo.findOne.mockResolvedValue({
+        id: 'task-1',
+        createdById: 'other-user',
+        assignedPhiId: 'other-phi',
+      });
+
+      const client = {
+        user: { id: 'stranger', role: 'phi' },
+        join: jest.fn(),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatJoin({ taskId: 'task-1' }, client);
+
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it('should not join when client has no user attached', async () => {
+      const client = {
+        user: undefined,
+        join: jest.fn(),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatJoin({ taskId: 'task-1' }, client);
+
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it('should not join when task is not found', async () => {
+      mockTaskRepo.findOne.mockResolvedValue(null);
+
+      const client = {
+        user: { id: 'user-1', role: 'phi' },
+        join: jest.fn(),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatJoin({ taskId: 'missing-task' }, client);
+
+      expect(client.join).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleChatLeave', () => {
+    it('should leave the task room', async () => {
+      const client = {
+        user: { id: 'user-1' },
+        leave: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatLeave({ taskId: 'task-1' }, client);
+
+      expect(client.leave).toHaveBeenCalledWith('task:task-1');
+    });
+
+    it('should do nothing when taskId is absent', async () => {
+      const client = {
+        user: { id: 'user-1' },
+        leave: jest.fn(),
+      } as unknown as AuthenticatedSocket;
+
+      await eventsGateway.handleChatLeave({} as any, client);
+
+      expect(client.leave).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleChatTyping', () => {
+    it('should broadcast typing status to the task room', () => {
+      const mockTo = jest.fn().mockReturnValue({ emit: jest.fn() });
+      const client = {
+        user: { id: 'user-1', email: 'user@test.com' },
+        to: mockTo,
+      } as unknown as AuthenticatedSocket;
+
+      eventsGateway.handleChatTyping({ taskId: 'task-1', isTyping: true }, client);
+
+      expect(mockTo).toHaveBeenCalledWith('task:task-1');
+    });
+
+    it('should do nothing when client has no user', () => {
+      const mockTo = jest.fn();
+      const client = {
+        user: undefined,
+        to: mockTo,
+      } as unknown as AuthenticatedSocket;
+
+      eventsGateway.handleChatTyping({ taskId: 'task-1', isTyping: false }, client);
+
+      expect(mockTo).not.toHaveBeenCalled();
     });
   });
 });
