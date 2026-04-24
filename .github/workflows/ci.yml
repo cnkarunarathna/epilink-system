@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
-  # pull_request:
-  #   branches: [main, dev]
+    branches: [ main ]
+  pull_request:
+    branches: [ dev ]
 
 jobs:
   backend-unit:
@@ -38,8 +38,8 @@ jobs:
           path: backend/coverage/
           retention-days: 7
 
-  backend-e2e:
-    name: Backend E2E Tests
+  backend-integration:
+    name: Backend Integration Tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,19 +55,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
 
     steps:
@@ -81,18 +69,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Run integration tests
+        run: npm run test:integration -- --forceExit
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/epilink_test
-          TEST_REDIS_URL: redis://localhost:6379
           JWT_SECRET: test-secret-for-ci
           NODE_ENV: test
 
   backend-build:
     name: Backend Build
     runs-on: ubuntu-latest
-    needs: [backend-unit]
+    needs: [ backend-unit, backend-integration ]
     defaults:
       run:
         working-directory: backend
