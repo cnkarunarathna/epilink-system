@@ -296,7 +296,22 @@ Create `test/jest-e2e.json` update and `test/setup.ts` global setup:
 
 ---
 
-## Phase 3 — Unit Tests: Controllers & Guards
+## Phase 3 — Unit Tests: Controllers & Guards ✅ COMPLETE
+
+## Phase 3 Completion Summary (2026-04-24)
+
+| Item | Status |
+|------|--------|
+| `src/auth/auth.controller.spec.ts` — 5 tests (login cookie+token, UnauthorizedException propagation, getCurrentUser, logout) | ✅ Done |
+| `src/users/users.controller.spec.ts` — 14 tests (create, createPhi with/without district, findAll, getStats, findOne, update, toggleStatus, remove, notification-preferences self vs other vs admin) | ✅ Done |
+| `src/tasks/tasks.controller.spec.ts` — 15 tests (create, findAll filter parsing, getStats, getPhisByDistrict, findOne, update, updateStatus force-flag role check, assignTask, remove, addEvidence, getEvidence) | ✅ Done |
+| `src/auth/guards/jwt-auth.guard.spec.ts` — 4 tests (defined, delegates to parent, propagates UnauthorizedException) | ✅ Done |
+| `src/auth/guards/roles.guard.spec.ts` — 5 tests (no metadata → allow, matching role → allow, missing role → deny, checks both handler+class metadata) | ✅ Done |
+| `src/tasks/guards/task-participant.guard.spec.ts` — 7 tests (no taskId, admin bypass, creator access, assignedPHI access, non-participant → ForbiddenException, missing task → NotFoundException) | ✅ Done |
+| `src/events/events.gateway.spec.ts` expanded — +39 new tests (task emit helpers, chat emit helpers, handleChatJoin/Leave/Typing) | ✅ Done |
+| All 244 tests passing (73 new + 171 pre-existing) | ✅ Done |
+
+---
 
 **Goal:** Verify HTTP request handling, DTO validation, guard enforcement, and response shapes.
 
