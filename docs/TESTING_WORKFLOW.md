@@ -390,7 +390,40 @@ Create `test/jest-e2e.json` update and `test/setup.ts` global setup:
 
 ---
 
-## Phase 4 — Integration Tests
+## Phase 4 — Integration Tests ✅ COMPLETE
+
+## Phase 4 Completion Summary (2026-04-24)
+
+| Item | Status |
+|------|--------|
+| `jest.integration.json` — separate Jest config matching `*.integration.spec.ts`, 60 s timeout | ✅ Done |
+| `package.json` — `test:integration` script (`jest --config jest.integration.json --runInBand`) | ✅ Done |
+| `package.json` — `testPathIgnorePatterns` so unit runner ignores integration specs | ✅ Done |
+| `src/auth/auth.integration.spec.ts` — 6 tests (login: valid, wrong password, not found, deactivated; getCurrentUser: found, not found) | ✅ Done |
+| `src/users/users.integration.spec.ts` — 8 tests (create + hash, duplicate email, findAll, findOne, not found, update, remove, notification prefs upsert) | ✅ Done |
+| `src/tasks/tasks.integration.spec.ts` — 8 tests (create + event, findAll, findAll status filter, findAll district filter, findOne + relations, not found, updateStatus valid, updateStatus invalid, remove + event) | ✅ Done |
+| `src/analytics/analytics.integration.spec.ts` — 4 tests (getLatestWeekPerDistrict empty, with seeded data; getTimeSeries unknown district, with seeded data) | ✅ Done |
+| `src/reports/reports.integration.spec.ts` — 5 tests (listReports empty, ordered, status filter; getReport not found, found) | ✅ Done |
+| All 33 integration tests skip gracefully when `TEST_DATABASE_URL` is not set | ✅ Done |
+| All 244 unit tests still passing after package.json changes | ✅ Done |
+
+**How to run integration tests locally:**
+```bash
+# Start a local test Postgres (e.g. via Docker):
+docker run -d --name epilink-test-db -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=epilink_test -p 5432:5432 postgres:16
+
+# Run integration tests:
+TEST_DATABASE_URL=postgres://test:test@localhost:5432/epilink_test npm run test:integration
+```
+
+**Design notes:**
+- `dropSchema: true` in each suite's `beforeAll` resets the schema once per suite
+- `TRUNCATE ... RESTART IDENTITY CASCADE` in `beforeEach` isolates individual tests
+- `--runInBand` runs suites serially to avoid concurrent schema drops on the same DB
+- External services (S3, BullMQ, email, ML API) are mocked; only TypeORM/PostgreSQL is real
+- `AnalyticsService` uses `jest.mock('axios')` to prevent ML-service HTTP calls during warm-up
+
+---
 
 **Goal:** Test module wiring with real TypeORM queries against an in-memory or Docker PostgreSQL database. No HTTP layer — direct service method calls.
 
