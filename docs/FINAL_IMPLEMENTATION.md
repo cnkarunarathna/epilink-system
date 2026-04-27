@@ -25,6 +25,7 @@
 14. [API Reference](#14-api-reference)
 15. [Implementation Roadmap & Status](#15-implementation-roadmap--status)
 16. [Non-Functional Requirements](#16-non-functional-requirements)
+17. [Testing Strategy & CI](#17-testing-strategy--ci)
 
 ---
 
@@ -952,6 +953,138 @@ Weekly PDF generation with Gemini narrative, email notifications (Zoho SMTP + Bu
 | Data Retention | 5 years historical | PostgreSQL with index tuning |
 | ML Model CI Coverage | 79–80% | Achieved: 79% |
 | XAI Retrieval Latency | < 2 seconds | Qdrant HNSW + GPU embedding |
+
+---
+
+## 17. Testing Strategy & CI
+
+**Stack:** NestJS 11 · TypeORM · PostgreSQL · BullMQ · Redis · Jest 29 · GitHub Actions
+
+### 17.1 Test Suite Summary
+
+| Layer | Count | Runner |
+|---|---|---|
+| Unit tests | 244 | `npm run test:cov` |
+| Integration tests | 33 | `npm run test:integration` |
+| **Total** | **277** | — |
+
+All tests run automatically on every push to `main` via GitHub Actions.
+
+### 17.2 Coverage Thresholds
+
+Enforced by Jest `coverageThreshold` — CI fails if any metric drops below these values:
+
+| Metric | Threshold |
+|---|---|
+| Statements | ≥ 35% |
+| Branches | ≥ 24% |
+| Functions | ≥ 28% |
+| Lines | ≥ 35% |
+
+Thresholds are set just below measured coverage to act as a regression guard without blocking progress. They are raised incrementally as the suite grows.
+
+### 17.3 Test Infrastructure
+
+**Shared factories** (`backend/src/test/factories/`) generate type-safe fixture objects via `@faker-js/faker`:
+
+| Factory | Entities covered |
+|---|---|
+| `user.factory.ts` | `User` — all roles and field variants |
+| `task.factory.ts` | `Task` — all statuses, types, and priority levels |
+| `district.factory.ts` | `District` — boundaries, population, area |
+
+**Shared mocks** (`backend/src/test/mocks/`) provide drop-in replacements for external services:
+
+| Mock | Replaces |
+|---|---|
+| `typeorm.mock.ts` | TypeORM repository + query builder (typed with `ObjectLiteral` constraint) |
+| `redis.mock.ts` | Redis client |
+| `bullmq.mock.ts` | BullMQ queue and worker |
+| `config.mock.ts` | NestJS `ConfigService` |
+
+### 17.4 Unit Tests (Phases 1–3)
+
+Isolated service and controller tests using Jest mocks — no real I/O.
+
+#### Services
+
+| File | Tests | Coverage |
+|---|---|---|
+| `tasks/tasks.service.spec.ts` | 27 | create, findAll cache + filters, findOne, update, status transitions, assignTask, remove, getStats, addEvidence, getPhisByDistrict |
+| `tasks/task-messages.service.spec.ts` | 19 | sendMessage, sendSystemMessage, getMessages, markRead UUID validation, getUnreadCount, toggleReaction, broadcastToDistrict |
+| `email/email.service.spec.ts` | 10 | single/array recipients, opt-out check, sendToRole, error resilience |
+| `reports/reports.service.spec.ts` | 14 | listReports filters, getReport, generateReport, approveReport, getDownloadUrl, deleteReport |
+
+#### Controllers
+
+| File | Tests | Coverage |
+|---|---|---|
+| `auth/auth.controller.spec.ts` | 5 | login cookie+token, UnauthorizedException propagation, getCurrentUser, logout |
+| `users/users.controller.spec.ts` | 14 | create, createPhi, findAll, getStats, findOne, update, toggleStatus, remove, notification-preferences (self / other / admin) |
+| `tasks/tasks.controller.spec.ts` | 15 | create, findAll filter parsing, getStats, getPhisByDistrict, findOne, update, updateStatus force-flag role check, assignTask, remove, addEvidence, getEvidence |
+
+#### Guards & Gateway
+
+| File | Tests | Coverage |
+|---|---|---|
+| `auth/guards/jwt-auth.guard.spec.ts` | 4 | defined, delegates to parent, propagates UnauthorizedException |
+| `auth/guards/roles.guard.spec.ts` | 5 | no metadata → allow, matching role → allow, missing role → deny, handler+class metadata |
+| `tasks/guards/task-participant.guard.spec.ts` | 7 | no taskId, admin bypass, creator access, assignedPHI access, non-participant ForbiddenException, missing task NotFoundException |
+| `events/events.gateway.spec.ts` | 39 | task emit helpers, chat emit helpers, handleChatJoin/Leave/Typing |
+
+### 17.5 Integration Tests (Phase 4)
+
+Tests module wiring with real TypeORM queries against a Docker PostgreSQL 16 database. No HTTP layer — direct service method calls. Configured via `jest.integration.json` with a 60-second timeout and `--runInBand` to prevent concurrent schema drops.
+
+| File | Tests | Coverage |
+|---|---|---|
+| `auth/auth.integration.spec.ts` | 6 | login (valid, wrong password, not found, deactivated), getCurrentUser (found, not found) |
+| `users/users.integration.spec.ts` | 8 | create + password hash, duplicate email, findAll, findOne, not found, update, remove, notification prefs upsert |
+| `tasks/tasks.integration.spec.ts` | 8 | create + event emit, findAll, status/district filters, findOne + relations, not found, updateStatus valid/invalid, remove + event |
+| `analytics/analytics.integration.spec.ts` | 4 | getLatestWeekPerDistrict (empty, seeded), getTimeSeries (unknown district, seeded) |
+| `reports/reports.integration.spec.ts` | 5 | listReports (empty, ordered, status filter), getReport (not found, found) |
+
+**Design notes:**
+- `dropSchema: true` in each suite's `beforeAll` resets the schema once per suite
+- `TRUNCATE ... RESTART IDENTITY CASCADE` in `beforeEach` isolates individual tests
+- External services (S3, BullMQ, email, ML API) are mocked; only TypeORM/PostgreSQL is real
+- All 33 integration tests skip gracefully when `TEST_DATABASE_URL` is not set
+
+**Running integration tests locally:**
+```bash
+docker run -d --name epilink-test-db \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=epilink_test \
+  -p 5432:5432 postgres:16
+
+TEST_DATABASE_URL=postgres://test:test@localhost:5432/epilink_test npm run test:integration
+```
+
+### 17.6 CI/CD — GitHub Actions
+
+Workflow file: `.github/workflows/ci.yml` · Trigger: `push` to `main`
+
+```
+push to main
+     │
+     ├── backend-unit ──────┐
+     │                      ├──► backend-build
+     └── backend-integration┘
+
+     └── frontend (independent)
+```
+
+| Job | What it does |
+|---|---|
+| `backend-unit` | Runs `test:cov --ci --forceExit`; uploads coverage report as artifact; enforces coverage thresholds |
+| `backend-integration` | Spins up a `postgres:16` service container, sets `TEST_DATABASE_URL`, runs `test:integration --forceExit` |
+| `backend-build` | Gated on both unit and integration passing; confirms the TypeScript build is clean |
+| `frontend` | Runs independently — type-check and build |
+
+**Required GitHub Actions secret:**
+
+| Secret | Purpose |
+|---|---|
+| `JWT_SECRET` | Test-only value — no production secrets are needed; all external services are mocked |
 
 ---
 
