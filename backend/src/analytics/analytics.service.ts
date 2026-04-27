@@ -1568,6 +1568,8 @@ export class AnalyticsService implements OnModuleInit {
               turnCount: data.turn_count ?? 1,
             }),
           );
+          // Phase 2: fire-and-forget auto-title after first turn
+          this.generateAndSaveTitle(data.session_id, message, districtName, user);
         }
       }
 
@@ -1582,6 +1584,37 @@ export class AnalyticsService implements OnModuleInit {
         context_compressed: false,
       };
     }
+  }
+
+  // ── Phase 2: Auto-title generation ─────────────────────────────────
+
+  private generateAndSaveTitle(
+    sessionId: string,
+    message: string,
+    district: string,
+    user: ValidatedServiceUser,
+  ): void {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    axios
+      .post(
+        `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/title`,
+        { first_message: message, district },
+        { headers: buildServiceHeaders(user) },
+      )
+      .then(async (resp) => {
+        const title: string = (resp.data?.title ?? '').trim();
+        if (title && title !== 'New Chat') {
+          const sessionRepo =
+            this.dataSource.getRepository(AnalyticChatSession);
+          await sessionRepo.update({ sessionId }, { title });
+        }
+      })
+      .catch((err: Error) => {
+        this.logger.warn(
+          `Auto-title generation failed for session ${sessionId}: ${err.message}`,
+        );
+      });
   }
 
   // ── Enhancement 7: session history and management ──────────────────

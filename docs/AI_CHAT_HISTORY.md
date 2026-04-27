@@ -124,7 +124,7 @@ All new routes: `@Roles(UserRole.ADMIN)` + `@UseGuards(JwtAuthGuard, RolesGuard)
 
 ---
 
-## Phase 2 — Auto-Title Generation
+## Phase 2 — Auto-Title Generation ✅ COMPLETE
 
 **Goal**: Name each conversation automatically from the first user message so the sidebar list is readable (like ChatGPT's auto-generated titles).
 
@@ -377,7 +377,7 @@ If a user navigates away mid-conversation and comes back, show an indicator that
 | Phase | Description | Effort | Depends On |
 |-------|-------------|--------|-----------|
 | 1 | PostgreSQL metadata persistence | ✅ Done | — |
-| 2 | Auto-title generation | ~0.5 day | Phase 1 |
+| 2 | Auto-title generation | ✅ Done | Phase 1 |
 | 3 | Session list + rename/archive APIs | ~0.5 day | Phase 1 |
 | 4 | Frontend sidebar UI | ~2-3 days | Phases 1-3 |
 | 5 | Message persistence fallback | ~1 day | Phase 1 |
