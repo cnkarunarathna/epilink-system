@@ -114,7 +114,7 @@ export async function fetchDistrictRows(): Promise<DistrictRow[]>;
 
 ---
 
-## Phase 3 — District Detail Drawer
+## Phase 3 — District Detail Drawer - Done
 
 **Goal:** Let admins drill into a single district without leaving the page.
 

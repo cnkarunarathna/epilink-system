@@ -35,10 +35,12 @@ import {
   Minus,
   AlertCircle,
   RefreshCw,
+  ChevronRight,
 } from "lucide-react";
 import { PROVINCES } from "@/lib/constants/districts";
 import { fetchDistrictRows } from "@/services/districts.service";
 import type { DistrictRow } from "@/services/districts.service";
+import { DistrictDetailSheet } from "@/components/admin/districts/DistrictDetailSheet";
 
 // ── Skeleton rows shown while data loads ─────────────────────────────────────
 function TableSkeletonRows() {
@@ -59,6 +61,8 @@ function TableSkeletonRows() {
           <TableCell><Skeleton className="h-4 w-8" /></TableCell>
           <TableCell><Skeleton className="h-4 w-8" /></TableCell>
           <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell />
         </TableRow>
       ))}
     </>
@@ -102,6 +106,7 @@ export default function DistrictsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("all");
+  const [selectedDistrict, setSelectedDistrict] = useState<DistrictRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -280,6 +285,7 @@ export default function DistrictsPage() {
                 <TableHead>Trend</TableHead>
                 <TableHead>Active Tasks</TableHead>
                 <TableHead>PHIs</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -288,7 +294,7 @@ export default function DistrictsPage() {
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center text-muted-foreground py-8"
                   >
                     No districts match your search.
@@ -296,7 +302,11 @@ export default function DistrictsPage() {
                 </TableRow>
               ) : (
                 filtered.map((district) => (
-                  <TableRow key={district.id}>
+                  <TableRow
+                    key={district.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedDistrict(district)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -337,6 +347,9 @@ export default function DistrictsPage() {
                     </TableCell>
                     <TableCell>{district.activeTasks}</TableCell>
                     <TableCell>{district.phiCount}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <ChevronRight className="h-4 w-4" />
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -365,6 +378,12 @@ export default function DistrictsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* District detail drawer */}
+      <DistrictDetailSheet
+        district={selectedDistrict}
+        onClose={() => setSelectedDistrict(null)}
+      />
     </div>
   );
 }
