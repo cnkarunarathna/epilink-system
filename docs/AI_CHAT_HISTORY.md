@@ -163,7 +163,7 @@ if (turnCount === 1) {
 
 ---
 
-## Phase 3 — Backend APIs for Session List & Resume
+## Phase 3 — Backend APIs for Session List & Resume ✅ COMPLETE
 
 **Goal**: Give the frontend everything it needs to render the history sidebar and resume old sessions.
 
@@ -215,7 +215,7 @@ DELETE /analytics/chat/:sessionId            (already exists, now also deletes P
 
 ---
 
-## Phase 4 — Frontend: History Sidebar UI
+## Phase 4 — Frontend: History Sidebar UI ✅ COMPLETE
 
 **Goal**: Redesign `FloatingChatBubble.tsx` to include a collapsible sidebar (like ChatGPT/Gemini) showing past sessions, with the ability to create, switch, rename, and delete conversations.
 
@@ -378,8 +378,8 @@ If a user navigates away mid-conversation and comes back, show an indicator that
 |-------|-------------|--------|-----------|
 | 1 | PostgreSQL metadata persistence | ✅ Done | — |
 | 2 | Auto-title generation | ✅ Done | Phase 1 |
-| 3 | Session list + rename/archive APIs | ~0.5 day | Phase 1 |
-| 4 | Frontend sidebar UI | ~2-3 days | Phases 1-3 |
+| 3 | Session list + rename/archive APIs | ✅ Done | Phase 1 |
+| 4 | Frontend sidebar UI | ✅ Done | Phases 1-3 |
 | 5 | Message persistence fallback | ~1 day | Phase 1 |
 | 6 | Search & polish | ~1 day | Phases 1-4 |
 

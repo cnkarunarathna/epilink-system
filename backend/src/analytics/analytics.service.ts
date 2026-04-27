@@ -1715,6 +1715,18 @@ export class AnalyticsService implements OnModuleInit {
     return { sessionId, title: title.trim().slice(0, 500) };
   }
 
+  async archiveSession(sessionId: string, user: ValidatedServiceUser) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found or access denied.');
+    }
+    await sessionRepo.update(session.id, { isArchived: true });
+    return { sessionId, isArchived: true };
+  }
+
   // ── Enhancement 3: National Summary ────────────────────────────────
 
   async getNationalSummary(week?: string, user?: ValidatedServiceUser) {

@@ -373,6 +373,63 @@ export async function deleteChatSession(
   return res.data;
 }
 
+// ── Phase 4: Chat history sidebar ─────────────────────────────────
+
+export interface ChatSessionMeta {
+  id: string;
+  sessionId: string;
+  district: string;
+  title: string;
+  turnCount: number;
+  createdAt: string;
+  updatedAt: string;
+  isArchived: boolean;
+}
+
+export interface ChatSessionsResponse {
+  data: ChatSessionMeta[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getUserChatSessions(
+  page = 1,
+  limit = 50,
+  district?: string,
+): Promise<ChatSessionsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (district && district !== "all") params.append("district", district);
+  const res = await axios.get(
+    `${API_BASE}/analytics/chat/sessions?${params.toString()}`,
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function renameChatSession(
+  sessionId: string,
+  title: string,
+): Promise<{ sessionId: string; title: string }> {
+  const res = await axios.patch(
+    `${API_BASE}/analytics/chat/${encodeURIComponent(sessionId)}/title`,
+    { title },
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
+export async function archiveChatSession(
+  sessionId: string,
+): Promise<{ sessionId: string; isArchived: boolean }> {
+  const res = await axios.patch(
+    `${API_BASE}/analytics/chat/${encodeURIComponent(sessionId)}/archive`,
+    {},
+    { headers: getAuthHeaders() },
+  );
+  return res.data;
+}
+
 // ── Enhancement 3: National Summary & Batch Explain ───────────────
 
 export async function fetchNationalSummary(

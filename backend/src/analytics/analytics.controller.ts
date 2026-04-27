@@ -173,6 +173,15 @@ export class AnalyticsController {
     return this.analyticsService.renameSession(sessionId, body.title, user);
   }
 
+  @Patch('chat/:sessionId/archive')
+  @Roles(UserRole.ADMIN)
+  async archiveSession(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.archiveSession(sessionId, user);
+  }
+
   @Delete('chat/:sessionId')
   @Roles(UserRole.ADMIN)
   async deleteChatSession(
