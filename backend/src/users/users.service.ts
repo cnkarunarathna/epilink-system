@@ -37,7 +37,10 @@ export class UsersService {
   ) {}
 
   private async invalidateUserCaches(): Promise<void> {
-    await this.cacheHelper.delByPattern('users:*');
+    await Promise.all([
+      this.cacheHelper.delByPattern('users:*'),
+      this.cacheHelper.delByPattern('admin:*'),
+    ]);
   }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
