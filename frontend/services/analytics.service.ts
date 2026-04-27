@@ -397,14 +397,35 @@ export async function getUserChatSessions(
   page = 1,
   limit = 50,
   district?: string,
+  search?: string,
 ): Promise<ChatSessionsResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (district && district !== "all") params.append("district", district);
+  if (search) params.append("search", search);
   const res = await axios.get(
     `${API_BASE}/analytics/chat/sessions?${params.toString()}`,
     { headers: getAuthHeaders() },
   );
   return res.data;
+}
+
+export async function exportChatSession(
+  sessionId: string,
+  format: "json" | "markdown",
+): Promise<void> {
+  const res = await axios.get(
+    `${API_BASE}/analytics/chat/${encodeURIComponent(sessionId)}/export?format=${format}`,
+    { headers: getAuthHeaders(), responseType: "blob" },
+  );
+  const disposition: string = res.headers["content-disposition"] ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? `chat_export.${format === "markdown" ? "md" : "json"}`;
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  window.URL.revokeObjectURL(url);
 }
 
 export async function renameChatSession(

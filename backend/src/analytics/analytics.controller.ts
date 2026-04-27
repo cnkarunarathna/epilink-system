@@ -7,8 +7,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -145,13 +147,29 @@ export class AnalyticsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('district') district?: string,
+    @Query('search') search?: string,
   ) {
     return this.analyticsService.getUserSessions(
       user,
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 20,
       district,
+      search,
     );
+  }
+
+  @Get('chat/:sessionId/export')
+  @Roles(UserRole.ADMIN)
+  async exportSession(
+    @Param('sessionId') sessionId: string,
+    @Query('format') format: string = 'json',
+    @CurrentUser() user: ValidatedServiceUser,
+    @Res() res: Response,
+  ) {
+    const result = await this.analyticsService.exportSession(sessionId, format, user);
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.content);
   }
 
   @Get('chat/:sessionId/history')

@@ -1,7 +1,9 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { useState } from "react";
+import { Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ChatSessionItem } from "./ChatSessionItem";
 import type { ChatSessionMeta } from "@/services/analytics.service";
 
@@ -38,6 +40,7 @@ interface ChatSidebarProps {
   onSelectSession: (session: ChatSessionMeta) => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  onExportSession: (sessionId: string, format: "json" | "markdown") => void;
 }
 
 export function ChatSidebar({
@@ -47,12 +50,21 @@ export function ChatSidebar({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
+  onExportSession,
 }: ChatSidebarProps) {
-  const groups = groupSessions(sessions);
+  const [query, setQuery] = useState("");
+
+  const filtered = query.trim()
+    ? sessions.filter((s) =>
+        s.title.toLowerCase().includes(query.trim().toLowerCase()),
+      )
+    : sessions;
+
+  const groups = groupSessions(filtered);
 
   return (
     <div className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/50">
-      <div className="p-2 shrink-0">
+      <div className="p-2 shrink-0 space-y-1.5">
         <Button
           onClick={onNewChat}
           variant="outline"
@@ -61,12 +73,31 @@ export function ChatSidebar({
           <Plus className="h-3.5 w-3.5" />
           New Chat
         </Button>
+
+        {/* Search bar */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search chats…"
+            className="h-7 pl-6 pr-6 text-[11px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus-visible:ring-purple-400"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-1.5 pb-2 min-h-0">
         {groups.length === 0 ? (
           <p className="text-[11px] text-muted-foreground text-center py-6 px-2">
-            No conversations yet
+            {query ? "No matching chats" : "No conversations yet"}
           </p>
         ) : (
           groups.map((group) => (
@@ -83,6 +114,7 @@ export function ChatSidebar({
                     onSelect={() => onSelectSession(session)}
                     onRename={(title) => onRenameSession(session.sessionId, title)}
                     onDelete={() => onDeleteSession(session.sessionId)}
+                    onExport={(fmt) => onExportSession(session.sessionId, fmt)}
                   />
                 ))}
               </div>

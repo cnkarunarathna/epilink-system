@@ -14,6 +14,7 @@ import {
   getUserChatSessions,
   renameChatSession,
   deleteChatSession,
+  exportChatSession,
   type ChatSessionMeta,
 } from "@/services/analytics.service";
 
@@ -27,6 +28,7 @@ interface Props {
   mode?: "floating" | "drawer";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onDistrictChange?: (district: string) => void;
 }
 
 export default function AIChatContainer({
@@ -35,6 +37,7 @@ export default function AIChatContainer({
   mode = "floating",
   open: externalOpen,
   onOpenChange,
+  onDistrictChange,
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [messages, setMessages] = useState<ChatEntry[]>([]);
@@ -130,12 +133,24 @@ export default function AIChatContainer({
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [district]);
 
+  const handleExportSession = useCallback(
+    async (sessionId: string, format: "json" | "markdown") => {
+      try {
+        await exportChatSession(sessionId, format);
+      } catch {
+        // silent — browser download failure is self-evident
+      }
+    },
+    [],
+  );
+
   const selectSession = useCallback(
     async (session: ChatSessionMeta) => {
       if (session.sessionId === activeSessionId) return;
       setActiveSessionId(session.sessionId);
       sessionIdRef.current = session.sessionId;
       setActiveDistrict(session.district);
+      onDistrictChange?.(session.district);
       setSessionExpired(false);
       setIsLoadingHistory(true);
       setMessages([]);
@@ -317,6 +332,7 @@ export default function AIChatContainer({
               onSelectSession={selectSession}
               onRenameSession={handleRenameSession}
               onDeleteSession={handleDeleteSession}
+              onExportSession={handleExportSession}
             />
           </div>
         )}

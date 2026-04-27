@@ -305,7 +305,7 @@ export const archiveChatSession = async (sessionId: string) => { ... }
 
 ---
 
-## Phase 5 — Message Persistence Fallback (Optional, Post-MVP)
+## Phase 5 — Message Persistence Fallback ✅ COMPLETE
 
 **Goal**: Persist full message content to Postgres so conversations survive Redis TTL expiration. This is a "nice to have" — the MVP (Phases 1-4) already gives full history within the 2-hour Redis window.
 
@@ -341,7 +341,7 @@ This makes sessions effectively permanent.
 
 ---
 
-## Phase 6 — Search & Polish
+## Phase 6 — Search & Polish ✅ COMPLETE
 
 **Goal**: Power-user features and polish.
 
@@ -380,8 +380,8 @@ If a user navigates away mid-conversation and comes back, show an indicator that
 | 2 | Auto-title generation | ✅ Done | Phase 1 |
 | 3 | Session list + rename/archive APIs | ✅ Done | Phase 1 |
 | 4 | Frontend sidebar UI | ✅ Done | Phases 1-3 |
-| 5 | Message persistence fallback | ~1 day | Phase 1 |
-| 6 | Search & polish | ~1 day | Phases 1-4 |
+| 5 | Message persistence fallback | ✅ Done | Phase 1 |
+| 6 | Search & polish | ✅ Done | Phases 1-4 |
 
 **MVP = Phases 1 + 2 + 3 + 4** (~4-5 days total)
 
@@ -404,7 +404,7 @@ If a user navigates away mid-conversation and comes back, show an indicator that
 | `frontend/components/dashboard/analytics/ChatWindow.tsx` | New (extracted) | 4 |
 | `frontend/components/dashboard/analytics/ChatInput.tsx` | New (extracted) | 4 |
 | `frontend/components/dashboard/analytics/FloatingChatBubble.tsx` | Refactor | 4 |
-| `backend/src/migrations/1778400000000-CreateAnalyticsChatMessages.ts` | New | 5 |
+| `backend/src/migrations/1780900000000-CreateAnalyticChatMessages.ts` | New | 5 |
 | `backend/src/entities/analytic-chat-message.entity.ts` | New | 5 |
 
 ---
