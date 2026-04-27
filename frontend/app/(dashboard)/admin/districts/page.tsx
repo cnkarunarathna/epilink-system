@@ -36,11 +36,58 @@ import {
   AlertCircle,
   RefreshCw,
   ChevronRight,
+  Download,
 } from "lucide-react";
 import { PROVINCES } from "@/lib/constants/districts";
 import { fetchDistrictRows } from "@/services/districts.service";
 import type { DistrictRow } from "@/services/districts.service";
 import { DistrictDetailSheet } from "@/components/admin/districts/DistrictDetailSheet";
+
+// ── CSV export helpers ────────────────────────────────────────────────────────
+function isoWeekString(): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-${String(week).padStart(2, "0")}`;
+}
+
+function csvEscape(v: string | number | null | undefined): string {
+  const s = String(v ?? "");
+  return s.includes(",") || s.includes('"') || s.includes("\n")
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
+}
+
+function downloadDistrictsCsv(rows: DistrictRow[]): void {
+  const week = isoWeekString();
+  const headers = [
+    "District", "Province", "Code", "Risk Level", "Predicted Cases",
+    "Incidence Rate (per 100k)", "Active Tasks", "Completed Tasks",
+    "PHI Count", "Supervisor", "Week",
+  ];
+  const lines = [
+    headers.join(","),
+    ...rows.map((d) =>
+      [
+        d.name, d.province, d.code, d.riskLevel ?? "",
+        d.predictedCases ?? "", d.incidenceRate ?? "",
+        d.activeTasks, d.completedTasks, d.phiCount,
+        d.supervisorName ?? "", week,
+      ]
+        .map(csvEscape)
+        .join(","),
+    ),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `districts-report-${week}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ── Skeleton rows shown while data loads ─────────────────────────────────────
 function TableSkeletonRows() {
@@ -281,6 +328,17 @@ export default function DistrictsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {!loading && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => downloadDistrictsCsv(filtered)}
+                >
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
