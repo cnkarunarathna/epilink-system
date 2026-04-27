@@ -16,6 +16,7 @@ import { CacheHelperModule } from './cache/cache-helper.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EmailModule } from './email/email.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { AdminModule } from './admin/admin.module';
 import databaseConfig from './config/database.config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -59,6 +60,7 @@ import * as redisStore from 'cache-manager-redis-store';
     StorageModule,
     ChatbotModule,
     ReportsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

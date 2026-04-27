@@ -87,6 +87,7 @@ export class TasksService {
     await Promise.all([
       this.cacheHelper.delByPattern('tasks:*'),
       this.cacheHelper.delByPattern('analytics:*'),
+      this.cacheHelper.delByPattern('admin:*'),
     ]);
   }
 
