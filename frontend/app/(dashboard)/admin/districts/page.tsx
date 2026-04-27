@@ -57,6 +57,7 @@ function TableSkeletonRows() {
           <TableCell><Skeleton className="h-4 w-10" /></TableCell>
           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
           <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
           <TableCell><Skeleton className="h-4 w-8" /></TableCell>
           <TableCell><Skeleton className="h-4 w-8" /></TableCell>
@@ -142,6 +143,13 @@ export default function DistrictsPage() {
   const highRiskCount = rows.filter((d) => d.riskLevel === "High").length;
   const totalActiveTasks = rows.reduce((sum, d) => sum + d.activeTasks, 0);
   const totalActivePHIs = rows.reduce((sum, d) => sum + d.phiCount, 0);
+  const nationalIncidenceRate = (() => {
+    const totalCases = rows.reduce((sum, d) => sum + (d.predictedCases ?? 0), 0);
+    const totalPop = rows.reduce((sum, d) => sum + d.population, 0);
+    return totalPop > 0
+      ? ((totalCases / totalPop) * 100_000).toFixed(1)
+      : null;
+  })();
 
   return (
     <div className="space-y-6">
@@ -193,7 +201,11 @@ export default function DistrictsPage() {
             <div className="text-2xl font-bold text-red-500">
               {loading ? <StatSkeleton /> : highRiskCount}
             </div>
-            <p className="text-xs text-muted-foreground">Requires attention</p>
+            <p className="text-xs text-muted-foreground">
+              {loading || nationalIncidenceRate === null
+                ? "Requires attention"
+                : `National rate: ${nationalIncidenceRate} per 100k`}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -280,6 +292,7 @@ export default function DistrictsPage() {
                 <TableHead>Code</TableHead>
                 <TableHead>Province</TableHead>
                 <TableHead>Population</TableHead>
+                <TableHead>Incidence Rate</TableHead>
                 <TableHead>Risk Level</TableHead>
                 <TableHead>Cases</TableHead>
                 <TableHead>Trend</TableHead>
@@ -294,7 +307,7 @@ export default function DistrictsPage() {
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="text-center text-muted-foreground py-8"
                   >
                     No districts match your search.
@@ -321,6 +334,11 @@ export default function DistrictsPage() {
                     </TableCell>
                     <TableCell>
                       {district.population.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {district.incidenceRate !== null
+                        ? `${district.incidenceRate} per 100k`
+                        : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell>
                       {district.riskLevel ? (

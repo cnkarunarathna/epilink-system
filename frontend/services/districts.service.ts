@@ -9,6 +9,7 @@ export interface DistrictRow extends DistrictMeta {
   riskLevel: RiskLevel | null;
   predictedCases: number | null;
   weeklyTrend: number | null; // % change vs previous week, null if unavailable
+  incidenceRate: number | null; // cases per 100 000 population
   activeTasks: number;
   completedTasks: number;
   phiCount: number;
@@ -111,11 +112,17 @@ export async function fetchDistrictRows(): Promise<DistrictRow[]> {
         ? Math.round(((currentCases - previousCases) / previousCases) * 100)
         : null;
 
+    const incidenceRate =
+      currentCases !== null && meta.population > 0
+        ? parseFloat(((currentCases / meta.population) * 100_000).toFixed(1))
+        : null;
+
     return {
       ...meta,
       riskLevel: currentCases !== null ? casesToRiskLevel(currentCases) : null,
       predictedCases: currentCases,
       weeklyTrend,
+      incidenceRate,
       activeTasks: taskSummary
         ? taskSummary.inProgress + taskSummary.assigned
         : 0,

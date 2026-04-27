@@ -98,10 +98,7 @@ export function DistrictDetailSheet({ district, onClose }: Props) {
       .finally(() => setLoadingPersonnel(false));
   }, [district]);
 
-  const incidenceRate =
-    district && district.predictedCases !== null && district.population > 0
-      ? ((district.predictedCases / district.population) * 100_000).toFixed(1)
-      : null;
+  const incidenceRate = district?.incidenceRate ?? null;
 
   // activeTasks = inProgress + assigned; completedTasks = completed
   // We don't have a raw "pending" count so surface it as 0 until Phase 4 adds it

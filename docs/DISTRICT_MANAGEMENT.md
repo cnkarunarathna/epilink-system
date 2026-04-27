@@ -150,7 +150,7 @@ The sheet fetches its own data lazily on open so it does not slow down the initi
 
 ---
 
-## Phase 4 — Population & Incidence Rate
+## Phase 4 — Population & Incidence Rate - Done
 
 **Goal:** Add epidemiologically meaningful cross-district comparison.
 
