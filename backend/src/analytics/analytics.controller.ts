@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -137,6 +138,22 @@ export class AnalyticsController {
 
   // ── Enhancement 7: session history and management ─────────────────
 
+  @Get('chat/sessions')
+  @Roles(UserRole.ADMIN)
+  async getUserSessions(
+    @CurrentUser() user: ValidatedServiceUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('district') district?: string,
+  ) {
+    return this.analyticsService.getUserSessions(
+      user,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 20,
+      district,
+    );
+  }
+
   @Get('chat/:sessionId/history')
   @Roles(UserRole.ADMIN)
   async getChatHistory(
@@ -144,6 +161,16 @@ export class AnalyticsController {
     @CurrentUser() user: ValidatedServiceUser,
   ) {
     return this.analyticsService.getChatHistory(sessionId, user);
+  }
+
+  @Patch('chat/:sessionId/title')
+  @Roles(UserRole.ADMIN)
+  async renameSession(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { title: string },
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.renameSession(sessionId, body.title, user);
   }
 
   @Delete('chat/:sessionId')

@@ -1,6 +1,13 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AnalyticChatSession } from '../entities/analytic-chat-session.entity';
 import { District } from '../entities/district.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
@@ -1537,7 +1544,34 @@ export class AnalyticsService implements OnModuleInit {
           headers: buildServiceHeaders(user),
         },
       );
-      return resp.data;
+
+      const data = resp.data;
+
+      // Persist session metadata to Postgres so history survives Redis TTL
+      if (user && data.session_id && data.session_id !== 'fallback') {
+        const sessionRepo =
+          this.dataSource.getRepository(AnalyticChatSession);
+        const existing = await sessionRepo.findOne({
+          where: { sessionId: data.session_id },
+        });
+        if (existing) {
+          await sessionRepo.update(existing.id, {
+            turnCount: data.turn_count ?? existing.turnCount,
+          });
+        } else {
+          await sessionRepo.save(
+            sessionRepo.create({
+              sessionId: data.session_id,
+              user: { id: user.id } as any,
+              district: districtName,
+              title: 'New Chat',
+              turnCount: data.turn_count ?? 1,
+            }),
+          );
+        }
+      }
+
+      return data;
     } catch (err: any) {
       return {
         reply:
@@ -1553,6 +1587,15 @@ export class AnalyticsService implements OnModuleInit {
   // ── Enhancement 7: session history and management ──────────────────
 
   async getChatHistory(sessionId: string, user: ValidatedServiceUser) {
+    // Ownership check — ensure this session belongs to the requesting admin
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new ForbiddenException('Session not found or access denied.');
+    }
+
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
@@ -1572,6 +1615,15 @@ export class AnalyticsService implements OnModuleInit {
   }
 
   async deleteChatSession(sessionId: string, user: ValidatedServiceUser) {
+    // Ownership check — ensure this session belongs to the requesting admin
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new ForbiddenException('Session not found or access denied.');
+    }
+
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
@@ -1579,6 +1631,8 @@ export class AnalyticsService implements OnModuleInit {
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}`,
         { headers: buildServiceHeaders(user) },
       );
+      // Remove Postgres metadata row after Redis key is deleted
+      await sessionRepo.delete(session.id);
       return resp.data;
     } catch {
       return {
@@ -1587,6 +1641,45 @@ export class AnalyticsService implements OnModuleInit {
         message: 'Session service unavailable.',
       };
     }
+  }
+
+  async getUserSessions(
+    user: ValidatedServiceUser,
+    page = 1,
+    limit = 20,
+    district?: string,
+  ) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const qb = sessionRepo
+      .createQueryBuilder('s')
+      .where('s.user.id = :userId', { userId: user.id })
+      .andWhere('s.isArchived = false')
+      .orderBy('s.updatedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (district) {
+      qb.andWhere('LOWER(s.district) = LOWER(:district)', { district });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  async renameSession(
+    sessionId: string,
+    title: string,
+    user: ValidatedServiceUser,
+  ) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found or access denied.');
+    }
+    await sessionRepo.update(session.id, { title: title.trim().slice(0, 500) });
+    return { sessionId, title: title.trim().slice(0, 500) };
   }
 
   // ── Enhancement 3: National Summary ────────────────────────────────
