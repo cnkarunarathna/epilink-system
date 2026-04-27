@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -20,108 +21,193 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   MapPin,
-  Plus,
   Search,
-  Edit,
   TrendingUp,
   TrendingDown,
+  Minus,
+  AlertCircle,
+  RefreshCw,
+  ChevronRight,
+  Download,
 } from "lucide-react";
+import { PROVINCES } from "@/lib/constants/districts";
+import { fetchDistrictRows } from "@/services/districts.service";
+import type { DistrictRow } from "@/services/districts.service";
+import { DistrictDetailSheet } from "@/components/admin/districts/DistrictDetailSheet";
+
+// ── CSV export helpers ────────────────────────────────────────────────────────
+function isoWeekString(): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-${String(week).padStart(2, "0")}`;
+}
+
+function csvEscape(v: string | number | null | undefined): string {
+  const s = String(v ?? "");
+  return s.includes(",") || s.includes('"') || s.includes("\n")
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
+}
+
+function downloadDistrictsCsv(rows: DistrictRow[]): void {
+  const week = isoWeekString();
+  const headers = [
+    "District", "Province", "Code", "Risk Level", "Predicted Cases",
+    "Incidence Rate (per 100k)", "Active Tasks", "Completed Tasks",
+    "PHI Count", "Supervisor", "Week",
+  ];
+  const lines = [
+    headers.join(","),
+    ...rows.map((d) =>
+      [
+        d.name, d.province, d.code, d.riskLevel ?? "",
+        d.predictedCases ?? "", d.incidenceRate ?? "",
+        d.activeTasks, d.completedTasks, d.phiCount,
+        d.supervisorName ?? "", week,
+      ]
+        .map(csvEscape)
+        .join(","),
+    ),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `districts-report-${week}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Skeleton rows shown while data loads ─────────────────────────────────────
+function TableSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <TableRow key={i}>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+          </TableCell>
+          <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell />
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+// ── Trend indicator ───────────────────────────────────────────────────────────
+function TrendCell({ trend }: { trend: number | null }) {
+  if (trend === null) {
+    return <span className="text-muted-foreground text-sm">—</span>;
+  }
+  if (trend > 0) {
+    return (
+      <span className="flex items-center gap-1 text-red-500 text-sm font-medium">
+        <TrendingUp className="h-3 w-3" />+{trend}%
+      </span>
+    );
+  }
+  if (trend < 0) {
+    return (
+      <span className="flex items-center gap-1 text-green-500 text-sm font-medium">
+        <TrendingDown className="h-3 w-3" />{trend}%
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-muted-foreground text-sm">
+      <Minus className="h-3 w-3" />0%
+    </span>
+  );
+}
+
+// ── Stat card skeleton ────────────────────────────────────────────────────────
+function StatSkeleton() {
+  return <Skeleton className="h-8 w-16" />;
+}
 
 export default function DistrictsPage() {
+  const [rows, setRows] = useState<DistrictRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [provinceFilter, setProvinceFilter] = useState("all");
+  const [selectedDistrict, setSelectedDistrict] = useState<DistrictRow | null>(null);
 
-  const districts = [
-    {
-      id: "1",
-      name: "Colombo",
-      code: "COL",
-      mohAreas: 15,
-      risk: "High",
-      cases: 245,
-      trend: "+15%",
-    },
-    {
-      id: "2",
-      name: "Gampaha",
-      code: "GAM",
-      mohAreas: 18,
-      risk: "High",
-      cases: 198,
-      trend: "+12%",
-    },
-    {
-      id: "3",
-      name: "Kalutara",
-      code: "KAL",
-      mohAreas: 14,
-      risk: "Medium",
-      cases: 145,
-      trend: "+8%",
-    },
-    {
-      id: "4",
-      name: "Kandy",
-      code: "KAN",
-      mohAreas: 20,
-      risk: "Medium",
-      cases: 132,
-      trend: "-3%",
-    },
-    {
-      id: "5",
-      name: "Galle",
-      code: "GAL",
-      mohAreas: 19,
-      risk: "Low",
-      cases: 87,
-      trend: "-12%",
-    },
-    {
-      id: "6",
-      name: "Matara",
-      code: "MAT",
-      mohAreas: 16,
-      risk: "Low",
-      cases: 65,
-      trend: "-8%",
-    },
-    {
-      id: "7",
-      name: "Hambantota",
-      code: "HAM",
-      mohAreas: 12,
-      risk: "Low",
-      cases: 54,
-      trend: "-5%",
-    },
-    {
-      id: "8",
-      name: "Jaffna",
-      code: "JAF",
-      mohAreas: 15,
-      risk: "Medium",
-      cases: 98,
-      trend: "+4%",
-    },
-  ];
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchDistrictRows();
+      setRows(data);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load district data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter((d) => {
+      const matchesSearch =
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        d.province.toLowerCase().includes(q);
+      const matchesProvince =
+        provinceFilter === "all" || d.province === provinceFilter;
+      return matchesSearch && matchesProvince;
+    });
+  }, [rows, searchQuery, provinceFilter]);
+
+  // Derived stats from live data
+  const highRiskCount = rows.filter((d) => d.riskLevel === "High").length;
+  const totalActiveTasks = rows.reduce((sum, d) => sum + d.activeTasks, 0);
+  const totalActivePHIs = rows.reduce((sum, d) => sum + d.phiCount, 0);
+  const nationalIncidenceRate = (() => {
+    const totalCases = rows.reduce((sum, d) => sum + (d.predictedCases ?? 0), 0);
+    const totalPop = rows.reduce((sum, d) => sum + d.population, 0);
+    return totalPop > 0
+      ? ((totalCases / totalPop) * 100_000).toFixed(1)
+      : null;
+  })();
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
-            District Management
-          </h2>
-          <p className="text-muted-foreground">
-            Manage districts and MOH area boundaries
-          </p>
-        </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add District
-        </Button>
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">
+          District Management
+        </h2>
+        <p className="text-muted-foreground">
+          Monitor dengue risk and coverage across all 25 Sri Lankan districts
+        </p>
       </div>
 
       {/* Stats */}
@@ -134,19 +220,21 @@ export default function DistrictsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">25</div>
-            <p className="text-xs text-muted-foreground">Across Sri Lanka</p>
+            <p className="text-xs text-muted-foreground">Across 9 provinces</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              MOH Areas
+              Active PHIs
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">341</div>
+            <div className="text-2xl font-bold">
+              {loading ? <StatSkeleton /> : totalActivePHIs}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Medical Officer of Health areas
+              Field health inspectors
             </p>
           </CardContent>
         </Card>
@@ -157,41 +245,100 @@ export default function DistrictsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">8</div>
-            <p className="text-xs text-muted-foreground">Requires attention</p>
+            <div className="text-2xl font-bold text-red-500">
+              {loading ? <StatSkeleton /> : highRiskCount}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {loading || nationalIncidenceRate === null
+                ? "Requires attention"
+                : `National rate: ${nationalIncidenceRate} per 100k`}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Coverage
+              Active Tasks (National)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">100%</div>
-            <p className="text-xs text-green-500">Full island coverage</p>
+            <div className="text-2xl font-bold">
+              {loading ? <StatSkeleton /> : totalActiveTasks}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Assigned or in progress
+            </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Error state */}
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">{error}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={load}
+              className="gap-2"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* District List */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <CardTitle>All Districts</CardTitle>
               <CardDescription>
-                View and manage district configurations
+                {loading
+                  ? "Loading…"
+                  : `${filtered.length} of 25 districts`}
               </CardDescription>
             </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search districts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 w-[250px]"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search districts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 w-[200px]"
+                />
+              </div>
+              <Select value={provinceFilter} onValueChange={setProvinceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Provinces" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Provinces</SelectItem>
+                  {PROVINCES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!loading && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => downloadDistrictsCsv(filtered)}
+                >
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -201,67 +348,87 @@ export default function DistrictsPage() {
               <TableRow>
                 <TableHead>District</TableHead>
                 <TableHead>Code</TableHead>
-                <TableHead>MOH Areas</TableHead>
+                <TableHead>Province</TableHead>
+                <TableHead>Population</TableHead>
+                <TableHead>Incidence Rate</TableHead>
                 <TableHead>Risk Level</TableHead>
-                <TableHead>Cases (This Week)</TableHead>
+                <TableHead>Cases</TableHead>
                 <TableHead>Trend</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Active Tasks</TableHead>
+                <TableHead>PHIs</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {districts.map((district) => (
-                <TableRow key={district.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{district.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <code className="text-sm">{district.code}</code>
-                  </TableCell>
-                  <TableCell>{district.mohAreas}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        district.risk === "High"
-                          ? "destructive"
-                          : district.risk === "Medium"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {district.risk}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {district.cases}
-                  </TableCell>
-                  <TableCell>
-                    <div
-                      className={`flex items-center gap-1 ${
-                        district.trend.startsWith("+")
-                          ? "text-red-500"
-                          : "text-green-500"
-                      }`}
-                    >
-                      {district.trend.startsWith("+") ? (
-                        <TrendingUp className="h-3 w-3" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3" />
-                      )}
-                      <span className="text-sm font-medium">
-                        {district.trend}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
+              {loading ? (
+                <TableSkeletonRows />
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={11}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No districts match your search.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filtered.map((district) => (
+                  <TableRow
+                    key={district.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedDistrict(district)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{district.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <code className="text-sm">{district.code}</code>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {district.province}
+                    </TableCell>
+                    <TableCell>
+                      {district.population.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {district.incidenceRate !== null
+                        ? `${district.incidenceRate} per 100k`
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell>
+                      {district.riskLevel ? (
+                        <Badge
+                          variant={
+                            district.riskLevel === "High"
+                              ? "destructive"
+                              : district.riskLevel === "Medium"
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {district.riskLevel}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {district.predictedCases ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <TrendCell trend={district.weeklyTrend} />
+                    </TableCell>
+                    <TableCell>{district.activeTasks}</TableCell>
+                    <TableCell>{district.phiCount}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <ChevronRight className="h-4 w-4" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -287,6 +454,12 @@ export default function DistrictsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* District detail drawer */}
+      <DistrictDetailSheet
+        district={selectedDistrict}
+        onClose={() => setSelectedDistrict(null)}
+      />
     </div>
   );
 }
