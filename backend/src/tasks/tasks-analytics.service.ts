@@ -358,7 +358,7 @@ export class TasksAnalyticsService {
       .select('u.id', 'phiId')
       .addSelect('u.name', 'name')
       .addSelect('u.district', 'district')
-      .addSelect('u.is_active', 'isActive')
+      .addSelect('u.isActive', 'isActive')
       .addSelect('COUNT(t.id)', 'assigned')
       .addSelect("SUM(CASE WHEN t.status IN ('completed','verified') THEN 1 ELSE 0 END)", 'completed')
       .addSelect("SUM(CASE WHEN t.status = 'rejected' THEN 1 ELSE 0 END)", 'rejected')
@@ -374,7 +374,7 @@ export class TasksAnalyticsService {
       .groupBy('u.id')
       .addGroupBy('u.name')
       .addGroupBy('u.district')
-      .addGroupBy('u.is_active')
+      .addGroupBy('u.isActive')
       .orderBy('COUNT(t.id)', 'DESC');
 
     if (districtId) qb.andWhere('t.district_id = :districtId', { districtId });

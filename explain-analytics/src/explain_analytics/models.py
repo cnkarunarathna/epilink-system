@@ -290,3 +290,14 @@ class ChatSessionHistoryResponse(BaseModel):
         description="Number of completed user+assistant pairs in the session.",
     )
 
+
+# ── Phase 2: Auto-title generation ────────────────────────────────
+
+class ChatTitleRequest(BaseModel):
+    first_message: str = Field(min_length=1, max_length=4000)
+    district: str = Field(min_length=2, max_length=120)
+
+
+class ChatTitleResponse(BaseModel):
+    title: str
+

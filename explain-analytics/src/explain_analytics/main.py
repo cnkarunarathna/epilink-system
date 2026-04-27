@@ -12,6 +12,8 @@ from explain_analytics.models import (
     ChatResponse,
     ChatSessionHistoryResponse,
     ChatMessage,
+    ChatTitleRequest,
+    ChatTitleResponse,
     DocumentFeedbackRequest,
     ExplainInsightRequest,
     ExplainInsightResponse,
@@ -197,6 +199,44 @@ def delete_chat_session(
             else f"Session {session_id} not found (may have already expired)."
         ),
     }
+
+
+@app.post(
+    "/v1/insights/chat/{session_id}/title",
+    response_model=ChatTitleResponse,
+    dependencies=[Depends(require_admin)],
+)
+def generate_chat_title(
+    session_id: str,
+    payload: ChatTitleRequest,
+) -> ChatTitleResponse:
+    """Generate a short auto-title for a chat session from the first user message.
+
+    Makes one lightweight Gemini call. Returns "New Chat" if the LLM is
+    unavailable or the API key is not configured.
+    """
+    if not settings.gemini_api_key:
+        return ChatTitleResponse(title="New Chat")
+
+    prompt = (
+        f'Generate a short conversation title (maximum 6 words) for an epidemiology '
+        f'chat that started with this user question about {payload.district} district: '
+        f'"{payload.first_message}". Reply with only the title, no punctuation.'
+    )
+    try:
+        from google import genai as _genai
+
+        client = _genai.Client(api_key=settings.gemini_api_key)
+        response = client.models.generate_content(
+            model=settings.llm_model,
+            contents=prompt,
+        )
+        raw = (response.text or "").strip()
+        title = raw[:500] if raw else "New Chat"
+        return ChatTitleResponse(title=title or "New Chat")
+    except Exception as exc:
+        logger.warning("Auto-title generation failed for session %s: %s", session_id, exc)
+        return ChatTitleResponse(title="New Chat")
 
 
 # ── Batch and national endpoints (Enhancement 3) ─────────────────

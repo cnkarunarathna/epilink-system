@@ -42,6 +42,6 @@ import { StorageModule } from '../storage/storage.module';
     TaskParticipantGuard,
     TasksAnalyticsService,
   ],
-  exports: [TasksService, TaskMessagesService, GeocodingService, RouteService],
+  exports: [TasksService, TaskMessagesService, GeocodingService, RouteService, TasksAnalyticsService],
 })
 export class TasksModule {}

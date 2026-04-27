@@ -4,10 +4,13 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -137,6 +140,38 @@ export class AnalyticsController {
 
   // ── Enhancement 7: session history and management ─────────────────
 
+  @Get('chat/sessions')
+  @Roles(UserRole.ADMIN)
+  async getUserSessions(
+    @CurrentUser() user: ValidatedServiceUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('district') district?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.analyticsService.getUserSessions(
+      user,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 20,
+      district,
+      search,
+    );
+  }
+
+  @Get('chat/:sessionId/export')
+  @Roles(UserRole.ADMIN)
+  async exportSession(
+    @Param('sessionId') sessionId: string,
+    @Query('format') format: string = 'json',
+    @CurrentUser() user: ValidatedServiceUser,
+    @Res() res: Response,
+  ) {
+    const result = await this.analyticsService.exportSession(sessionId, format, user);
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.content);
+  }
+
   @Get('chat/:sessionId/history')
   @Roles(UserRole.ADMIN)
   async getChatHistory(
@@ -144,6 +179,25 @@ export class AnalyticsController {
     @CurrentUser() user: ValidatedServiceUser,
   ) {
     return this.analyticsService.getChatHistory(sessionId, user);
+  }
+
+  @Patch('chat/:sessionId/title')
+  @Roles(UserRole.ADMIN)
+  async renameSession(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { title: string },
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.renameSession(sessionId, body.title, user);
+  }
+
+  @Patch('chat/:sessionId/archive')
+  @Roles(UserRole.ADMIN)
+  async archiveSession(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser() user: ValidatedServiceUser,
+  ) {
+    return this.analyticsService.archiveSession(sessionId, user);
   }
 
   @Delete('chat/:sessionId')
