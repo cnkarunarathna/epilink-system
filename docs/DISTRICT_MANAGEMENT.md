@@ -60,7 +60,7 @@ Districts by province:
 
 ---
 
-## Phase 2 — Live Data Integration
+## Phase 2 — Live Data Integration - Done
 
 **Goal:** Replace all static mock values with real data from existing backend and ML service APIs.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -9,7 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -25,45 +27,102 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MapPin, Search } from "lucide-react";
-import { DISTRICTS, PROVINCES } from "@/lib/constants/districts";
-import type { RiskLevel } from "@/lib/types";
+import {
+  MapPin,
+  Search,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
+import { PROVINCES } from "@/lib/constants/districts";
+import { fetchDistrictRows } from "@/services/districts.service";
+import type { DistrictRow } from "@/services/districts.service";
 
-const STATIC_RISK: Record<string, RiskLevel> = {
-  Colombo: "High",
-  Gampaha: "High",
-  Kalutara: "Medium",
-  Kandy: "Medium",
-  Matale: "Low",
-  "Nuwara Eliya": "Low",
-  Galle: "Low",
-  Matara: "Low",
-  Hambantota: "Low",
-  Jaffna: "Medium",
-  Kilinochchi: "Low",
-  Mannar: "Low",
-  Mullaitivu: "Low",
-  Vavuniya: "Low",
-  Ampara: "Medium",
-  Batticaloa: "Medium",
-  Trincomalee: "Low",
-  Kurunegala: "Medium",
-  Puttalam: "Low",
-  Anuradhapura: "Low",
-  Polonnaruwa: "Low",
-  Badulla: "Low",
-  Monaragala: "Low",
-  Kegalle: "Low",
-  Ratnapura: "Low",
-};
+// ── Skeleton rows shown while data loads ─────────────────────────────────────
+function TableSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <TableRow key={i}>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+          </TableCell>
+          <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+// ── Trend indicator ───────────────────────────────────────────────────────────
+function TrendCell({ trend }: { trend: number | null }) {
+  if (trend === null) {
+    return <span className="text-muted-foreground text-sm">—</span>;
+  }
+  if (trend > 0) {
+    return (
+      <span className="flex items-center gap-1 text-red-500 text-sm font-medium">
+        <TrendingUp className="h-3 w-3" />+{trend}%
+      </span>
+    );
+  }
+  if (trend < 0) {
+    return (
+      <span className="flex items-center gap-1 text-green-500 text-sm font-medium">
+        <TrendingDown className="h-3 w-3" />{trend}%
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-muted-foreground text-sm">
+      <Minus className="h-3 w-3" />0%
+    </span>
+  );
+}
+
+// ── Stat card skeleton ────────────────────────────────────────────────────────
+function StatSkeleton() {
+  return <Skeleton className="h-8 w-16" />;
+}
 
 export default function DistrictsPage() {
+  const [rows, setRows] = useState<DistrictRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("all");
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchDistrictRows();
+      setRows(data);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load district data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return DISTRICTS.filter((d) => {
+    return rows.filter((d) => {
       const matchesSearch =
         !q ||
         d.name.toLowerCase().includes(q) ||
@@ -72,11 +131,12 @@ export default function DistrictsPage() {
         provinceFilter === "all" || d.province === provinceFilter;
       return matchesSearch && matchesProvince;
     });
-  }, [searchQuery, provinceFilter]);
+  }, [rows, searchQuery, provinceFilter]);
 
-  const highRiskCount = DISTRICTS.filter(
-    (d) => STATIC_RISK[d.name] === "High"
-  ).length;
+  // Derived stats from live data
+  const highRiskCount = rows.filter((d) => d.riskLevel === "High").length;
+  const totalActiveTasks = rows.reduce((sum, d) => sum + d.activeTasks, 0);
+  const totalActivePHIs = rows.reduce((sum, d) => sum + d.phiCount, 0);
 
   return (
     <div className="space-y-6">
@@ -100,18 +160,22 @@ export default function DistrictsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">25</div>
-            <p className="text-xs text-muted-foreground">Across Sri Lanka</p>
+            <p className="text-xs text-muted-foreground">Across 9 provinces</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Provinces
+              Active PHIs
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">9</div>
-            <p className="text-xs text-muted-foreground">Administrative provinces</p>
+            <div className="text-2xl font-bold">
+              {loading ? <StatSkeleton /> : totalActivePHIs}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Field health inspectors
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -122,7 +186,7 @@ export default function DistrictsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-500">
-              {highRiskCount}
+              {loading ? <StatSkeleton /> : highRiskCount}
             </div>
             <p className="text-xs text-muted-foreground">Requires attention</p>
           </CardContent>
@@ -130,15 +194,40 @@ export default function DistrictsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Coverage
+              Active Tasks (National)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">100%</div>
-            <p className="text-xs text-green-500">Full island coverage</p>
+            <div className="text-2xl font-bold">
+              {loading ? <StatSkeleton /> : totalActiveTasks}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Assigned or in progress
+            </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">{error}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={load}
+              className="gap-2"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* District List */}
       <Card>
@@ -147,7 +236,9 @@ export default function DistrictsPage() {
             <div>
               <CardTitle>All Districts</CardTitle>
               <CardDescription>
-                {filtered.length} of {DISTRICTS.length} districts
+                {loading
+                  ? "Loading…"
+                  : `${filtered.length} of 25 districts`}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -185,54 +276,69 @@ export default function DistrictsPage() {
                 <TableHead>Province</TableHead>
                 <TableHead>Population</TableHead>
                 <TableHead>Risk Level</TableHead>
+                <TableHead>Cases</TableHead>
+                <TableHead>Trend</TableHead>
+                <TableHead>Active Tasks</TableHead>
+                <TableHead>PHIs</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <TableSkeletonRows />
+              ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={9}
                     className="text-center text-muted-foreground py-8"
                   >
                     No districts match your search.
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((district) => {
-                  const risk = STATIC_RISK[district.name] ?? "Low";
-                  return (
-                    <TableRow key={district.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{district.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-sm">{district.code}</code>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {district.province}
-                      </TableCell>
-                      <TableCell>
-                        {district.population.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
+                filtered.map((district) => (
+                  <TableRow key={district.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{district.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <code className="text-sm">{district.code}</code>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {district.province}
+                    </TableCell>
+                    <TableCell>
+                      {district.population.toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      {district.riskLevel ? (
                         <Badge
                           variant={
-                            risk === "High"
+                            district.riskLevel === "High"
                               ? "destructive"
-                              : risk === "Medium"
+                              : district.riskLevel === "Medium"
                               ? "secondary"
                               : "outline"
                           }
                         >
-                          {risk}
+                          {district.riskLevel}
                         </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {district.predictedCases ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <TrendCell trend={district.weeklyTrend} />
+                    </TableCell>
+                    <TableCell>{district.activeTasks}</TableCell>
+                    <TableCell>{district.phiCount}</TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
