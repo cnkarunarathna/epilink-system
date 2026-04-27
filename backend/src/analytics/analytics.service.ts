@@ -1,6 +1,14 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AnalyticChatSession } from '../entities/analytic-chat-session.entity';
+import { AnalyticChatMessage } from '../entities/analytic-chat-message.entity';
 import { District } from '../entities/district.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
@@ -1537,7 +1545,38 @@ export class AnalyticsService implements OnModuleInit {
           headers: buildServiceHeaders(user),
         },
       );
-      return resp.data;
+
+      const data = resp.data;
+
+      // Persist session metadata to Postgres so history survives Redis TTL
+      if (user && data.session_id && data.session_id !== 'fallback') {
+        const sessionRepo =
+          this.dataSource.getRepository(AnalyticChatSession);
+        const existing = await sessionRepo.findOne({
+          where: { sessionId: data.session_id },
+        });
+        if (existing) {
+          await sessionRepo.update(existing.id, {
+            turnCount: data.turn_count ?? existing.turnCount,
+          });
+        } else {
+          await sessionRepo.save(
+            sessionRepo.create({
+              sessionId: data.session_id,
+              user: { id: user.id } as any,
+              district: districtName,
+              title: 'New Chat',
+              turnCount: data.turn_count ?? 1,
+            }),
+          );
+          // Phase 2: fire-and-forget auto-title after first turn
+          this.generateAndSaveTitle(data.session_id, message, districtName, user);
+        }
+        // Phase 5: fire-and-forget message persistence to Postgres
+        void this.persistMessages(data.session_id, message, data.reply, data.tool_calls_used);
+      }
+
+      return data;
     } catch (err: any) {
       return {
         reply:
@@ -1550,9 +1589,99 @@ export class AnalyticsService implements OnModuleInit {
     }
   }
 
+  // ── Phase 2: Auto-title generation ─────────────────────────────────
+
+  private generateAndSaveTitle(
+    sessionId: string,
+    message: string,
+    district: string,
+    user: ValidatedServiceUser,
+  ): void {
+    const explainUrl =
+      process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    axios
+      .post(
+        `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/title`,
+        { first_message: message, district },
+        { headers: buildServiceHeaders(user) },
+      )
+      .then(async (resp) => {
+        const title: string = (resp.data?.title ?? '').trim();
+        if (title && title !== 'New Chat') {
+          const sessionRepo =
+            this.dataSource.getRepository(AnalyticChatSession);
+          await sessionRepo.update({ sessionId }, { title });
+        }
+      })
+      .catch((err: Error) => {
+        this.logger.warn(
+          `Auto-title generation failed for session ${sessionId}: ${err.message}`,
+        );
+      });
+  }
+
+  // ── Phase 5: Message persistence to Postgres ───────────────────────
+
+  private async persistMessages(
+    sessionId: string,
+    userContent: string,
+    assistantContent: string,
+    toolCalls?: string[],
+  ): Promise<void> {
+    try {
+      const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+      const session = await sessionRepo.findOne({ where: { sessionId } });
+      if (!session) return;
+      const msgRepo = this.dataSource.getRepository(AnalyticChatMessage);
+      await msgRepo.save([
+        msgRepo.create({ chatSession: session, role: 'user', content: userContent }),
+        msgRepo.create({
+          chatSession: session,
+          role: 'model',
+          content: assistantContent,
+          toolCalls: toolCalls?.length ? toolCalls : null,
+        }),
+      ]);
+    } catch (err) {
+      this.logger.warn(
+        `Message persistence failed for session ${sessionId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  private async fallbackMessagesFromPostgres(
+    chatSessionPk: string,
+    sessionId: string,
+  ) {
+    try {
+      const msgRepo = this.dataSource.getRepository(AnalyticChatMessage);
+      const rows = await msgRepo.find({
+        where: { chatSession: { id: chatSessionPk } },
+        order: { createdAt: 'ASC' },
+      });
+      return {
+        session_id: sessionId,
+        messages: rows.map((m) => ({ role: m.role, content: m.content })),
+        message_count: rows.length,
+        turn_count: Math.floor(rows.length / 2),
+      };
+    } catch {
+      return { session_id: sessionId, messages: [], message_count: 0, turn_count: 0 };
+    }
+  }
+
   // ── Enhancement 7: session history and management ──────────────────
 
   async getChatHistory(sessionId: string, user: ValidatedServiceUser) {
+    // Ownership check — ensure this session belongs to the requesting admin
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new ForbiddenException('Session not found or access denied.');
+    }
+
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
@@ -1560,18 +1689,26 @@ export class AnalyticsService implements OnModuleInit {
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/history`,
         { headers: buildServiceHeaders(user) },
       );
+      // Phase 5: if Redis TTL expired, fall back to Postgres message store
+      if (!resp.data.messages || resp.data.messages.length === 0) {
+        return this.fallbackMessagesFromPostgres(session.id, sessionId);
+      }
       return resp.data;
     } catch {
-      return {
-        session_id: sessionId,
-        messages: [],
-        message_count: 0,
-        turn_count: 0,
-      };
+      return this.fallbackMessagesFromPostgres(session.id, sessionId);
     }
   }
 
   async deleteChatSession(sessionId: string, user: ValidatedServiceUser) {
+    // Ownership check — ensure this session belongs to the requesting admin
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new ForbiddenException('Session not found or access denied.');
+    }
+
     const explainUrl =
       process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
     try {
@@ -1579,6 +1716,8 @@ export class AnalyticsService implements OnModuleInit {
         `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}`,
         { headers: buildServiceHeaders(user) },
       );
+      // Remove Postgres metadata row after Redis key is deleted
+      await sessionRepo.delete(session.id);
       return resp.data;
     } catch {
       return {
@@ -1587,6 +1726,131 @@ export class AnalyticsService implements OnModuleInit {
         message: 'Session service unavailable.',
       };
     }
+  }
+
+  async getUserSessions(
+    user: ValidatedServiceUser,
+    page = 1,
+    limit = 20,
+    district?: string,
+    search?: string,
+  ) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const qb = sessionRepo
+      .createQueryBuilder('s')
+      .where('s.user.id = :userId', { userId: user.id })
+      .andWhere('s.isArchived = false')
+      .orderBy('s.updatedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (district) {
+      qb.andWhere('LOWER(s.district) = LOWER(:district)', { district });
+    }
+    if (search) {
+      qb.andWhere('s.title ILIKE :search', { search: `%${search}%` });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  async exportSession(
+    sessionId: string,
+    format: string,
+    user: ValidatedServiceUser,
+  ): Promise<{ filename: string; content: string; mimeType: string }> {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) throw new ForbiddenException('Session not found or access denied.');
+
+    let messages: { role: string; content: string }[] = [];
+    const explainUrl = process.env.EXPLAIN_ANALYTICS_URL || 'http://localhost:8010';
+    try {
+      const resp = await axios.get(
+        `${explainUrl}/v1/insights/chat/${encodeURIComponent(sessionId)}/history`,
+        { headers: buildServiceHeaders(user) },
+      );
+      if (resp.data.messages?.length > 0) {
+        messages = resp.data.messages;
+      }
+    } catch {
+      // fall through to Postgres
+    }
+
+    if (messages.length === 0) {
+      const msgRepo = this.dataSource.getRepository(AnalyticChatMessage);
+      const rows = await msgRepo.find({
+        where: { chatSession: { id: session.id } },
+        order: { createdAt: 'ASC' },
+      });
+      messages = rows.map((m) => ({ role: m.role, content: m.content }));
+    }
+
+    const safeTitle = session.title.replace(/[^a-z0-9]/gi, '_').slice(0, 60);
+
+    if (format === 'markdown') {
+      const lines = [
+        `# ${session.title}`,
+        `**District:** ${session.district}`,
+        `**Created:** ${session.createdAt.toISOString()}`,
+        '',
+      ];
+      for (const m of messages) {
+        const label = m.role === 'user' ? '**You**' : '**EpiLink AI**';
+        lines.push(`${label}\n\n${m.content}`, '---', '');
+      }
+      return {
+        filename: `${safeTitle}.md`,
+        content: lines.join('\n'),
+        mimeType: 'text/markdown',
+      };
+    }
+
+    return {
+      filename: `${safeTitle}.json`,
+      content: JSON.stringify(
+        {
+          title: session.title,
+          district: session.district,
+          createdAt: session.createdAt.toISOString(),
+          messages,
+        },
+        null,
+        2,
+      ),
+      mimeType: 'application/json',
+    };
+  }
+
+  async renameSession(
+    sessionId: string,
+    title: string,
+    user: ValidatedServiceUser,
+  ) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found or access denied.');
+    }
+    await sessionRepo.update(session.id, { title: title.trim().slice(0, 500) });
+    return { sessionId, title: title.trim().slice(0, 500) };
+  }
+
+  async archiveSession(sessionId: string, user: ValidatedServiceUser) {
+    const sessionRepo = this.dataSource.getRepository(AnalyticChatSession);
+    const session = await sessionRepo.findOne({
+      where: { sessionId, user: { id: user.id } },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found or access denied.');
+    }
+    await sessionRepo.update(session.id, { isArchived: true });
+    return { sessionId, isArchived: true };
   }
 
   // ── Enhancement 3: National Summary ────────────────────────────────
