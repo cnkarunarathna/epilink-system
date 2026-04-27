@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -20,108 +19,75 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  MapPin,
-  Plus,
-  Search,
-  Edit,
-  TrendingUp,
-  TrendingDown,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { MapPin, Search } from "lucide-react";
+import { DISTRICTS, PROVINCES } from "@/lib/constants/districts";
+import type { RiskLevel } from "@/lib/types";
+
+const STATIC_RISK: Record<string, RiskLevel> = {
+  Colombo: "High",
+  Gampaha: "High",
+  Kalutara: "Medium",
+  Kandy: "Medium",
+  Matale: "Low",
+  "Nuwara Eliya": "Low",
+  Galle: "Low",
+  Matara: "Low",
+  Hambantota: "Low",
+  Jaffna: "Medium",
+  Kilinochchi: "Low",
+  Mannar: "Low",
+  Mullaitivu: "Low",
+  Vavuniya: "Low",
+  Ampara: "Medium",
+  Batticaloa: "Medium",
+  Trincomalee: "Low",
+  Kurunegala: "Medium",
+  Puttalam: "Low",
+  Anuradhapura: "Low",
+  Polonnaruwa: "Low",
+  Badulla: "Low",
+  Monaragala: "Low",
+  Kegalle: "Low",
+  Ratnapura: "Low",
+};
 
 export default function DistrictsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [provinceFilter, setProvinceFilter] = useState("all");
 
-  const districts = [
-    {
-      id: "1",
-      name: "Colombo",
-      code: "COL",
-      mohAreas: 15,
-      risk: "High",
-      cases: 245,
-      trend: "+15%",
-    },
-    {
-      id: "2",
-      name: "Gampaha",
-      code: "GAM",
-      mohAreas: 18,
-      risk: "High",
-      cases: 198,
-      trend: "+12%",
-    },
-    {
-      id: "3",
-      name: "Kalutara",
-      code: "KAL",
-      mohAreas: 14,
-      risk: "Medium",
-      cases: 145,
-      trend: "+8%",
-    },
-    {
-      id: "4",
-      name: "Kandy",
-      code: "KAN",
-      mohAreas: 20,
-      risk: "Medium",
-      cases: 132,
-      trend: "-3%",
-    },
-    {
-      id: "5",
-      name: "Galle",
-      code: "GAL",
-      mohAreas: 19,
-      risk: "Low",
-      cases: 87,
-      trend: "-12%",
-    },
-    {
-      id: "6",
-      name: "Matara",
-      code: "MAT",
-      mohAreas: 16,
-      risk: "Low",
-      cases: 65,
-      trend: "-8%",
-    },
-    {
-      id: "7",
-      name: "Hambantota",
-      code: "HAM",
-      mohAreas: 12,
-      risk: "Low",
-      cases: 54,
-      trend: "-5%",
-    },
-    {
-      id: "8",
-      name: "Jaffna",
-      code: "JAF",
-      mohAreas: 15,
-      risk: "Medium",
-      cases: 98,
-      trend: "+4%",
-    },
-  ];
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return DISTRICTS.filter((d) => {
+      const matchesSearch =
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        d.province.toLowerCase().includes(q);
+      const matchesProvince =
+        provinceFilter === "all" || d.province === provinceFilter;
+      return matchesSearch && matchesProvince;
+    });
+  }, [searchQuery, provinceFilter]);
+
+  const highRiskCount = DISTRICTS.filter(
+    (d) => STATIC_RISK[d.name] === "High"
+  ).length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
-            District Management
-          </h2>
-          <p className="text-muted-foreground">
-            Manage districts and MOH area boundaries
-          </p>
-        </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add District
-        </Button>
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">
+          District Management
+        </h2>
+        <p className="text-muted-foreground">
+          Monitor dengue risk and coverage across all 25 Sri Lankan districts
+        </p>
       </div>
 
       {/* Stats */}
@@ -140,14 +106,12 @@ export default function DistrictsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              MOH Areas
+              Provinces
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">341</div>
-            <p className="text-xs text-muted-foreground">
-              Medical Officer of Health areas
-            </p>
+            <div className="text-2xl font-bold">9</div>
+            <p className="text-xs text-muted-foreground">Administrative provinces</p>
           </CardContent>
         </Card>
         <Card>
@@ -157,7 +121,9 @@ export default function DistrictsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">8</div>
+            <div className="text-2xl font-bold text-red-500">
+              {highRiskCount}
+            </div>
             <p className="text-xs text-muted-foreground">Requires attention</p>
           </CardContent>
         </Card>
@@ -177,21 +143,36 @@ export default function DistrictsPage() {
       {/* District List */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <CardTitle>All Districts</CardTitle>
               <CardDescription>
-                View and manage district configurations
+                {filtered.length} of {DISTRICTS.length} districts
               </CardDescription>
             </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search districts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 w-[250px]"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search districts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 w-[200px]"
+                />
+              </div>
+              <Select value={provinceFilter} onValueChange={setProvinceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Provinces" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Provinces</SelectItem>
+                  {PROVINCES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -201,67 +182,58 @@ export default function DistrictsPage() {
               <TableRow>
                 <TableHead>District</TableHead>
                 <TableHead>Code</TableHead>
-                <TableHead>MOH Areas</TableHead>
+                <TableHead>Province</TableHead>
+                <TableHead>Population</TableHead>
                 <TableHead>Risk Level</TableHead>
-                <TableHead>Cases (This Week)</TableHead>
-                <TableHead>Trend</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {districts.map((district) => (
-                <TableRow key={district.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{district.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <code className="text-sm">{district.code}</code>
-                  </TableCell>
-                  <TableCell>{district.mohAreas}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        district.risk === "High"
-                          ? "destructive"
-                          : district.risk === "Medium"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {district.risk}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {district.cases}
-                  </TableCell>
-                  <TableCell>
-                    <div
-                      className={`flex items-center gap-1 ${
-                        district.trend.startsWith("+")
-                          ? "text-red-500"
-                          : "text-green-500"
-                      }`}
-                    >
-                      {district.trend.startsWith("+") ? (
-                        <TrendingUp className="h-3 w-3" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3" />
-                      )}
-                      <span className="text-sm font-medium">
-                        {district.trend}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No districts match your search.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filtered.map((district) => {
+                  const risk = STATIC_RISK[district.name] ?? "Low";
+                  return (
+                    <TableRow key={district.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{district.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-sm">{district.code}</code>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {district.province}
+                      </TableCell>
+                      <TableCell>
+                        {district.population.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            risk === "High"
+                              ? "destructive"
+                              : risk === "Medium"
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {risk}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
