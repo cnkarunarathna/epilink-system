@@ -3,7 +3,7 @@
 > **Project:** EpiLink Dengue Risk Monitoring & Cleanup Management System
 > **Author:** Charuka Karunarathna — Final Year Project, NSBM Green University (University of Plymouth affiliation)
 > **Date:** April 2026
-> **Status:** Production-ready (Phases 1–4 complete, Phase 5 enhancements in progress)
+> **Status:** Production-ready (Phases 1–5 complete, AI Chat History feature complete)
 
 ---
 
@@ -484,6 +484,7 @@ A production-grade RAG (Retrieval-Augmented Generation) microservice translating
 | **Confidence Splitting** | Separate `data_completeness_score` and `prediction_confidence` from ML uncertainty bounds |
 | **Automated ETL** | APScheduler weekly job fetches all district data → generates dense + sparse embeddings → upserts Qdrant corpus |
 | **Agentic Chat** | 12-tool Agno agent with Redis session persistence (2-hour TTL, auto-compress at 10 turns) |
+| **Persistent Chat History** | PostgreSQL-backed session index; full message fallback when Redis TTL expires; ChatGPT-style sidebar UI |
 
 ### 5.3 Agentic Chat Tools (12)
 
@@ -501,6 +502,119 @@ A production-grade RAG (Retrieval-Augmented Generation) microservice translating
 | `get_intervention_history` | Past intervention actions and outcomes |
 | `get_model_performance_metrics` | Current model MAE, R², feature importance |
 | `get_demographic_hotspots` | Population-density-adjusted risk hotspots |
+
+### 5.4 AI Chat History System
+
+**Goal:** Give admins a ChatGPT-style conversation history sidebar — persistent, named sessions that survive Redis TTL expiration, with full CRUD and export.
+
+#### Architecture
+
+```
+Admin Chat Message
+       │
+       ▼
+POST /analytics/explain/:district/chat
+       │
+       ├──> Python AI Service (Gemini 2.0 Flash, Redis message store)
+       │           │
+       │           └──> Returns: reply, session_id, turn_count
+       │
+       ├──> Upsert row in analytic_chat_sessions (Postgres)
+       │           title auto-generated via Gemini on turn 1
+       │
+       └──> Persist user + assistant messages in analytic_chat_messages (Postgres)
+                   (fire-and-forget, non-blocking)
+
+GET /analytics/chat/:sessionId/history
+       │
+       ├──> Try Redis (fast path, 2-hour TTL)
+       └──> If expired: query analytic_chat_messages → re-hydrate Redis → return
+```
+
+#### Database Tables
+
+```sql
+-- Session index (one row per conversation)
+analytic_chat_sessions (
+  id           UUID PRIMARY KEY,
+  session_id   VARCHAR(255) UNIQUE,   -- Redis key suffix
+  user_id      UUID REFERENCES users ON DELETE CASCADE,
+  district     VARCHAR(255),
+  title        VARCHAR(500) DEFAULT 'New Chat',
+  turn_count   INTEGER DEFAULT 0,
+  is_archived  BOOLEAN DEFAULT false,
+  created_at   TIMESTAMP,
+  updated_at   TIMESTAMP
+)
+
+-- Full message log (fallback when Redis expires)
+analytic_chat_messages (
+  id              UUID PRIMARY KEY,
+  chat_session_id UUID REFERENCES analytic_chat_sessions ON DELETE CASCADE,
+  role            VARCHAR(20),   -- 'user' | 'model'
+  content         TEXT,
+  tool_calls      JSONB,
+  created_at      TIMESTAMP
+)
+```
+
+#### Backend Service Methods
+
+| Method | Behaviour |
+|---|---|
+| `chatWithAgent()` | Upserts session row; fires `generateAndSaveTitle()` on turn 1; fires `persistMessages()` after every reply |
+| `generateAndSaveTitle()` | Fire-and-forget call to Python `/v1/insights/chat/{id}/title`; updates Postgres title |
+| `persistMessages()` | Inserts user + assistant messages into `analytic_chat_messages` (async, non-blocking) |
+| `getChatHistory()` | Redis-first; falls back to Postgres + re-hydrates Redis on TTL miss |
+| `getUserSessions()` | Paginated list for the requesting admin; supports `search` (ILIKE), `district`, `page`, `limit` |
+| `renameSession()` | Updates `title` field; enforces ownership |
+| `archiveSession()` | Sets `is_archived = true`; soft-delete |
+| `deleteChatSession()` | Deletes from Redis via Python + hard-deletes Postgres row; ownership-enforced |
+| `exportSession()` | Reads messages (Redis-first, Postgres fallback); formats as JSON or Markdown; returns filename + MIME type |
+
+#### Frontend Component Architecture
+
+```
+components/dashboard/analytics/
+├── AIChatContainer.tsx     — outer shell: state, session CRUD, send logic
+├── ChatSidebar.tsx         — grouped history list (Today / Yesterday / This Week / Older),
+│                             search bar, New Chat button
+├── ChatSessionItem.tsx     — single row: title, relative time, turn count,
+│                             hover actions (rename / export / delete)
+├── ChatWindow.tsx          — message thread, loading states, expired-session banner
+├── ChatInput.tsx           — input bar + send button, Cmd/Ctrl+K shortcut
+└── FloatingChatBubble.tsx  — FAB trigger; renders AIChatContainer in floating or drawer mode
+```
+
+#### UX Features
+
+| Feature | Detail |
+|---|---|
+| **Auto-title** | First user message triggers a Gemini call that names the conversation (max 6 words) |
+| **Session groups** | Sidebar groups sessions by Today / Yesterday / This Week / Older |
+| **Inline rename** | Pencil icon → inline `<input>` → Enter to confirm / Escape to cancel |
+| **Export** | Download icon → dropdown for JSON or Markdown; browser blob download, no extra dependencies |
+| **Delete** | Optimistic UI removal; deletes from both Redis and Postgres |
+| **Resume** | Click session → `GET history` → if Redis expired, falls back to Postgres messages |
+| **Expired banner** | If no messages after resume attempt, shows "This conversation has expired. Start a new chat below." |
+| **District sync** | Resuming a session auto-sets the parent page's district selector to the session's district |
+| **Search** | Live client-side filter on already-loaded sessions; backend also supports ILIKE for server-side use |
+| **Collapsible sidebar** | Toggle button in header; sidebar hidden narrows the floating panel from 680 px to 420 px |
+| **Keyboard shortcut** | `Cmd/Ctrl+K` opens the panel or focuses the input if already open |
+| **Unread badge** | Red badge on FAB counts assistant replies received while the panel was closed |
+
+#### API Endpoints
+
+```
+GET    /analytics/chat/sessions              list sessions (page, limit, district, search)
+GET    /analytics/chat/:sessionId/history    full message history (Redis → Postgres fallback)
+GET    /analytics/chat/:sessionId/export     download as JSON or Markdown
+PATCH  /analytics/chat/:sessionId/title      rename session
+PATCH  /analytics/chat/:sessionId/archive    soft-archive session
+DELETE /analytics/chat/:sessionId            hard-delete session + Redis key
+```
+
+All routes: `@Roles(UserRole.ADMIN)` + `@UseGuards(JwtAuthGuard, RolesGuard)`.
 
 ---
 
@@ -832,6 +946,8 @@ Profile header (name, district, active status) · KPI cards · Task status donut
 | `weekly_reports` | id, week, year, districtId, pdfUrl, narrativeSummary, generatedAt |
 | `email_logs` | id, to, subject, type, status (SENT/FAILED), attempts, createdAt |
 | `audit_logs` | id, userId, action, entity, entityId, metadata, createdAt |
+| `analytic_chat_sessions` | id, sessionId (Redis key), userId, district, title, turnCount, isArchived, createdAt, updatedAt |
+| `analytic_chat_messages` | id, chatSessionId, role (user\|model), content, toolCalls (JSONB), createdAt |
 
 ---
 
@@ -848,16 +964,25 @@ POST   /api/auth/logout             Clear session
 ### Analytics
 
 ```
-GET    /api/analytics/districts/latest          Latest data per district
-GET    /api/analytics/predict/bulk              ML predictions all districts
-GET    /api/analytics/summary                   Dashboard summary
-GET    /api/analytics/trends                    Case trend over time
-GET    /api/analytics/advanced/hotspots         Top hotspot districts
-GET    /api/analytics/advanced/outbreak-alerts  Active outbreak alerts
-GET    /api/analytics/explain                   SHAP-grounded district insight
-GET    /api/analytics/explain/national-summary  Executive situation report
-POST   /api/analytics/explain/chat              Agentic chat (12 tools)
-GET    /api/analytics/ds-predictions/colombo    Colombo DS-level estimates
+GET    /api/analytics/districts/latest              Latest data per district
+GET    /api/analytics/predict/bulk                  ML predictions all districts
+GET    /api/analytics/summary                       Dashboard summary
+GET    /api/analytics/trends                        Case trend over time
+GET    /api/analytics/advanced/hotspots             Top hotspot districts
+GET    /api/analytics/advanced/outbreak-alerts      Active outbreak alerts
+GET    /api/analytics/explain/:district             SHAP-grounded district insight
+GET    /api/analytics/explain/:district/ask         Follow-up question (cached insight)
+POST   /api/analytics/explain/:district/chat        Agentic chat (12 tools)
+GET    /api/analytics/national-summary              National executive situation report
+POST   /api/analytics/batch-explain                 Batch explain all districts
+GET    /api/analytics/colombo/ds-breakdown          Colombo DS-level estimates
+
+GET    /api/analytics/chat/sessions                 List admin's sessions (page, limit, district, search)
+GET    /api/analytics/chat/:sessionId/history       Full message history (Redis → Postgres fallback)
+GET    /api/analytics/chat/:sessionId/export        Download transcript (format=json|markdown)
+PATCH  /api/analytics/chat/:sessionId/title         Rename session
+PATCH  /api/analytics/chat/:sessionId/archive       Soft-archive session
+DELETE /api/analytics/chat/:sessionId               Delete session (Redis + Postgres)
 ```
 
 ### Tasks
@@ -923,7 +1048,7 @@ React Native/Expo setup, authentication, task list/detail, camera evidence (`exp
 
 Weekly PDF generation with Gemini narrative, email notifications (Zoho SMTP + BullMQ), custom report builder, alert threshold configuration, chatbot UI on public landing page.
 
-### Phase 5: Advanced Enhancements (Partial)
+### Phase 5: Advanced Enhancements ✅
 
 | Item | Status |
 |---|---|
@@ -932,6 +1057,11 @@ Weekly PDF generation with Gemini narrative, email notifications (Zoho SMTP + Bu
 | Automated ETL pipeline (APScheduler weekly) | ✅ |
 | Spatial cluster / geographic spillover detection | ✅ |
 | Redis session persistence for agentic chat | ✅ |
+| Persistent AI chat history (PostgreSQL-backed sessions + messages) | ✅ |
+| ChatGPT-style history sidebar with session CRUD and export | ✅ |
+| Auto-title generation via Gemini on first conversation turn | ✅ |
+| Redis → Postgres message fallback on TTL expiry | ✅ |
+| Conversation export (JSON / Markdown) | ✅ |
 | Response caching for insight stability | ⏳ |
 | Lightweight follow-up endpoint (cache-backed) | ⏳ |
 | Multi-language output (Sinhala / Tamil) | ⏳ |
