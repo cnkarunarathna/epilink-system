@@ -138,6 +138,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   const [mobileView, setMobileView] = useState<MobileView>(
     searchParams.get("task") ? "chat" : "list",
   );
+  const [kbIdx, setKbIdx] = useState(-1);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
 
@@ -181,6 +182,11 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     fetchItems({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Refs ─────────────────────────────────────────────────────────────────
+
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Debounced search ─────────────────────────────────────────────────────
 
@@ -226,6 +232,32 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   const goBackToList = () => {
     setMobileView("list");
   };
+
+  // ─── Keyboard navigation ──────────────────────────────────────────────────
+
+  // Reset cursor whenever the displayed list changes (search / filter)
+  useEffect(() => {
+    setKbIdx(-1);
+  }, [search, statusFilter]);
+
+  // Scroll focused item into view
+  useEffect(() => {
+    if (kbIdx >= 0) {
+      itemRefs.current[kbIdx]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [kbIdx]);
+
+  // Global Cmd+F / Ctrl+F → focus search input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // ─── Real-time: socket patch on new message ───────────────────────────────
 
@@ -300,6 +332,32 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     [items, unreadOnly],
   );
 
+  // ─── Keyboard handler (needs displayedItems, defined after useMemo) ─────────
+
+  const handleListKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>) => {
+      const len = displayedItems.length;
+      if (len === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setKbIdx((prev) => (prev < len - 1 ? prev + 1 : 0));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setKbIdx((prev) => (prev > 0 ? prev - 1 : len - 1));
+      } else if (e.key === "Enter") {
+        if (kbIdx >= 0 && kbIdx < len) {
+          selectTask(displayedItems[kbIdx].taskId);
+        }
+      } else if (e.key === "Escape") {
+        setSelectedTaskId(null);
+        setKbIdx(-1);
+        router.replace(`/${role}/chats`, { scroll: false });
+      }
+    },
+    [displayedItems, kbIdx, selectTask, role, router],
+  );
+
   // ─── Selected item ────────────────────────────────────────────────────────
 
   const selectedItem = items.find((it) => it.taskId === selectedTaskId) ?? null;
@@ -344,6 +402,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              ref={searchInputRef}
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search conversations…"
@@ -406,8 +465,10 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left panel — task list */}
         <aside
+          tabIndex={0}
+          onKeyDown={handleListKeyDown}
           className={cn(
-            "flex flex-col border-r bg-sidebar overflow-hidden shrink-0",
+            "flex flex-col border-r bg-sidebar overflow-hidden shrink-0 focus:outline-none",
             "w-full md:w-80 lg:w-96",
             // Mobile: hide list panel when viewing chat
             mobileView === "chat" ? "hidden md:flex" : "flex",
@@ -432,11 +493,13 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
               <EmptyList role={role} />
             ) : (
               <>
-                {displayedItems.map((item) => (
+                {displayedItems.map((item, idx) => (
                   <TaskChatListItem
                     key={item.taskId}
+                    ref={(el) => { itemRefs.current[idx] = el; }}
                     item={item}
                     isSelected={selectedTaskId === item.taskId}
+                    isFocused={kbIdx === idx}
                     onClick={() => selectTask(item.taskId)}
                   />
                 ))}

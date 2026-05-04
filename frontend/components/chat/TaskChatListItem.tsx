@@ -2,6 +2,7 @@
 
 import React from "react";
 import { formatDistanceToNow } from "date-fns";
+import { Trash2, Wind, Eye, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatSummaryItemDto } from "@/services/chat.service";
 import {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 interface TaskChatListItemProps {
   item: ChatSummaryItemDto;
   isSelected: boolean;
+  isFocused?: boolean;
   onClick: () => void;
 }
 
@@ -26,12 +28,19 @@ const STATUS_DOT: Record<string, string> = {
   rejected: "bg-red-400",
 };
 
-export function TaskChatListItem({
-  item,
-  isSelected,
-  onClick,
-}: TaskChatListItemProps) {
+const TYPE_ICON: Record<string, React.ElementType> = {
+  cleanup: Trash2,
+  fogging: Wind,
+  inspection: Eye,
+  investigation: Search,
+};
+
+export const TaskChatListItem = React.forwardRef<
+  HTMLButtonElement,
+  TaskChatListItemProps
+>(function TaskChatListItem({ item, isSelected, isFocused, onClick }, ref) {
   const hasUnread = item.unreadCount > 0;
+  const TypeIcon = TYPE_ICON[item.type];
 
   const timeAgo = item.lastMessage?.sentAt
     ? formatDistanceToNow(new Date(item.lastMessage.sentAt), {
@@ -41,12 +50,15 @@ export function TaskChatListItem({
 
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className={cn(
         "w-full text-left px-3 py-3 flex items-start gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         isSelected
           ? "bg-primary/10 border border-primary/20"
-          : "hover:bg-muted/60 border border-transparent",
+          : isFocused
+            ? "bg-muted border border-primary/30"
+            : "hover:bg-muted/60 border border-transparent",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
@@ -66,12 +78,13 @@ export function TaskChatListItem({
           <span
             className={cn(
               "text-sm truncate flex-1",
-              hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80",
+              hasUnread
+                ? "font-semibold text-foreground"
+                : "font-medium text-foreground/80",
             )}
           >
             {item.title}
           </span>
-          {/* Timestamp */}
           {timeAgo && (
             <span className="text-[11px] text-muted-foreground shrink-0">
               {timeAgo}
@@ -90,10 +103,15 @@ export function TaskChatListItem({
 
         {/* Badges row */}
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          {TypeIcon && (
+            <TypeIcon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+          )}
           <Badge
             className={cn(
               "text-[10px] px-1.5 py-0 h-4 font-normal capitalize",
-              getStatusColor(item.status as Parameters<typeof getStatusColor>[0]),
+              getStatusColor(
+                item.status as Parameters<typeof getStatusColor>[0],
+              ),
             )}
           >
             {item.status.replace("_", " ")}
@@ -101,7 +119,9 @@ export function TaskChatListItem({
           <span
             className={cn(
               "text-[10px] font-medium capitalize",
-              getPriorityColor(item.priority as Parameters<typeof getPriorityColor>[0]),
+              getPriorityColor(
+                item.priority as Parameters<typeof getPriorityColor>[0],
+              ),
             )}
           >
             {item.priority}
@@ -117,4 +137,4 @@ export function TaskChatListItem({
       )}
     </button>
   );
-}
+});
