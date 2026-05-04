@@ -38,6 +38,7 @@ import {
   ChevronRight,
   ChevronRight as BreadcrumbChevron,
   Shield,
+  MessageSquare,
 } from "lucide-react";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useRouter as useAppRouter } from "next/navigation";
@@ -50,6 +51,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  badge?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -114,6 +116,7 @@ function getNavItems(role: string): NavItem[] {
       return [
         ...baseItems,
         { label: "Tasks", href: "/supervisor/tasks", icon: ClipboardCheck },
+        { label: "Chats", href: "/supervisor/chats", icon: MessageSquare },
         { label: "PHIs", href: "/supervisor/phis", icon: Users },
         { label: "Reports", href: "/supervisor/reports", icon: FileText },
       ];
@@ -121,6 +124,7 @@ function getNavItems(role: string): NavItem[] {
       return [
         { label: "Dashboard", href: "/phi", icon: LayoutDashboard },
         { label: "My Tasks", href: "/phi/tasks", icon: ClipboardCheck },
+        { label: "Chats", href: "/phi/chats", icon: MessageSquare },
         { label: "Map View", href: "/phi/map", icon: MapPin },
         { label: "History", href: "/phi/history", icon: FileText },
       ];
@@ -166,9 +170,24 @@ function NavLink({
       {isActive && !collapsed && (
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary-foreground/40" />
       )}
-      <item.icon className="h-5 w-5 shrink-0" />
+
+      {/* Icon with dot overlay when collapsed and badge > 0 */}
+      <span className="relative shrink-0">
+        <item.icon className="h-5 w-5" />
+        {collapsed && item.badge && item.badge > 0 && (
+          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive ring-1 ring-background" />
+        )}
+      </span>
+
       {!collapsed && (
-        <span className="font-medium text-sm truncate">{item.label}</span>
+        <>
+          <span className="font-medium text-sm truncate flex-1">{item.label}</span>
+          {item.badge && item.badge > 0 && (
+            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+              {item.badge > 99 ? "99+" : item.badge}
+            </span>
+          )}
+        </>
       )}
     </Link>
   );
@@ -206,6 +225,11 @@ function DesktopSidebar({
   role: string;
   onLogout: () => void;
 }) {
+  const { totalUnread } = useUnread();
+  const badgedItems = navItems.map((item) =>
+    item.href.endsWith("/chats") ? { ...item, badge: totalUnread } : item,
+  );
+
   return (
     <TooltipProvider delayDuration={300}>
       <motion.aside
@@ -273,7 +297,7 @@ function DesktopSidebar({
               Navigation
             </p>
           )}
-          {navItems.map((item) => (
+          {badgedItems.map((item) => (
             <NavLink
               key={item.href}
               item={item}
@@ -380,6 +404,11 @@ function MobileSidebar({
   role: string;
   onLogout: () => void;
 }) {
+  const { totalUnread } = useUnread();
+  const badgedItems = navItems.map((item) =>
+    item.href.endsWith("/chats") ? { ...item, badge: totalUnread } : item,
+  );
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild className="md:hidden">
@@ -409,7 +438,7 @@ function MobileSidebar({
             <p className="px-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
               Navigation
             </p>
-            {navItems.map((item) => (
+            {badgedItems.map((item) => (
               <NavLink
                 key={item.href}
                 item={item}
@@ -503,16 +532,15 @@ function NotificationBell({ role }: { role: string }) {
   const router = useAppRouter();
 
   const handleClick = () => {
-    // Navigate to the task with the highest unread count, or fall back to the tasks list
-    const tasksPath = `/${role}/tasks`;
+    const chatsPath = `/${role}/chats`;
     if (totalUnread > 0) {
       const topTaskId = Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0];
       if (topTaskId) {
-        router.push(`${tasksPath}/${topTaskId}`);
+        router.push(`${chatsPath}?task=${topTaskId}`);
         return;
       }
     }
-    router.push(tasksPath);
+    router.push(chatsPath);
   };
 
   return (
