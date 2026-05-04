@@ -5,10 +5,15 @@ import { TaskMessage } from './entities/task-message.entity';
 import { MessageRead } from './entities/message-read.entity';
 import { MessageReaction } from './entities/message-reaction.entity';
 import { Task } from './entities/task.entity';
-import { User } from '../entities/user.entity';
+import { User, UserRole } from '../entities/user.entity';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { GetMessagesQueryDto } from './dto/get-messages-query.dto';
 import { MessageResponseDto } from './dto/message-response.dto';
+import {
+  ChatSummaryItemDto,
+  ChatSummaryQueryDto,
+  ChatSummaryResponseDto,
+} from './dto/chat-summary.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
@@ -437,6 +442,143 @@ export class TaskMessagesService {
       districtName,
       sentAt: new Date(),
     });
+  }
+
+  // ─── Chat summary ────────────────────────────────────────────────────────
+
+  /**
+   * Returns tasks with chat activity for the calling user, ordered by
+   * unread count DESC then last-message timestamp DESC.
+   * Supervisors see tasks they created; PHIs see tasks assigned to them;
+   * admins see all tasks.
+   */
+  async getChatSummary(
+    userId: string,
+    role: UserRole,
+    query: ChatSummaryQueryDto,
+  ): Promise<ChatSummaryResponseDto> {
+    const limit = query.limit ?? 30;
+    const offset = query.offset ?? 0;
+
+    // ── 1. Fetch tasks the user participates in ──────────────────────────────
+    const taskQb = this.taskRepository
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.district', 'd')
+      .leftJoinAndSelect('t.assignedPhi', 'phi')
+      .leftJoinAndSelect('t.createdBy', 'creator');
+
+    if (role === UserRole.PHI) {
+      taskQb.where('t.assigned_phi_id = :userId', { userId });
+    } else if (role === UserRole.SUPERVISOR) {
+      taskQb.where('t.created_by_id = :userId', { userId });
+    }
+    // ADMIN — no where clause, sees all tasks
+
+    if (query.search?.trim()) {
+      taskQb.andWhere('t.title ILIKE :search', {
+        search: `%${query.search.trim()}%`,
+      });
+    }
+
+    if (query.status?.trim()) {
+      const statuses = query.status
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (statuses.length > 0) {
+        taskQb.andWhere('t.status IN (:...statuses)', { statuses });
+      }
+    }
+
+    const allTasks = await taskQb.getMany();
+
+    if (allTasks.length === 0) {
+      return { items: [], total: 0 };
+    }
+
+    const taskIds = allTasks.map((t) => t.id);
+
+    // ── 2. Last message per task via DISTINCT ON (single round-trip) ─────────
+    type LastMsgRow = {
+      task_id: string;
+      content: string;
+      is_system_message: boolean;
+      created_at: Date;
+      sender_name: string;
+    };
+
+    const lastMsgRows: LastMsgRow[] =
+      await this.messageRepository.manager.query(
+        `SELECT DISTINCT ON (tm.task_id)
+           tm.task_id,
+           tm.content,
+           tm.is_system_message,
+           tm.created_at,
+           u.name AS sender_name
+         FROM task_messages tm
+         LEFT JOIN users u ON u.id = tm.sender_id
+         WHERE tm.task_id = ANY($1)
+         ORDER BY tm.task_id, tm.created_at DESC`,
+        [taskIds],
+      );
+
+    const lastMsgMap = new Map(lastMsgRows.map((r) => [r.task_id, r]));
+
+    // ── 3. Unread counts via Redis-backed batch fetch ─────────────────────────
+    const taskIdsWithMessages = lastMsgRows.map((r) => r.task_id);
+    const unreadCounts =
+      taskIdsWithMessages.length > 0
+        ? await this.getUnreadCountsForUser(userId, taskIdsWithMessages)
+        : {};
+
+    // ── 4. Build items — only tasks that have at least one message ────────────
+    const items: ChatSummaryItemDto[] = allTasks
+      .filter((t) => lastMsgMap.has(t.id))
+      .map((t) => {
+        const lm = lastMsgMap.get(t.id)!;
+        const rawContent = lm.content ?? '';
+        return {
+          taskId: t.id,
+          title: t.title,
+          status: t.status,
+          priority: t.priority,
+          type: t.type,
+          district: t.district?.name ?? '',
+          assignedPhi: t.assignedPhi
+            ? { id: t.assignedPhi.id, name: t.assignedPhi.name }
+            : null,
+          createdBy: { id: t.createdBy.id, name: t.createdBy.name },
+          lastMessage: {
+            content:
+              rawContent.length > 120
+                ? rawContent.slice(0, 120) + '…'
+                : rawContent,
+            senderName: lm.sender_name ?? 'System',
+            sentAt:
+              lm.created_at instanceof Date
+                ? lm.created_at.toISOString()
+                : String(lm.created_at),
+            isSystemMessage: lm.is_system_message,
+          },
+          unreadCount: unreadCounts[t.id] ?? 0,
+          hasMessages: true,
+        };
+      });
+
+    // ── 5. Sort: highest unread first, then most-recent message first ─────────
+    items.sort((a, b) => {
+      if (b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
+      const aTime = a.lastMessage
+        ? new Date(a.lastMessage.sentAt).getTime()
+        : 0;
+      const bTime = b.lastMessage
+        ? new Date(b.lastMessage.sentAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
+
+    const total = items.length;
+    return { items: items.slice(offset, offset + limit), total };
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────

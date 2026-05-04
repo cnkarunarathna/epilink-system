@@ -159,6 +159,51 @@ export async function toggleReaction(
   return res.data;
 }
 
+// ─── Chat Summary ─────────────────────────────────────────────────────────────
+
+export interface LastMessageInfo {
+  content: string;
+  senderName: string;
+  sentAt: string;
+  isSystemMessage: boolean;
+}
+
+export interface ChatSummaryItemDto {
+  taskId: string;
+  title: string;
+  status: string;
+  priority: string;
+  type: string;
+  district: string;
+  assignedPhi: { id: string; name: string } | null;
+  createdBy: { id: string; name: string };
+  lastMessage: LastMessageInfo | null;
+  unreadCount: number;
+  hasMessages: boolean;
+}
+
+export interface ChatSummaryResponseDto {
+  items: ChatSummaryItemDto[];
+  total: number;
+}
+
+export interface ChatSummaryParams {
+  status?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchChatSummary(
+  params?: ChatSummaryParams,
+): Promise<ChatSummaryResponseDto> {
+  const res = await axios.get<ChatSummaryResponseDto>(
+    `${API_BASE}/tasks/chat-summary`,
+    { params, withCredentials: true },
+  );
+  return res.data;
+}
+
 // ─── 6.5 Supervisor Broadcast ─────────────────────────────────────────────────
 
 export async function broadcastToDistrict(
