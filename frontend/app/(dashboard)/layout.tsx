@@ -662,10 +662,10 @@ export default function DashboardLayout({
             initial={false}
             animate={{ paddingLeft: mounted ? sidebarWidth : EXPANDED_WIDTH }}
             transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-            className="hidden md:block min-h-screen"
+            className="hidden md:flex md:flex-col min-h-screen"
           >
             {/* Header */}
-            <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16">
+            <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16 shrink-0">
               <div className="flex h-full items-center gap-4 px-5">
                 {/* Role badge */}
                 <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-semibold">
@@ -694,10 +694,11 @@ export default function DashboardLayout({
             </header>
 
             {/* Page content */}
-            <main className="p-4 sm:p-6">
+            <main className="flex-1 min-h-0 overflow-auto p-4 sm:p-6">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={pathname}
+                  className="h-full"
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}

@@ -8,6 +8,7 @@ import React, {
   useMemo,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import {
   MessageSquare,
   MessageSquareDashed,
@@ -167,8 +168,11 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
           setItems((prev) => [...prev, ...res.items]);
         }
         setTotal(res.total);
-      } catch {
-        // silently fail; stale list is acceptable
+      } catch (err) {
+        console.error("[AllChatsPage] fetchChatSummary failed:", err);
+        if (reset) {
+          toast.error("Failed to load conversations. Please refresh.");
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
