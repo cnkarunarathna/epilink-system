@@ -2,13 +2,10 @@
 
 import React from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2, Wind, Eye, Search } from "lucide-react";
+import { Trash2, Wind, Eye, Search, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatSummaryItemDto } from "@/services/chat.service";
-import {
-  getStatusColor,
-  getPriorityColor,
-} from "@/services/tasks.service";
+import { getStatusColor, getPriorityColor } from "@/services/tasks.service";
 import { Badge } from "@/components/ui/badge";
 
 interface TaskChatListItemProps {
@@ -53,88 +50,91 @@ export const TaskChatListItem = React.forwardRef<
       ref={ref}
       onClick={onClick}
       className={cn(
-        "w-full text-left px-3 py-3 flex items-start gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        "group relative w-full overflow-hidden rounded-2xl border px-3 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         isSelected
-          ? "bg-primary/10 border border-primary/20"
+          ? "border-primary/25 bg-primary/10 shadow-sm shadow-primary/5"
           : isFocused
-            ? "bg-muted border border-primary/30"
-            : "hover:bg-muted/60 border border-transparent",
+            ? "border-primary/30 bg-muted/70 shadow-sm"
+            : "border-border/60 bg-background/70 hover:-translate-y-px hover:border-border hover:bg-muted/50 hover:shadow-sm",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
-      {/* Status dot */}
-      <span
-        className={cn(
-          "mt-1 h-2 w-2 shrink-0 rounded-full",
-          STATUS_DOT[item.status] ?? "bg-gray-400",
-        )}
-        aria-label={item.status}
-      />
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-background",
+            STATUS_DOT[item.status] ?? "bg-gray-400",
+          )}
+          aria-label={item.status}
+        />
 
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        {/* Title row */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={cn(
-              "text-sm truncate flex-1",
-              hasUnread
-                ? "font-semibold text-foreground"
-                : "font-medium text-foreground/80",
-            )}
-          >
-            {item.title}
-          </span>
-          {timeAgo && (
-            <span className="text-[11px] text-muted-foreground shrink-0">
-              {timeAgo}
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-start gap-2">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm leading-5",
+                hasUnread
+                  ? "font-semibold text-foreground"
+                  : "font-medium text-foreground/85",
+              )}
+            >
+              {item.title}
             </span>
-          )}
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              {timeAgo && (
+                <span className="text-[11px] text-muted-foreground">
+                  {timeAgo}
+                </span>
+              )}
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </div>
+
+          <p className="line-clamp-1 text-xs leading-5 text-muted-foreground">
+            {item.lastMessage
+              ? item.lastMessage.isSystemMessage
+                ? item.lastMessage.content
+                : `${item.lastMessage.senderName}: ${item.lastMessage.content}`
+              : "No messages yet"}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {TypeIcon && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <TypeIcon className="h-3 w-3 shrink-0" />
+                {item.type}
+              </span>
+            )}
+            <Badge
+              className={cn(
+                "h-5 rounded-full px-2 text-[10px] font-medium capitalize",
+                getStatusColor(
+                  item.status as Parameters<typeof getStatusColor>[0],
+                ),
+              )}
+            >
+              {item.status.replace("_", " ")}
+            </Badge>
+            <span
+              className={cn(
+                "text-[10px] font-medium capitalize",
+                getPriorityColor(
+                  item.priority as Parameters<typeof getPriorityColor>[0],
+                ),
+              )}
+            >
+              {item.priority}
+            </span>
+          </div>
         </div>
 
-        {/* Last message preview */}
-        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-          {item.lastMessage
-            ? item.lastMessage.isSystemMessage
-              ? item.lastMessage.content
-              : `${item.lastMessage.senderName}: ${item.lastMessage.content}`
-            : "No messages yet"}
-        </p>
-
-        {/* Badges row */}
-        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-          {TypeIcon && (
-            <TypeIcon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-          )}
-          <Badge
-            className={cn(
-              "text-[10px] px-1.5 py-0 h-4 font-normal capitalize",
-              getStatusColor(
-                item.status as Parameters<typeof getStatusColor>[0],
-              ),
-            )}
-          >
-            {item.status.replace("_", " ")}
-          </Badge>
-          <span
-            className={cn(
-              "text-[10px] font-medium capitalize",
-              getPriorityColor(
-                item.priority as Parameters<typeof getPriorityColor>[0],
-              ),
-            )}
-          >
-            {item.priority}
+        {hasUnread && (
+          <span className="ml-1 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground shadow-sm">
+            {item.unreadCount > 99 ? "99+" : item.unreadCount}
           </span>
-        </div>
+        )}
       </div>
-
-      {/* Unread pill */}
-      {hasUnread && (
-        <span className="mt-0.5 shrink-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
-          {item.unreadCount > 99 ? "99+" : item.unreadCount}
-        </span>
-      )}
     </button>
   );
 });

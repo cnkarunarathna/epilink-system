@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -34,6 +35,7 @@ import {
   ChatSummaryItemDto,
   MessageResponseDto,
 } from "@/services/chat.service";
+import { getPriorityColor, getStatusColor } from "@/services/tasks.service";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useSocketEvent } from "@/hooks/useSocket";
 import { ChatPanel } from "./ChatPanel";
@@ -67,7 +69,7 @@ function ListSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="flex items-start gap-3 rounded-lg px-3 py-3 animate-pulse"
+          className="flex items-start gap-3 rounded-2xl border border-border/50 bg-background/70 px-3 py-3 animate-pulse shadow-sm"
         >
           <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/20 shrink-0" />
           <div className="flex-1 space-y-2">
@@ -85,18 +87,22 @@ function ListSkeleton() {
 
 function EmptyList({ role }: { role: AllChatsPageProps["role"] }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground h-full">
-      <MessageSquareDashed className="h-10 w-10 opacity-30" />
-      <div>
-        <p className="font-medium text-sm text-foreground">No conversations yet</p>
-        <p className="text-xs mt-1">
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/30 shadow-inner">
+        <MessageSquareDashed className="h-7 w-7 opacity-40" />
+      </div>
+      <div className="max-w-sm space-y-1">
+        <p className="text-sm font-semibold text-foreground">
+          No conversations yet
+        </p>
+        <p className="text-xs leading-5">
           Conversations appear here once messaging starts on a task.
         </p>
       </div>
       {role === "supervisor" && (
         <a
           href="/supervisor/tasks"
-          className="mt-1 text-xs text-primary hover:underline"
+          className="mt-2 inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
         >
           Go to Tasks
         </a>
@@ -105,11 +111,47 @@ function EmptyList({ role }: { role: AllChatsPageProps["role"] }) {
   );
 }
 
+function EmptyFilteredList({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/30 shadow-inner">
+        <Filter className="h-6 w-6 opacity-45" />
+      </div>
+      <div className="max-w-sm space-y-1">
+        <p className="text-sm font-semibold text-foreground">
+          No matching conversations
+        </p>
+        <p className="text-xs leading-5">
+          Adjust the search or filters to surface conversations again.
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="rounded-full"
+        onClick={onReset}
+      >
+        Reset filters
+      </Button>
+    </div>
+  );
+}
+
 function EmptySelection() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 h-full text-muted-foreground">
-      <MessageSquare className="h-12 w-12 opacity-20" />
-      <p className="text-sm">Select a conversation to start chatting</p>
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/25 shadow-inner">
+        <MessageSquare className="h-8 w-8 opacity-30" />
+      </div>
+      <div className="max-w-sm space-y-1">
+        <p className="text-sm font-semibold text-foreground">
+          Select a conversation to start chatting
+        </p>
+        <p className="text-xs leading-5">
+          Choose a task on the left to review its message history and continue
+          the thread.
+        </p>
+      </div>
     </div>
   );
 }
@@ -119,7 +161,8 @@ function EmptySelection() {
 export function AllChatsPage({ role }: AllChatsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { clearCount } = useUnread();
+  const { clearCount, totalUnread } = useUnread();
+  const urlTaskId = searchParams.get("task");
 
   // ─── State ───────────────────────────────────────────────────────────────
 
@@ -127,26 +170,36 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(0);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
-    searchParams.get("task"),
+    urlTaskId,
   );
   const [mobileView, setMobileView] = useState<MobileView>(
-    searchParams.get("task") ? "chat" : "list",
+    urlTaskId ? "chat" : "list",
   );
   const [kbIdx, setKbIdx] = useState(-1);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
 
   const fetchItems = useCallback(
-    async (opts: { reset?: boolean; searchVal?: string; statuses?: string[] } = {}) => {
-      const { reset = false, searchVal = search, statuses = statusFilter } = opts;
-      const offset = reset ? 0 : page * PAGE_SIZE;
+    async (
+      opts: {
+        reset?: boolean;
+        searchVal?: string;
+        statuses?: string[];
+        offset?: number;
+      } = {},
+    ) => {
+      const {
+        reset = false,
+        searchVal = search,
+        statuses = statusFilter,
+      } = opts;
+      const offset = opts.offset ?? (reset ? 0 : items.length);
 
       if (reset) {
         setLoading(true);
@@ -163,7 +216,6 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         });
         if (reset) {
           setItems(res.items);
-          setPage(0);
         } else {
           setItems((prev) => [...prev, ...res.items]);
         }
@@ -178,7 +230,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         setLoadingMore(false);
       }
     },
-    [search, statusFilter, page],
+    [items.length, search, statusFilter],
   );
 
   // Initial load
@@ -186,6 +238,11 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     fetchItems({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setSelectedTaskId(urlTaskId);
+    setMobileView(urlTaskId ? "chat" : "list");
+  }, [urlTaskId]);
 
   // ─── Refs ─────────────────────────────────────────────────────────────────
 
@@ -214,6 +271,14 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     fetchItems({ reset: true, searchVal: search, statuses: next });
   };
 
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setStatusFilter([]);
+    setUnreadOnly(false);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    fetchItems({ reset: true, searchVal: "", statuses: [] });
+  }, [fetchItems]);
+
   // ─── Task selection ───────────────────────────────────────────────────────
 
   const selectTask = useCallback(
@@ -234,7 +299,10 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   );
 
   const goBackToList = () => {
+    setSelectedTaskId(null);
     setMobileView("list");
+    setKbIdx(-1);
+    router.replace(`/${role}/chats`, { scroll: false });
   };
 
   // ─── Keyboard navigation ──────────────────────────────────────────────────
@@ -324,9 +392,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   const hasMore = items.length < total;
 
   const loadMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchItems({ reset: false });
+    fetchItems({ reset: false, offset: items.length });
   };
 
   // ─── Filtered view (unread-only client-side filter) ───────────────────────
@@ -335,6 +401,9 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     () => (unreadOnly ? items.filter((it) => it.unreadCount > 0) : items),
     [items, unreadOnly],
   );
+
+  const hasActiveFilters =
+    search.trim().length > 0 || statusFilter.length > 0 || unreadOnly;
 
   // ─── Keyboard handler (needs displayedItems, defined after useMemo) ─────────
 
@@ -355,6 +424,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         }
       } else if (e.key === "Escape") {
         setSelectedTaskId(null);
+        setMobileView("list");
         setKbIdx(-1);
         router.replace(`/${role}/chats`, { scroll: false });
       }
@@ -369,10 +439,9 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
     ? `/${role}/tasks/${selectedTaskId}`
     : null;
 
-  const isReadOnly =
-    selectedItem
-      ? ["completed", "rejected", "cancelled"].includes(selectedItem.status)
-      : false;
+  const isReadOnly = selectedItem
+    ? ["completed", "rejected", "cancelled"].includes(selectedItem.status)
+    : false;
 
   const hasAssignedPhi = selectedItem
     ? selectedItem.assignedPhi !== null
@@ -381,147 +450,186 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 border-b px-4 py-3 shrink-0">
-        {/* Mobile back button */}
-        {mobileView === "chat" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden shrink-0"
-            onClick={goBackToList}
-            aria-label="Back to chats list"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-        )}
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-4xl bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)/0.60),transparent_32%)]">
+      <div className="rounded-4xl border border-border/70 bg-card/85 px-4 py-4 shadow-sm backdrop-blur-xl md:px-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl space-y-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
+              <span className="h-2 w-2 rounded-full bg-primary/70" />
+              Conversation Hub
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              All Chats
+            </h1>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+              Review task conversations in one place, with unread threads
+              prioritized and the most recent activity surfaced first.
+            </p>
+          </div>
 
-        <h1 className="text-lg font-semibold leading-none shrink-0">
-          All Chats
-        </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="gap-1 rounded-full px-3 py-1 text-xs font-medium"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {items.length} loaded
+            </Badge>
+            <Badge
+              variant="secondary"
+              className="gap-1 rounded-full px-3 py-1 text-xs font-medium"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              {totalUnread} unread
+            </Badge>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
+                onClick={resetFilters}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </div>
 
-        <div className="flex-1 flex items-center gap-2">
-          {/* Search */}
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div className="relative w-full lg:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search conversations…"
-              className="pl-8 h-8 text-sm"
+              className="h-10 rounded-full border-border/70 bg-background/80 pl-9 text-sm shadow-sm"
             />
           </div>
 
-          {/* Status filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5">
-                <Filter className="h-3.5 w-3.5" />
-                {statusFilter.length > 0
-                  ? `Status (${statusFilter.length})`
-                  : "Status"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuLabel className="text-xs">
-                Filter by status
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={statusFilter.includes(opt.value)}
-                  onCheckedChange={() => handleStatusToggle(opt.value)}
-                  className="text-sm"
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 gap-1.5 rounded-full px-4"
                 >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <Filter className="h-3.5 w-3.5" />
+                  {statusFilter.length > 0
+                    ? `Status (${statusFilter.length})`
+                    : "Status"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuLabel className="text-xs">
+                  Filter by status
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {STATUS_OPTIONS.map((opt) => (
+                  <DropdownMenuCheckboxItem
+                    key={opt.value}
+                    checked={statusFilter.includes(opt.value)}
+                    onCheckedChange={() => handleStatusToggle(opt.value)}
+                    className="text-sm"
+                  >
+                    {opt.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* Unread-only toggle */}
-          <Button
-            variant={unreadOnly ? "default" : "outline"}
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setUnreadOnly((v) => !v)}
-          >
-            Unread only
-          </Button>
+            <Button
+              variant={unreadOnly ? "default" : "outline"}
+              size="sm"
+              className="h-10 rounded-full px-4 text-xs"
+              onClick={() => setUnreadOnly((v) => !v)}
+            >
+              Unread only
+            </Button>
+
+            {taskDetailHref && (
+              <a
+                href={taskDetailHref}
+                className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-4 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted lg:inline-flex"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open task
+              </a>
+            )}
+          </div>
         </div>
-
-        {/* Jump to task (desktop, only when task selected) */}
-        {taskDetailHref && (
-          <a
-            href={taskDetailHref}
-            className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Task detail
-          </a>
-        )}
       </div>
 
-      {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left panel — task list */}
+      <div className="grid min-h-0 flex-1 gap-4 grid-rows-1 md:grid-rows-2 lg:grid-rows-1 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
         <aside
           tabIndex={0}
           onKeyDown={handleListKeyDown}
           className={cn(
-            "flex flex-col border-r bg-sidebar overflow-hidden shrink-0 focus:outline-none",
-            "w-full md:w-80 lg:w-96",
-            // Mobile: hide list panel when viewing chat
+            "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl focus:outline-none",
             mobileView === "chat" ? "hidden md:flex" : "flex",
           )}
         >
-          {/* Unread filter chip row */}
-          <div className="px-2 pt-2 pb-1 shrink-0 text-xs text-muted-foreground">
-            {loading ? null : (
-              <span>
-                {displayedItems.length} conversation
-                {displayedItems.length !== 1 ? "s" : ""}
-                {unreadOnly ? " with unread messages" : ""}
-              </span>
-            )}
+          <div className="sticky top-0 z-10 border-b border-border/70 bg-card/95 px-4 py-4 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Conversations
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {loading
+                    ? "Loading conversations"
+                    : `${displayedItems.length} conversation${displayedItems.length !== 1 ? "s" : ""}${unreadOnly ? " with unread messages" : ""}`}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className="rounded-full px-2.5 py-0 text-[10px] font-medium uppercase tracking-[0.18em]"
+              >
+                {unreadOnly ? "Unread" : "All"}
+              </Badge>
+            </div>
           </div>
 
-          {/* List */}
-          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-thin scrollbar-thumb-border/60 scrollbar-track-transparent">
             {loading ? (
               <ListSkeleton />
             ) : displayedItems.length === 0 ? (
-              <EmptyList role={role} />
+              hasActiveFilters ? (
+                <EmptyFilteredList onReset={resetFilters} />
+              ) : (
+                <EmptyList role={role} />
+              )
             ) : (
               <>
-                {displayedItems.map((item, idx) => (
-                  <TaskChatListItem
-                    key={item.taskId}
-                    ref={(el) => { itemRefs.current[idx] = el; }}
-                    item={item}
-                    isSelected={selectedTaskId === item.taskId}
-                    isFocused={kbIdx === idx}
-                    onClick={() => selectTask(item.taskId)}
-                  />
-                ))}
+                <div className="space-y-2">
+                  {displayedItems.map((item, idx) => (
+                    <TaskChatListItem
+                      key={item.taskId}
+                      ref={(el) => {
+                        itemRefs.current[idx] = el;
+                      }}
+                      item={item}
+                      isSelected={selectedTaskId === item.taskId}
+                      isFocused={kbIdx === idx}
+                      onClick={() => selectTask(item.taskId)}
+                    />
+                  ))}
+                </div>
 
-                {/* Load more */}
                 {hasMore && !unreadOnly && (
-                  <div className="flex justify-center pt-2 pb-1">
+                  <div className="flex justify-center py-4">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={loadMore}
                       disabled={loadingMore}
-                      className="text-xs"
+                      className="rounded-full px-4 text-xs shadow-sm"
                     >
                       {loadingMore ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                       ) : null}
-                      Load more
+                      Load older conversations
                     </Button>
                   </div>
                 )}
@@ -530,25 +638,85 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
           </div>
         </aside>
 
-        {/* Right panel — chat */}
         <section
           className={cn(
-            "flex flex-col flex-1 min-w-0 overflow-hidden",
-            // Mobile: hide chat panel when viewing list
+            "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl",
             mobileView === "list" ? "hidden md:flex" : "flex",
           )}
         >
           {selectedTaskId ? (
-            <div className="flex flex-col h-full">
-              {/* Mobile: task detail link inside chat header area */}
-              {taskDetailHref && (
-                <div className="md:hidden flex items-center justify-end px-3 py-1.5 border-b text-xs shrink-0">
+            <div key={selectedTaskId} className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-150">
+              <div className="flex items-start justify-between gap-4 border-b border-border/70 bg-background/70 px-4 py-4">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden h-8 w-8 shrink-0 rounded-full"
+                      onClick={goBackToList}
+                      aria-label="Back to conversations"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <h2 className="truncate text-base font-semibold text-foreground md:text-lg">
+                      {selectedItem?.title ?? "Conversation"}
+                    </h2>
+                    {selectedItem && (
+                      <Badge
+                        className={cn(
+                          "rounded-full px-2.5 py-0 text-[10px] font-medium capitalize",
+                          getStatusColor(
+                            selectedItem.status as Parameters<
+                              typeof getStatusColor
+                            >[0],
+                          ),
+                        )}
+                      >
+                        {selectedItem.status.replace("_", " ")}
+                      </Badge>
+                    )}
+                    {selectedItem && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-full px-2.5 py-0 text-[10px] font-medium capitalize",
+                          getPriorityColor(
+                            selectedItem.priority as Parameters<
+                              typeof getPriorityColor
+                            >[0],
+                          ),
+                        )}
+                      >
+                        {selectedItem.priority}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedItem
+                      ? `${selectedItem.district} · ${selectedItem.createdBy.name}${selectedItem.assignedPhi ? ` · ${selectedItem.assignedPhi.name}` : ""}`
+                      : "Selected task conversation"}
+                  </p>
+                </div>
+
+                {taskDetailHref && (
                   <a
                     href={taskDetailHref}
-                    className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background px-3 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View task
+                  </a>
+                )}
+              </div>
+
+              {taskDetailHref && (
+                <div className="border-b border-border/70 bg-muted/30 px-4 py-2 text-xs md:hidden">
+                  <a
+                    href={taskDetailHref}
+                    className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ExternalLink className="h-3 w-3" />
-                    View task detail
+                    Open full task details
                   </a>
                 </div>
               )}
@@ -558,7 +726,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
                 visible={true}
                 hasAssignedPhi={hasAssignedPhi}
                 readOnly={isReadOnly}
-                className="flex-1 rounded-none border-0 min-h-0"
+                className="min-h-0 flex-1 rounded-none border-0 bg-transparent shadow-none"
               />
             </div>
           ) : (
