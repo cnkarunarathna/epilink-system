@@ -6,18 +6,18 @@
 
 The codebase is already split into deployable units:
 
-| Service           | Runtime                | Port | Primary role                        | GCP target                                   |
-| ----------------- | ---------------------- | ---: | ----------------------------------- | -------------------------------------------- |
-| Frontend          | Next.js / Node 24      | 3000 | Public web UI                       | Cloud Run                                    |
-| Backend           | NestJS / Node 24       | 3001 | API gateway, auth, tasks, analytics | Cloud Run                                    |
-| ML model          | FastAPI / Python 3.12  | 8000 | Weekly dengue prediction            | GitHub Actions scheduled job (already done)  |
-| Explain-analytics | FastAPI / Python 3.12  | 8010 | XAI / RAG insights                  | Cloud Run                                    |
-| Chatbot-service   | FastAPI / Python 3.12  | 8000 | EpiBot chatbot (RAG)                | Cloud Run                                    |
-| Route-optimizer   | FastAPI / Python 3.12  | 8001 | PHI route optimization              | Cloud Run                                    |
-| PostgreSQL        | Managed DB             | 5432 | Core persistence                    | **Heroku Postgres (keep as-is)**             |
-| Redis             | Cache / pub-sub        | 6379 | Socket.IO adapter, BullMQ, sessions | Compute Engine VM                            |
-| Qdrant            | Vector database        | 6333 | RAG retrieval (chatbot + explain)   | Compute Engine VM with persistent disk       |
-| OSRM              | Routing engine         | 5000 | Road network distance matrix        | Same VM as Qdrant/Redis                      |
+| Service           | Runtime               | Port | Primary role                        | GCP target                                  |
+| ----------------- | --------------------- | ---: | ----------------------------------- | ------------------------------------------- |
+| Frontend          | Next.js / Node 24     | 3000 | Public web UI                       | Cloud Run                                   |
+| Backend           | NestJS / Node 24      | 3001 | API gateway, auth, tasks, analytics | Cloud Run                                   |
+| ML model          | FastAPI / Python 3.12 | 8000 | Weekly dengue prediction            | GitHub Actions scheduled job (already done) |
+| Explain-analytics | FastAPI / Python 3.12 | 8010 | XAI / RAG insights                  | Cloud Run                                   |
+| Chatbot-service   | FastAPI / Python 3.12 | 8000 | EpiBot chatbot (RAG)                | Cloud Run                                   |
+| Route-optimizer   | FastAPI / Python 3.12 | 8001 | PHI route optimization              | Cloud Run                                   |
+| PostgreSQL        | Managed DB            | 5432 | Core persistence                    | **Heroku Postgres (keep as-is)**            |
+| Redis             | Cache / pub-sub       | 6379 | Socket.IO adapter, BullMQ, sessions | Compute Engine VM                           |
+| Qdrant            | Vector database       | 6333 | RAG retrieval (chatbot + explain)   | Compute Engine VM with persistent disk      |
+| OSRM              | Routing engine        | 5000 | Road network distance matrix        | Same VM as Qdrant/Redis                     |
 
 Lowest-risk, lowest-cost split:
 
@@ -63,16 +63,16 @@ Internet
 
 ### 3.2 GCP resources to provision
 
-| Resource                          | Notes                                                              |
-| --------------------------------- | ------------------------------------------------------------------ |
-| One GCP project                   | Everything goes in here                                            |
-| Region: `asia-south1`             | Closest to Sri Lanka, lower latency                                |
-| Artifact Registry repo            | One repo, all images                                               |
-| Compute Engine VM: `e2-standard-2`| 2 vCPU, 8 GB RAM — runs Redis + Qdrant + OSRM via Docker Compose  |
-| Persistent disk (50 GB SSD)       | Attached to VM, holds Qdrant data + OSRM data files                |
-| Cloud Storage bucket              | For future evidence uploads if you add a GCS adapter              |
-| Secret Manager secret set         | All env vars injected at Cloud Run deploy time                     |
-| VPC connector (optional but cheap)| Allows Cloud Run → VM private IP without public internet           |
+| Resource                           | Notes                                                            |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| One GCP project                    | Everything goes in here                                          |
+| Region: `asia-south1`              | Closest to Sri Lanka, lower latency                              |
+| Artifact Registry repo             | One repo, all images                                             |
+| Compute Engine VM: `e2-standard-2` | 2 vCPU, 8 GB RAM — runs Redis + Qdrant + OSRM via Docker Compose |
+| Persistent disk (50 GB SSD)        | Attached to VM, holds Qdrant data + OSRM data files              |
+| Cloud Storage bucket               | For future evidence uploads if you add a GCS adapter             |
+| Secret Manager secret set          | All env vars injected at Cloud Run deploy time                   |
+| VPC connector (optional but cheap) | Allows Cloud Run → VM private IP without public internet         |
 
 **Why `e2-standard-2` and not `e2-medium`**: OSRM for Sri Lanka after preprocessing holds the graph in RAM. A full country file typically needs 1–3 GB. Qdrant needs additional RAM for vector indices. 8 GB gives safe headroom for both.
 
@@ -83,6 +83,7 @@ Internet
 Purpose: prove every service container starts cleanly before spending anything.
 
 Checklist:
+
 - [ ] `docker compose up` works for the full stack.
 - [ ] Every service health endpoint returns 200: `/health` on backend, all Python services.
 - [ ] Backend connects to Heroku Postgres, runs migrations, and responds to `GET /health`.
@@ -147,6 +148,7 @@ Exit criteria: CI fails fast on any test, build, or import regression across all
 Purpose: publish versioned images to GCP so deploys are immutable and traceable.
 
 Prerequisites:
+
 - GCP project created, billing enabled.
 - `asia-south1` Artifact Registry repository created: `asia-south1-docker.pkg.dev/PROJECT_ID/epilink`.
 - GitHub repository secret `GCP_PROJECT_ID` added.
@@ -183,65 +185,39 @@ Repeat the build-push step for each of the five deployable services. Use a matri
 
 Exit criteria: `sha-<gitsha>` tags exist in Artifact Registry for every service after each main push.
 
-### Phase 3: Provision the VM for stateful services
+### Phase 3: Provision the VM for stateful services ✅ COMPLETE
 
 Purpose: get Redis, Qdrant, and OSRM running on a persistent VM before the Cloud Run services try to connect.
 
-Steps:
+**Status: ✅ Completed**
 
-1. Create a `e2-standard-2` VM in `asia-south1-a` with a 50 GB SSD persistent disk.
-2. SSH into the VM, install Docker and Docker Compose.
-3. Copy the processed OSRM data to the persistent disk:
-   ```
-   # From your local machine
-   gcloud compute scp -r osrm-data/ VM_NAME:/mnt/data/osrm-data/ --zone=asia-south1-a
-   ```
-4. Create `/opt/epilink/docker-compose.yml` on the VM with only the infra services (Redis, Qdrant, OSRM):
-   ```yaml
-   services:
-     redis:
-       image: redis:8-alpine
-       restart: unless-stopped
-       command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
-       volumes: [redisdata:/data]
+- VM: `e2-standard-2` in `asia-south1-a` with 50 GB SSD persistent disk
+- Redis: running on port 6379 (password-protected)
+- Qdrant: running on ports 6333/6334, healthz check passing
+- OSRM: running on port 5000, data loaded (705 MB)
+- **VM internal IP: `10.160.0.2`** ← use this for all Cloud Run service configurations
 
-     qdrant:
-       image: qdrant/qdrant:latest
-       restart: unless-stopped
-       ports: ["6333:6333", "6334:6334"]
-       volumes: [/mnt/data/qdrant:/qdrant/storage]
-       healthcheck:
-         test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
-         interval: 30s
-         timeout: 5s
-         retries: 3
-
-     osrm:
-       image: osrm/osrm-backend:latest
-       platform: linux/amd64
-       restart: unless-stopped
-       volumes: [/mnt/data/osrm-data:/data]
-       command: osrm-routed --algorithm mld /data/sri-lanka-latest.osrm
-       ports: ["5000:5000"]
-
-   volumes:
-     redisdata:
-   ```
-5. Start: `docker compose up -d`.
-6. Note the VM's internal IP address. All Cloud Run services will reference this IP.
-7. Open firewall rules for ports 6333, 6379, 5000 — but scope them to the Cloud Run service account IP range or use a VPC connector.
-
-Exit criteria: `curl http://VM_INTERNAL_IP:6333/healthz` returns 200 from a test Cloud Run job.
+Exit criteria: ✅ All services healthy and responding to requests
 
 ### Phase 4: Deploy stateless services to Cloud Run
 
 Purpose: get the visible product running in the cloud.
 
+**VM connectivity info for all Cloud Run services:**
+
+```
+REDIS_HOST=10.160.0.2
+REDIS_PORT=6379
+REDIS_PASSWORD=ZytgpWDhcFeosIzeheccQsRj4Sq1BOqx
+QDRANT_URL=http://10.160.0.2:6333
+OSRM_BASE_URL=http://10.160.0.2:5000
+```
+
 Deployment order (each depends on the previous being healthy):
 
 1. **route-optimizer** — no external dependencies beyond its own container.
-2. **explain-analytics** — depends on Qdrant and Redis (VM must be up first).
-3. **chatbot-service** — depends on Qdrant (VM must be up first).
+2. **explain-analytics** — depends on Qdrant and Redis (VM must be up first). ✅
+3. **chatbot-service** — depends on Qdrant (VM must be up first). ✅
 4. **backend** — depends on Heroku Postgres, Redis, and all three services above.
 5. **frontend** — depends on backend.
 
@@ -265,6 +241,7 @@ Service-specific notes:
 - **frontend**: `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_SOCKET_URL` must point to the deployed backend Cloud Run URL. These are build-time vars — the image must be rebuilt with the correct URLs, or use runtime environment injection via `/api` rewrites.
 
 Exit criteria:
+
 - `curl https://FRONTEND_URL` renders the dashboard.
 - `curl https://BACKEND_URL/health` returns all services healthy.
 - EpiBot chatbot responds to a question.
@@ -330,6 +307,7 @@ Rollback is always: redeploy the previous `sha-<gitsha>` tag from Artifact Regis
 Purpose: remove all plaintext secrets from environment and lock down access.
 
 Deliverables:
+
 - Every secret listed in Section 7 is stored in Secret Manager.
 - Cloud Run services use `--set-secrets ENV_VAR=secret-name:latest` — no secrets in workflow files.
 - `.env` files removed from version control (add to `.gitignore` if not already).
@@ -344,11 +322,11 @@ Deliverables:
 
 ### 5.1 Workflow files
 
-| File                               | Trigger                  | Purpose                                    |
-| ---------------------------------- | ------------------------ | ------------------------------------------ |
-| `.github/workflows/ci.yml`         | push + PR to any branch  | Test, build, verify all services           |
-| `.github/workflows/deploy.yml`     | push to `main` (new)     | Build images, push to AR, deploy Cloud Run |
-| `.github/workflows/weekly-forecast.yml` | cron Monday 02:00 UTC | Already done — ML predictions to Heroku DB |
+| File                                    | Trigger                 | Purpose                                    |
+| --------------------------------------- | ----------------------- | ------------------------------------------ |
+| `.github/workflows/ci.yml`              | push + PR to any branch | Test, build, verify all services           |
+| `.github/workflows/deploy.yml`          | push to `main` (new)    | Build images, push to AR, deploy Cloud Run |
+| `.github/workflows/weekly-forecast.yml` | cron Monday 02:00 UTC   | Already done — ML predictions to Heroku DB |
 
 ### 5.2 CI workflow job graph
 
@@ -398,6 +376,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ```
 
 Add to GitHub repository secrets:
+
 - `WIF_PROVIDER`: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider`
 - `WIF_SERVICE_ACCOUNT`: `github-deployer@PROJECT_ID.iam.gserviceaccount.com`
 - `GCP_PROJECT_ID`: your project ID
@@ -406,18 +385,19 @@ Add to GitHub repository secrets:
 
 Since Heroku Postgres is already paid for outside GCP, the full $300 stays within GCP.
 
-| Resource                   | Estimated monthly cost | Notes                                   |
-| -------------------------- | ---------------------- | --------------------------------------- |
-| Compute Engine e2-standard-2 | $50–60              | Run 24/7 during demo period             |
-| 50 GB SSD persistent disk  | ~$9                    | Qdrant storage + OSRM data              |
-| Cloud Run (5 services)     | $20–40                 | Scale-to-zero; cost only during requests|
-| Artifact Registry          | ~$2–5                  | Delete old tags regularly               |
-| Cloud Logging + Monitoring | ~$5                    | First 50 GB logs free                   |
-| Cloud Storage              | ~$5                    | If using GCS for evidence uploads       |
-| Egress                     | ~$5–10                 | Keep demo traffic light                 |
-| **Total estimate**         | **~$96–134/month**     | ~2 months of demo in the free trial     |
+| Resource                     | Estimated monthly cost | Notes                                    |
+| ---------------------------- | ---------------------- | ---------------------------------------- |
+| Compute Engine e2-standard-2 | $50–60                 | Run 24/7 during demo period              |
+| 50 GB SSD persistent disk    | ~$9                    | Qdrant storage + OSRM data               |
+| Cloud Run (5 services)       | $20–40                 | Scale-to-zero; cost only during requests |
+| Artifact Registry            | ~$2–5                  | Delete old tags regularly                |
+| Cloud Logging + Monitoring   | ~$5                    | First 50 GB logs free                    |
+| Cloud Storage                | ~$5                    | If using GCS for evidence uploads        |
+| Egress                       | ~$5–10                 | Keep demo traffic light                  |
+| **Total estimate**           | **~$96–134/month**     | ~2 months of demo in the free trial      |
 
 Budget guardrails:
+
 - Keep `min-instances = 0` on all Cloud Run services.
 - **Stop or delete the VM when not demoing** — it costs ~$1.70/day.
 - Use small Cloud Run allocations (1 CPU / 512 Mi) until proven insufficient.
@@ -429,36 +409,36 @@ Budget guardrails:
 
 ### Backend
 
-| Variable               | Source               | Notes                                        |
-| ---------------------- | -------------------- | -------------------------------------------- |
-| `JWT_SECRET`           | Secret Manager       |                                              |
-| `PGHOST`               | Secret Manager       | Heroku Postgres host                         |
-| `PGPORT`               | Secret Manager       | Usually 5432                                 |
-| `PGUSER`               | Secret Manager       | Heroku Postgres user                         |
-| `PGPASSWORD`           | Secret Manager       | Heroku Postgres password                     |
-| `PGDATABASE`           | Secret Manager       | Heroku Postgres DB name                      |
-| `PGSSL`                | Secret Manager       | Must be `true` for Heroku Postgres           |
-| `REDIS_HOST`           | Secret Manager       | VM internal IP                               |
-| `REDIS_PORT`           | Secret Manager       | `6379`                                       |
-| `REDIS_USERNAME`       | Secret Manager       | `default`                                    |
-| `REDIS_PASSWORD`       | Secret Manager       | Set in VM Redis config                       |
-| `ML_SERVICE_URL`       | Secret Manager       | Unused at runtime; keep for parity           |
-| `EXPLAIN_ANALYTICS_URL`| Secret Manager       | Cloud Run URL for explain-analytics          |
-| `CHATBOT_SERVICE_URL`  | Secret Manager       | Cloud Run URL for chatbot-service            |
-| `ROUTE_OPTIMIZER_URL`  | Secret Manager       | Cloud Run URL for route-optimizer            |
-| `OSRM_BASE_URL`        | Secret Manager       | `http://VM_IP:5000`                          |
-| `NEXT_FRONTEND_URL`    | Secret Manager       | Cloud Run URL for frontend                   |
-| `FRONTEND_URL`         | Secret Manager       | Same as above                                |
-| `AWS_ACCESS_KEY_ID`    | Secret Manager       | S3-compatible storage for evidence uploads   |
-| `AWS_SECRET`           | Secret Manager       |                                              |
-| `AWS_REGION`           | Secret Manager       |                                              |
-| `AWS_S3_BUCKET`        | Secret Manager       |                                              |
-| `AWS_S3_URL`           | Secret Manager       |                                              |
-| `ZOHO_SMTP_HOST`       | Secret Manager       | Email service                                |
-| `ZOHO_SMTP_PORT`       | Secret Manager       |                                              |
-| `ZOHO_SMTP_USER`       | Secret Manager       |                                              |
-| `ZOHO_SMTP_PASS`       | Secret Manager       |                                              |
-| `EMAIL_ENABLED`        | Secret Manager       | Set `false` to disable email in demo         |
+| Variable                | Source         | Notes                                      |
+| ----------------------- | -------------- | ------------------------------------------ |
+| `JWT_SECRET`            | Secret Manager |                                            |
+| `PGHOST`                | Secret Manager | Heroku Postgres host                       |
+| `PGPORT`                | Secret Manager | Usually 5432                               |
+| `PGUSER`                | Secret Manager | Heroku Postgres user                       |
+| `PGPASSWORD`            | Secret Manager | Heroku Postgres password                   |
+| `PGDATABASE`            | Secret Manager | Heroku Postgres DB name                    |
+| `PGSSL`                 | Secret Manager | Must be `true` for Heroku Postgres         |
+| `REDIS_HOST`            | Secret Manager | VM internal IP                             |
+| `REDIS_PORT`            | Secret Manager | `6379`                                     |
+| `REDIS_USERNAME`        | Secret Manager | `default`                                  |
+| `REDIS_PASSWORD`        | Secret Manager | Set in VM Redis config                     |
+| `ML_SERVICE_URL`        | Secret Manager | Unused at runtime; keep for parity         |
+| `EXPLAIN_ANALYTICS_URL` | Secret Manager | Cloud Run URL for explain-analytics        |
+| `CHATBOT_SERVICE_URL`   | Secret Manager | Cloud Run URL for chatbot-service          |
+| `ROUTE_OPTIMIZER_URL`   | Secret Manager | Cloud Run URL for route-optimizer          |
+| `OSRM_BASE_URL`         | Secret Manager | `http://VM_IP:5000`                        |
+| `NEXT_FRONTEND_URL`     | Secret Manager | Cloud Run URL for frontend                 |
+| `FRONTEND_URL`          | Secret Manager | Same as above                              |
+| `AWS_ACCESS_KEY_ID`     | Secret Manager | S3-compatible storage for evidence uploads |
+| `AWS_SECRET`            | Secret Manager |                                            |
+| `AWS_REGION`            | Secret Manager |                                            |
+| `AWS_S3_BUCKET`         | Secret Manager |                                            |
+| `AWS_S3_URL`            | Secret Manager |                                            |
+| `ZOHO_SMTP_HOST`        | Secret Manager | Email service                              |
+| `ZOHO_SMTP_PORT`        | Secret Manager |                                            |
+| `ZOHO_SMTP_USER`        | Secret Manager |                                            |
+| `ZOHO_SMTP_PASS`        | Secret Manager |                                            |
+| `EMAIL_ENABLED`         | Secret Manager | Set `false` to disable email in demo       |
 
 ### Chatbot-service
 
@@ -472,28 +452,29 @@ Budget guardrails:
 
 ### Explain-analytics
 
-| Variable                      | Source         | Notes                         |
-| ----------------------------- | -------------- | ----------------------------- |
-| `EXPLAIN_GEMINI_API_KEY`      | Secret Manager |                               |
-| `EXPLAIN_QDRANT_URL`          | Secret Manager | `http://VM_IP:6333`           |
-| `EXPLAIN_QDRANT_COLLECTION`   | Secret Manager | `epilink_rag`                 |
-| `EXPLAIN_REDIS_URL`           | Secret Manager | `redis://:PASSWORD@VM_IP:6379`|
-| `EXPLAIN_BACKEND_API_URL`     | Secret Manager | Cloud Run URL for backend/api |
-| `EXPLAIN_ENVIRONMENT`         | Cloud Run env  | `production`                  |
-| `EXPLAIN_RAG_ENABLED`         | Cloud Run env  | `true`                        |
-| `EXPLAIN_ENABLE_AGENT_MODE`   | Cloud Run env  | `true`                        |
+| Variable                    | Source         | Notes                          |
+| --------------------------- | -------------- | ------------------------------ |
+| `EXPLAIN_GEMINI_API_KEY`    | Secret Manager |                                |
+| `EXPLAIN_QDRANT_URL`        | Secret Manager | `http://VM_IP:6333`            |
+| `EXPLAIN_QDRANT_COLLECTION` | Secret Manager | `epilink_rag`                  |
+| `EXPLAIN_REDIS_URL`         | Secret Manager | `redis://:PASSWORD@VM_IP:6379` |
+| `EXPLAIN_BACKEND_API_URL`   | Secret Manager | Cloud Run URL for backend/api  |
+| `EXPLAIN_ENVIRONMENT`       | Cloud Run env  | `production`                   |
+| `EXPLAIN_RAG_ENABLED`       | Cloud Run env  | `true`                         |
+| `EXPLAIN_ENABLE_AGENT_MODE` | Cloud Run env  | `true`                         |
 
 ### Frontend
 
-| Variable                | Source         | Notes                                       |
-| ----------------------- | -------------- | ------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`   | Build arg      | Must be set at `docker build` time          |
-| `NEXT_PUBLIC_SOCKET_URL`| Build arg      | Must be set at `docker build` time          |
-| `CHATBOT_SERVICE_URL`   | Secret Manager | Server-side proxy to chatbot Cloud Run URL  |
+| Variable                 | Source         | Notes                                      |
+| ------------------------ | -------------- | ------------------------------------------ |
+| `NEXT_PUBLIC_API_URL`    | Build arg      | Must be set at `docker build` time         |
+| `NEXT_PUBLIC_SOCKET_URL` | Build arg      | Must be set at `docker build` time         |
+| `CHATBOT_SERVICE_URL`    | Secret Manager | Server-side proxy to chatbot Cloud Run URL |
 
 ### ML model (weekly forecast — GitHub Actions)
 
 Stored as GitHub Actions secrets (not GCP Secret Manager):
+
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - `PGSSLMODE=require`
 
@@ -501,27 +482,27 @@ These are already set in the weekly forecast workflow. No changes needed.
 
 ## 8. Demo Milestones
 
-| Milestone | Done when                                                                        |
-| --------- | -------------------------------------------------------------------------------- |
-| **A**     | `docker compose up` boots the full local stack cleanly                           |
-| **B**     | All CI jobs pass on `main` — tests, builds, and import checks for every service  |
-| **C**     | Images push to Artifact Registry on every `main` push                           |
-| **D**     | VM is running Redis + Qdrant + OSRM; health checks pass from a test Cloud Run job|
-| **E**     | All 5 Cloud Run services are deployed and `GET /health` returns 200 on each      |
-| **F**     | Frontend renders, chatbot responds, route optimizer returns a route              |
-| **G**     | A deploy workflow automatically ships a code change in under 10 minutes          |
+| Milestone | Done when                                                                         |
+| --------- | --------------------------------------------------------------------------------- |
+| **A**     | `docker compose up` boots the full local stack cleanly                            |
+| **B**     | All CI jobs pass on `main` — tests, builds, and import checks for every service   |
+| **C**     | Images push to Artifact Registry on every `main` push                             |
+| **D**     | VM is running Redis + Qdrant + OSRM; health checks pass from a test Cloud Run job |
+| **E**     | All 5 Cloud Run services are deployed and `GET /health` returns 200 on each       |
+| **F**     | Frontend renders, chatbot responds, route optimizer returns a route               |
+| **G**     | A deploy workflow automatically ships a code change in under 10 minutes           |
 
 ## 9. Known Risks and Mitigations
 
-| Risk                                              | Mitigation                                                            |
-| ------------------------------------------------- | --------------------------------------------------------------------- |
-| OSRM data too large for VM RAM                    | Use `e2-standard-2` (8 GB); Sri Lanka MLD graph fits comfortably      |
-| Chatbot PDF data not available in Cloud Run image | Copy `chatbot-service/data/` into image at build time via `COPY`      |
-| Frontend Next.js bakes API URL at build time      | Pass `NEXT_PUBLIC_*` as Docker build args in the publish/deploy job   |
-| Heroku Postgres SSL cert rotation                 | Use `PGSSL=true` with `sslmode=require` — no hardcoded cert pinning   |
-| VM cost if left running                           | Set a calendar reminder to stop VM after each demo session            |
-| Cloud Run cold start on scale-from-zero           | Accept for demo; set `--min-instances 1` on backend only if needed    |
-| Redis/Qdrant on same VM as OSRM — memory pressure | Monitor VM memory; move OSRM to its own command if needed             |
+| Risk                                              | Mitigation                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| OSRM data too large for VM RAM                    | Use `e2-standard-2` (8 GB); Sri Lanka MLD graph fits comfortably    |
+| Chatbot PDF data not available in Cloud Run image | Copy `chatbot-service/data/` into image at build time via `COPY`    |
+| Frontend Next.js bakes API URL at build time      | Pass `NEXT_PUBLIC_*` as Docker build args in the publish/deploy job |
+| Heroku Postgres SSL cert rotation                 | Use `PGSSL=true` with `sslmode=require` — no hardcoded cert pinning |
+| VM cost if left running                           | Set a calendar reminder to stop VM after each demo session          |
+| Cloud Run cold start on scale-from-zero           | Accept for demo; set `--min-instances 1` on backend only if needed  |
+| Redis/Qdrant on same VM as OSRM — memory pressure | Monitor VM memory; move OSRM to its own command if needed           |
 
 ## 10. Recommended Execution Order
 
