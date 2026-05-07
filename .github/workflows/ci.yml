@@ -122,7 +122,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ chatbot-service, explain-analytics, route-optimizer ]
+        include:
+          - service: chatbot-service
+            import_command: uv run python -c "import main"
+          - service: explain-analytics
+            import_command: uv run python -c "import explain_analytics.main"
+          - service: route-optimizer
+            import_command: uv run python -c "import app"
     steps:
       - uses: actions/checkout@v4
 
@@ -137,8 +143,7 @@ jobs:
         working-directory: ${{ matrix.service }}
 
       - name: Import check
-        run: |
-          uv run python -c "import src" || uv run python -c "import app"
+        run: ${{ matrix.import_command }}
         working-directory: ${{ matrix.service }}
 
   docker-build:
