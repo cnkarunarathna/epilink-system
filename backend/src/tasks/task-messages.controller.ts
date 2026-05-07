@@ -17,12 +17,27 @@ import { TaskParticipantGuard } from './guards/task-participant.guard';
 import { TaskMessagesService } from './task-messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { GetMessagesQueryDto } from './dto/get-messages-query.dto';
+import { ChatSummaryQueryDto } from './dto/chat-summary.dto';
 import { UserRole } from '../entities/user.entity';
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
 export class TaskMessagesController {
   constructor(private readonly messagesService: TaskMessagesService) {}
+
+  /**
+   * GET /tasks/chat-summary — all tasks with chat activity for the calling user.
+   * Supervisors see tasks they created; PHIs see assigned tasks; admins see all.
+   * Results are ordered by unread count DESC, then last-message timestamp DESC.
+   */
+  @Get('chat-summary')
+  getChatSummary(@Query() query: ChatSummaryQueryDto, @Request() req) {
+    return this.messagesService.getChatSummary(
+      req.user.id,
+      req.user.role as UserRole,
+      query,
+    );
+  }
 
   /** POST /tasks/:taskId/messages — send a message */
   @Post(':taskId/messages')

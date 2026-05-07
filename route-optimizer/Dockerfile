@@ -10,10 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 
 RUN pip install --no-cache-dir uv
 
+# Ensure uvicorn binary is available for `uv run` to spawn
+RUN pip install --no-cache-dir "uvicorn[standard]"
+
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
+
+# Ensure key runtime dependencies are installed into the image
+RUN pip install --no-cache-dir fastapi ortools
 
 EXPOSE 8001
 CMD ["uv", "run", "--no-dev", "--no-project", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]

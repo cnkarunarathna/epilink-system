@@ -408,20 +408,6 @@ def generate_weekly_forecast():
     type_label = "Enhanced Ensemble" if model_type == "enhanced" else "Legacy XGBoost"
     print(f"   {type_label} loaded from {model_path}")
 
-    # Connect to database
-    print("\nConnecting to database...")
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        print("   Connected")
-    except Exception as e:
-        print(f"   Connection failed: {e}")
-        return False
-
-    # Get district mapping
-    cur.execute("SELECT id, name FROM districts")
-    district_map = {name: district_id for district_id, name in cur.fetchall()}
-
     # Determine next week
     today = datetime.now()
     iso_calendar = today.isocalendar()
@@ -436,8 +422,23 @@ def generate_weekly_forecast():
     start_date, end_date = get_week_dates(next_year, next_week)
     print(f"   Date range: {start_date} to {end_date}")
 
-    # Pre-fetch all weather data at once
+    # Pre-fetch all weather data before opening the DB connection to avoid
+    # the connection being dropped idle during the 25+ second API fetch loop.
     weather_cache = fetch_all_weather_forecasts(start_date, end_date)
+
+    # Connect to database
+    print("\nConnecting to database...")
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        print("   Connected")
+    except Exception as e:
+        print(f"   Connection failed: {e}")
+        return False
+
+    # Get district mapping
+    cur.execute("SELECT id, name FROM districts")
+    district_map = {name: district_id for district_id, name in cur.fetchall()}
 
     # Generate forecasts
     forecasts = []
