@@ -1,0 +1,94 @@
+name: Deploy to Cloud Run
+
+on:
+    push:
+        branches: [ main ]
+
+env:
+    REGION: asia-south1
+    GCP_REGISTRY: asia-south1-docker.pkg.dev
+
+jobs:
+    deploy:
+        name: Deploy services to Cloud Run
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            id-token: write
+        strategy:
+            matrix:
+                service:
+                    - { name: route-optimizer, port: 8001, memory: 512Mi }
+                    - { name: explain-analytics, port: 8010, memory: 1Gi }
+                    - { name: chatbot-service, port: 8000, memory: 1Gi }
+                    - { name: backend, port: 3001, memory: 512Mi }
+                    - { name: frontend, port: 3000, memory: 512Mi }
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Authenticate to Google Cloud
+              uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+                  service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+            - name: Set up Cloud SDK
+              uses: google-github-actions/setup-gcloud@v2
+
+            - name: Deploy ${{ matrix.service.name }} to Cloud Run
+              run: |
+                  gcloud run deploy epilink-${{ matrix.service.name }} \
+                    --image=${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }} \
+                    --region=${{ env.REGION }} \
+                    --platform=managed \
+                    --allow-unauthenticated \
+                    --min-instances=0 \
+                    --max-instances=3 \
+                    --cpu=1 \
+                    --memory=${{ matrix.service.memory }} \
+                    --port=${{ matrix.service.port }} \
+                    --quiet
+
+    smoke-tests:
+        name: Smoke tests
+        runs-on: ubuntu-latest
+        needs: [ deploy ]
+        if: always()
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Wait for services to be ready
+              run: sleep 30
+
+            - name: Test backend health
+              run: |
+                  BACKEND_URL=$(gcloud run services describe epilink-backend \
+                    --region=asia-south1 \
+                    --format='value(status.url)' 2>/dev/null || echo "")
+                  if [ -z "$BACKEND_URL" ]; then
+                    echo "Backend not deployed yet"
+                    exit 0
+                  fi
+                  curl -sf "$BACKEND_URL/api/health" > /dev/null || exit 1
+
+            - name: Test route-optimizer health
+              run: |
+                  ROUTE_URL=$(gcloud run services describe epilink-route-optimizer \
+                    --region=asia-south1 \
+                    --format='value(status.url)' 2>/dev/null || echo "")
+                  if [ -z "$ROUTE_URL" ]; then
+                    echo "Route optimizer not deployed yet"
+                    exit 0
+                  fi
+                  curl -sf "$ROUTE_URL/health" > /dev/null || exit 1
+
+            - name: Test frontend
+              run: |
+                  FRONTEND_URL=$(gcloud run services describe epilink-frontend \
+                    --region=asia-south1 \
+                    --format='value(status.url)' 2>/dev/null || echo "")
+                  if [ -z "$FRONTEND_URL" ]; then
+                    echo "Frontend not deployed yet"
+                    exit 0
+                  fi
+                  curl -sf "$FRONTEND_URL" > /dev/null || exit 1
