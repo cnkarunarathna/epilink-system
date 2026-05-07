@@ -222,10 +222,26 @@ A production-grade RAG-based analytics microservice (`explain-analytics`) that t
 - **National Summary:** Single-request executive situation report covering all 26 districts; `URGENT:` prefix when risk score ≥ 0.85
 - **Batch Explain:** Process all districts in one call for automated weekly situation reports
 - **Agentic Chat:** 12-tool agent answers free-form analytical questions with live data fetching; Redis session persistence with 2-hour TTL and auto-compression at 10 turns
+- **Persistent Chat History:** ChatGPT-style conversation history sidebar — PostgreSQL-backed session index (`analytic_chat_sessions`) with full message fallback (`analytic_chat_messages`) when Redis TTL expires; named sessions survive page reload indefinitely
 - **Geographic Spillover Detection:** Flags `spillover_risk` when 3+ neighbouring districts rise simultaneously
 - **Confidence Splitting:** Separate `data_completeness_score` and `prediction_confidence` fields based on ML uncertainty bounds
 - **Automated ETL Pipeline:** APScheduler weekly job fetches all district data, generates dense + sparse embeddings, and upserts into Qdrant — corpus stays current with surveillance data automatically
 - **New Agent Tools:** `get_national_briefing`, `get_seasonal_pattern`, `get_cross_district_spillover`, `get_intervention_history`, `get_model_performance_metrics`, `get_demographic_hotspots`
+
+#### AI Chat History Feature
+
+The admin agentic chat has been extended with a full ChatGPT-style conversation management system:
+
+| Capability | Detail |
+|---|---|
+| **Named sessions** | Auto-titled from first message via Gemini (max 6 words) |
+| **History sidebar** | Grouped by Today / Yesterday / This Week / Older; collapsible |
+| **Persistent storage** | Session metadata in Postgres; messages stored as Postgres fallback when Redis expires |
+| **Resume** | Click any past session to reload its full message history |
+| **Rename / Delete** | Inline rename with Enter/Escape; hard-delete removes from both Redis and Postgres |
+| **Export** | Download any conversation as JSON or Markdown |
+| **Search** | Live search across conversation titles |
+| **District sync** | Resuming a session auto-restores the parent page's district context |
 
 ### 5. AI Chatbot — EpiBot (Public Access)
 
@@ -454,19 +470,21 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 
 | Entity              | Description                                         |
 | ------------------- | --------------------------------------------------- |
-| `users`             | System users with roles and district assignments    |
-| `districts`         | Sri Lankan district boundaries and metadata         |
-| `dengue_cases`      | Weekly case counts per district                     |
-| `weather_data`      | Weather observations (temperature, precipitation)   |
-| `predictions`       | ML-generated risk predictions                       |
-| `tasks`             | Cleanup/fogging assignments                         |
-| `evidence`          | Photos and notes from field visits                  |
-| `task_messages`     | Task-scoped chat messages between PHI and supervisor |
-| `message_reads`     | Read receipt tracking per user per task             |
-| `notifications`     | System alerts and notifications                     |
-| `weekly_reports`    | Generated report records with S3 PDF links          |
-| `email_logs`        | Sent/failed email audit records                     |
-| `audit_logs`        | User activity tracking                              |
+| `users`                     | System users with roles and district assignments                         |
+| `districts`                 | Sri Lankan district boundaries and metadata                             |
+| `dengue_cases`              | Weekly case counts per district                                         |
+| `weather_data`              | Weather observations (temperature, precipitation)                       |
+| `predictions`               | ML-generated risk predictions                                           |
+| `tasks`                     | Cleanup/fogging assignments                                             |
+| `evidence`                  | Photos and notes from field visits                                      |
+| `task_messages`             | Task-scoped chat messages between PHI and supervisor                    |
+| `message_reads`             | Read receipt tracking per user per task                                 |
+| `notifications`             | System alerts and notifications                                         |
+| `weekly_reports`            | Generated report records with S3 PDF links                              |
+| `email_logs`                | Sent/failed email audit records                                         |
+| `audit_logs`                | User activity tracking                                                  |
+| `analytic_chat_sessions`    | AI chat session index — title, district, turn count, archive flag       |
+| `analytic_chat_messages`    | Full message log per session — role, content, tool calls (JSONB)        |
 
 ---
 
@@ -486,9 +504,19 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - `GET /api/analytics/trends` — Case trends
 - `GET /api/analytics/advanced/hotspots` — Hotspot detection
 - `GET /api/analytics/advanced/outbreak-alerts` — Outbreak alerts
-- `GET /api/analytics/explain` — SHAP-grounded explainable insight for a district
-- `GET /api/analytics/explain/national-summary` — National situation report
-- `POST /api/analytics/explain/chat` — Agentic chat with 12 analytical tools
+- `GET /api/analytics/explain/:district` — SHAP-grounded explainable insight for a district
+- `GET /api/analytics/national-summary` — National executive situation report
+- `POST /api/analytics/explain/:district/chat` — Agentic chat with 12 analytical tools
+- `GET /api/analytics/colombo/ds-breakdown` — Colombo DS-level case estimates
+
+**AI Chat History (Admin only)**
+
+- `GET /api/analytics/chat/sessions` — List admin's named sessions (supports `page`, `limit`, `district`, `search`)
+- `GET /api/analytics/chat/:sessionId/history` — Retrieve full message history (Redis-first, Postgres fallback)
+- `GET /api/analytics/chat/:sessionId/export` — Download conversation transcript (`format=json` or `format=markdown`)
+- `PATCH /api/analytics/chat/:sessionId/title` — Rename a session
+- `PATCH /api/analytics/chat/:sessionId/archive` — Soft-archive a session
+- `DELETE /api/analytics/chat/:sessionId` — Hard-delete session from Redis and Postgres
 
 ### Tasks
 
@@ -582,13 +610,19 @@ Created → Assigned → In Progress → Submitted → Verified → Completed
 - [x] Alert threshold configuration
 - [x] Chatbot UI integration on public landing page
 
-### Phase 5: Enhancements (In Progress)
+### Phase 5: Enhancements ✅ Complete
 
 - [x] SHAP explainability integrated into explain-analytics service
 - [x] Qdrant production RAG pipeline (HNSW, hybrid BM25 + dense, RRF fusion, recency decay)
 - [x] Automated ETL pipeline (APScheduler weekly corpus updates)
 - [x] Spatial cluster / geographic spillover detection
 - [x] Redis session persistence for agentic chat
+- [x] **Persistent AI chat history** — PostgreSQL-backed session index (`analytic_chat_sessions`) and full message store (`analytic_chat_messages`)
+- [x] **ChatGPT-style history sidebar** — grouped sessions, inline rename/delete, collapsible panel
+- [x] **Auto-title generation** — Gemini names each conversation from the first user message
+- [x] **Redis → Postgres message fallback** — sessions resume even after Redis TTL expiry
+- [x] **Conversation export** — download any chat as JSON or Markdown
+- [x] **Conversation search** — live filter across session titles in the sidebar
 - [ ] Response caching for insight stability
 - [ ] Lightweight follow-up question endpoint (cache-backed)
 

@@ -137,19 +137,27 @@ export function MessageList({
 
   if (loading && messages.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <p className="text-xs">Loading conversation</p>
+      <div className="flex flex-1 items-center justify-center p-6 text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border/70 bg-background/80 px-5 py-4 shadow-sm backdrop-blur-sm">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <p className="text-xs font-medium">Loading conversation</p>
+        </div>
       </div>
     );
   }
 
   if (!loading && messages.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-        <MessageSquare className="h-8 w-8 opacity-40" />
-        <p className="text-sm font-medium">No messages yet.</p>
-        <p className="text-xs">Start the conversation for this task.</p>
+      <div className="flex flex-1 items-center justify-center p-6 text-center text-muted-foreground">
+        <div className="flex max-w-sm flex-col items-center gap-2 rounded-2xl border border-dashed border-border/70 bg-background/80 px-6 py-5 shadow-sm backdrop-blur-sm">
+          <MessageSquare className="h-8 w-8 opacity-40" />
+          <p className="text-sm font-semibold text-foreground">
+            No messages yet.
+          </p>
+          <p className="text-xs leading-5">
+            Start the conversation for this task.
+          </p>
+        </div>
       </div>
     );
   }
@@ -157,7 +165,7 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
-      className="flex flex-1 flex-col gap-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_0%,hsl(var(--muted)/0.35),transparent_35%),radial-gradient(circle_at_80%_100%,hsl(var(--muted)/0.26),transparent_40%)] px-3 py-3"
+      className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_20%_0%,hsl(var(--muted)/0.35),transparent_35%),radial-gradient(circle_at_80%_100%,hsl(var(--muted)/0.26),transparent_40%)] px-3 py-4 scrollbar-thin scrollbar-thumb-border/60 scrollbar-track-transparent"
     >
       {/* Load more */}
       {hasMore && (

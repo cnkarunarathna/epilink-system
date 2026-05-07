@@ -32,7 +32,7 @@ import { StorageModule } from '../storage/storage.module';
     StorageModule,
     ConfigModule,
   ],
-  controllers: [TasksController, TaskMessagesController, TasksAnalyticsController],
+  controllers: [TaskMessagesController, TasksController, TasksAnalyticsController],
   providers: [
     TasksService,
     GeocodingService,

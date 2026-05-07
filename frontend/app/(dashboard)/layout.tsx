@@ -38,6 +38,7 @@ import {
   ChevronRight,
   ChevronRight as BreadcrumbChevron,
   Shield,
+  MessageSquare,
 } from "lucide-react";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useRouter as useAppRouter } from "next/navigation";
@@ -50,6 +51,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  badge?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -103,7 +105,11 @@ function getNavItems(role: string): NavItem[] {
     case "admin":
       return [
         ...baseItems,
-        { label: "Task Analytics", href: "/admin/tasks/analytics", icon: ClipboardList },
+        {
+          label: "Task Analytics",
+          href: "/admin/tasks/analytics",
+          icon: ClipboardList,
+        },
         { label: "Users", href: "/admin/users", icon: Users },
         { label: "Districts", href: "/admin/districts", icon: MapPin },
         { label: "Reports", href: "/admin/reports", icon: FileText },
@@ -114,6 +120,7 @@ function getNavItems(role: string): NavItem[] {
       return [
         ...baseItems,
         { label: "Tasks", href: "/supervisor/tasks", icon: ClipboardCheck },
+        { label: "Chats", href: "/supervisor/chats", icon: MessageSquare },
         { label: "PHIs", href: "/supervisor/phis", icon: Users },
         { label: "Reports", href: "/supervisor/reports", icon: FileText },
       ];
@@ -121,6 +128,7 @@ function getNavItems(role: string): NavItem[] {
       return [
         { label: "Dashboard", href: "/phi", icon: LayoutDashboard },
         { label: "My Tasks", href: "/phi/tasks", icon: ClipboardCheck },
+        { label: "Chats", href: "/phi/chats", icon: MessageSquare },
         { label: "Map View", href: "/phi/map", icon: MapPin },
         { label: "History", href: "/phi/history", icon: FileText },
       ];
@@ -166,9 +174,26 @@ function NavLink({
       {isActive && !collapsed && (
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary-foreground/40" />
       )}
-      <item.icon className="h-5 w-5 shrink-0" />
+
+      {/* Icon with dot overlay when collapsed and badge > 0 */}
+      <span className="relative shrink-0">
+        <item.icon className="h-5 w-5" />
+        {collapsed && item.badge && item.badge > 0 && (
+          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive ring-1 ring-background" />
+        )}
+      </span>
+
       {!collapsed && (
-        <span className="font-medium text-sm truncate">{item.label}</span>
+        <>
+          <span className="font-medium text-sm truncate flex-1">
+            {item.label}
+          </span>
+          {item.badge && item.badge > 0 && (
+            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+              {item.badge > 99 ? "99+" : item.badge}
+            </span>
+          )}
+        </>
       )}
     </Link>
   );
@@ -206,6 +231,11 @@ function DesktopSidebar({
   role: string;
   onLogout: () => void;
 }) {
+  const { totalUnread } = useUnread();
+  const badgedItems = navItems.map((item) =>
+    item.href.endsWith("/chats") ? { ...item, badge: totalUnread } : item,
+  );
+
   return (
     <TooltipProvider delayDuration={300}>
       <motion.aside
@@ -273,7 +303,7 @@ function DesktopSidebar({
               Navigation
             </p>
           )}
-          {navItems.map((item) => (
+          {badgedItems.map((item) => (
             <NavLink
               key={item.href}
               item={item}
@@ -380,6 +410,11 @@ function MobileSidebar({
   role: string;
   onLogout: () => void;
 }) {
+  const { totalUnread } = useUnread();
+  const badgedItems = navItems.map((item) =>
+    item.href.endsWith("/chats") ? { ...item, badge: totalUnread } : item,
+  );
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild className="md:hidden">
@@ -409,7 +444,7 @@ function MobileSidebar({
             <p className="px-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
               Navigation
             </p>
-            {navItems.map((item) => (
+            {badgedItems.map((item) => (
               <NavLink
                 key={item.href}
                 item={item}
@@ -472,7 +507,10 @@ function MobileSidebar({
 function Breadcrumbs({ pathname }: { pathname: string }) {
   const crumbs = buildBreadcrumbs(pathname);
   return (
-    <nav className="flex items-center gap-1 text-sm min-w-0" aria-label="Breadcrumb">
+    <nav
+      className="flex items-center gap-1 text-sm min-w-0"
+      aria-label="Breadcrumb"
+    >
       {crumbs.map((crumb, i) => (
         <span key={crumb.href} className="flex items-center gap-1 min-w-0">
           {i > 0 && (
@@ -503,16 +541,17 @@ function NotificationBell({ role }: { role: string }) {
   const router = useAppRouter();
 
   const handleClick = () => {
-    // Navigate to the task with the highest unread count, or fall back to the tasks list
-    const tasksPath = `/${role}/tasks`;
+    const chatsPath = `/${role}/chats`;
     if (totalUnread > 0) {
-      const topTaskId = Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0];
+      const topTaskId = Object.entries(counts).sort(
+        ([, a], [, b]) => b - a,
+      )[0]?.[0];
       if (topTaskId) {
-        router.push(`${tasksPath}/${topTaskId}`);
+        router.push(`${chatsPath}?task=${topTaskId}`);
         return;
       }
     }
-    router.push(tasksPath);
+    router.push(chatsPath);
   };
 
   return (
@@ -520,7 +559,9 @@ function NotificationBell({ role }: { role: string }) {
       variant="ghost"
       size="icon"
       className="relative"
-      aria-label={totalUnread > 0 ? `${totalUnread} unread messages` : "Notifications"}
+      aria-label={
+        totalUnread > 0 ? `${totalUnread} unread messages` : "Notifications"
+      }
       onClick={handleClick}
     >
       <Bell className="h-5 w-5" />
@@ -573,6 +614,7 @@ export default function DashboardLayout({
   const { user, logout } = useAuth();
 
   const role = pathname.split("/")[1] || "admin";
+  const isChatsRoute = pathname.includes("/chats");
   const navItems = getNavItems(role);
 
   // Restore collapsed state from localStorage after mount
@@ -612,105 +654,110 @@ export default function DashboardLayout({
     <ProtectedRoute>
       <SocketProvider>
         <UnreadProvider>
-        <BroadcastListener />
-        <div className="min-h-screen bg-background">
-          {/* Desktop sidebar */}
-          <div className="hidden md:block">
-            {mounted && (
-              <DesktopSidebar
-                collapsed={collapsed}
-                onToggle={toggleCollapsed}
-                navItems={navItems}
-                pathname={pathname}
-                user={user}
-                role={role}
-                onLogout={logout}
-              />
-            )}
-          </div>
-
-          {/* Main content — shifts with sidebar */}
-          <motion.div
-            initial={false}
-            animate={{ paddingLeft: mounted ? sidebarWidth : EXPANDED_WIDTH }}
-            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-            className="hidden md:block min-h-screen"
-          >
-            {/* Header */}
-            <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16">
-              <div className="flex h-full items-center gap-4 px-5">
-                {/* Role badge */}
-                <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-semibold">
-                  <Shield className="h-3 w-3" />
-                  {ROLE_LABELS[role] ?? role}
-                </span>
-
-                {/* Breadcrumbs */}
-                <div className="flex-1 min-w-0">
-                  <Breadcrumbs pathname={pathname} />
-                </div>
-
-                <ConnectionStatus />
-                <ThemeToggle />
-
-                {/* Notifications */}
-                <NotificationBell role={role} />
-
-                {/* User avatar */}
-                <Avatar className="h-8 w-8 cursor-pointer">
-                  <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
-                    {getInitials(user?.name)}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-            </header>
-
-            {/* Page content */}
-            <main className="p-4 sm:p-6">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={pathname}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  {children}
-                </motion.div>
-              </AnimatePresence>
-            </main>
-          </motion.div>
-
-          {/* Mobile layout */}
-          <div className="md:hidden min-h-screen flex flex-col">
-            <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16">
-              <div className="flex h-full items-center gap-3 px-4">
-                <MobileSidebar
-                  open={sidebarOpen}
-                  onOpenChange={setSidebarOpen}
+          <BroadcastListener />
+          <div className="min-h-screen bg-background">
+            {/* Desktop sidebar */}
+            <div className="hidden md:block">
+              {mounted && (
+                <DesktopSidebar
+                  collapsed={collapsed}
+                  onToggle={toggleCollapsed}
                   navItems={navItems}
                   pathname={pathname}
                   user={user}
                   role={role}
                   onLogout={logout}
                 />
+              )}
+            </div>
 
-                <div className="flex-1 min-w-0">
-                  <Breadcrumbs pathname={pathname} />
+            {/* Main content — shifts with sidebar */}
+            <motion.div
+              initial={false}
+              animate={{ paddingLeft: mounted ? sidebarWidth : EXPANDED_WIDTH }}
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+              className={`hidden md:flex md:flex-col min-h-screen ${isChatsRoute ? "overflow-hidden" : ""}`}
+            >
+              {/* Header */}
+              <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16 shrink-0">
+                <div className="flex h-full items-center gap-4 px-5">
+                  {/* Role badge */}
+                  <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-semibold">
+                    <Shield className="h-3 w-3" />
+                    {ROLE_LABELS[role] ?? role}
+                  </span>
+
+                  {/* Breadcrumbs */}
+                  <div className="flex-1 min-w-0">
+                    <Breadcrumbs pathname={pathname} />
+                  </div>
+
+                  <ConnectionStatus />
+                  <ThemeToggle />
+
+                  {/* Notifications */}
+                  <NotificationBell role={role} />
+
+                  {/* User avatar */}
+                  <Avatar className="h-8 w-8 cursor-pointer">
+                    <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
+                      {getInitials(user?.name)}
+                    </AvatarFallback>
+                  </Avatar>
                 </div>
+              </header>
 
-                <ConnectionStatus />
-                <ThemeToggle />
+              {/* Page content */}
+              <main
+                className={`flex-1 min-h-0 p-4 sm:p-6 ${isChatsRoute ? "overflow-hidden" : "overflow-auto"}`}
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={pathname}
+                    className={`h-full ${isChatsRoute ? "overflow-hidden" : ""}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    {children}
+                  </motion.div>
+                </AnimatePresence>
+              </main>
+            </motion.div>
 
-                <NotificationBell role={role} />
-              </div>
-            </header>
+            {/* Mobile layout */}
+            <div className="md:hidden min-h-screen flex flex-col">
+              <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 h-16">
+                <div className="flex h-full items-center gap-3 px-4">
+                  <MobileSidebar
+                    open={sidebarOpen}
+                    onOpenChange={setSidebarOpen}
+                    navItems={navItems}
+                    pathname={pathname}
+                    user={user}
+                    role={role}
+                    onLogout={logout}
+                  />
 
-            <main className="flex-1 p-4">
-              {children}
-            </main>
+                  <div className="flex-1 min-w-0">
+                    <Breadcrumbs pathname={pathname} />
+                  </div>
+
+                  <ConnectionStatus />
+                  <ThemeToggle />
+
+                  <NotificationBell role={role} />
+                </div>
+              </header>
+
+              <main
+                className={`flex-1 p-4 ${isChatsRoute ? "overflow-hidden" : "overflow-auto"}`}
+              >
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
         </UnreadProvider>
       </SocketProvider>
     </ProtectedRoute>
