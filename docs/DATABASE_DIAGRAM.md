@@ -1,4 +1,4 @@
-# EpiLink — Database Diagram
+# EpiLink — Database Diagram 
 
 ```mermaid
 erDiagram
