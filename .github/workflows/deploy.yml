@@ -69,6 +69,7 @@ jobs:
               with:
                   workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
                   service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+                  project_id: ${{ secrets.GCP_PROJECT_ID }}
 
             - name: Set up Cloud SDK
               uses: google-github-actions/setup-gcloud@v2
@@ -86,7 +87,7 @@ jobs:
                   push: true
                   build-args: |
                       NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-                      NEXT_PUBLIC_SOCKET_URL=${{ secrets.BACKEND_URL }}
+                      NEXT_PUBLIC_SOCKET_URL=${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
                       CHATBOT_SERVICE_URL=${{ secrets.CHATBOT_SERVICE_URL }}
                   tags: |
                       ${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }}
@@ -204,6 +205,7 @@ jobs:
                   esac
 
                   gcloud run deploy epilink-${{ matrix.service.name }} \
+                    --project=${{ secrets.GCP_PROJECT_ID }} \
                     --image=${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }} \
                     --region=${{ env.REGION }} \
                     --platform=managed \
@@ -232,6 +234,7 @@ jobs:
               with:
                   workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
                   service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+                  project_id: ${{ secrets.GCP_PROJECT_ID }}
 
             - name: Set up Cloud SDK
               uses: google-github-actions/setup-gcloud@v2
@@ -242,6 +245,7 @@ jobs:
             - name: Test backend health
               run: |
                   BACKEND_URL=$(gcloud run services describe epilink-backend \
+                    --project=${{ secrets.GCP_PROJECT_ID }} \
                     --region=asia-south1 \
                     --format='value(status.url)' 2>/dev/null || echo "")
                   if [ -z "$BACKEND_URL" ]; then
@@ -253,6 +257,7 @@ jobs:
             - name: Test route-optimizer health
               run: |
                   ROUTE_URL=$(gcloud run services describe epilink-route-optimizer \
+                    --project=${{ secrets.GCP_PROJECT_ID }} \
                     --region=asia-south1 \
                     --format='value(status.url)' 2>/dev/null || echo "")
                   if [ -z "$ROUTE_URL" ]; then
@@ -264,6 +269,7 @@ jobs:
             - name: Test frontend
               run: |
                   FRONTEND_URL=$(gcloud run services describe epilink-frontend \
+                    --project=${{ secrets.GCP_PROJECT_ID }} \
                     --region=asia-south1 \
                     --format='value(status.url)' 2>/dev/null || echo "")
                   if [ -z "$FRONTEND_URL" ]; then
