@@ -1,6 +1,6 @@
 # EpiLink - Dengue Risk Monitoring & Cleanup Management System
 
-## Overview
+## Overview of the Project
 
 EpiLink is a comprehensive, full-stack, role-based platform designed for Sri Lankan health authorities to predict short-term dengue risk, coordinate cleanup operations, and monitor field-level progress. The system automates epidemiological data ingestion, generates explainable ML-driven risk levels, and supports operational workflows for Public Health Inspectors (PHIs) and supervisors.
 
