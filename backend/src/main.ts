@@ -40,11 +40,12 @@ async function bootstrap() {
   );
 
   // Enable CORS for frontend and mobile
+  const allowedOrigins =
+    process.env.NODE_ENV === 'production'
+      ? (process.env.NEXT_FRONTEND_URL ?? '').split(',').map((o) => o.trim())
+      : true;
   app.enableCors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? process.env.NEXT_FRONTEND_URL
-        : true, // Allow all origins in development for mobile testing
+    origin: allowedOrigins,
     credentials: true,
   });
 
