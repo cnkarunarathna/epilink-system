@@ -2,7 +2,7 @@ name: Deploy to Cloud Run
 
 on:
     push:
-        branches: [ main ]
+        branches: [ deploy-gcp ]
 
 env:
     REGION: asia-south1
@@ -58,7 +58,121 @@ jobs:
               uses: google-github-actions/setup-gcloud@v2
 
             - name: Deploy ${{ matrix.service.name }} to Cloud Run
+              env:
+                  BACKEND_URL: ${{ secrets.BACKEND_URL }}
+                  FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+                  ML_SERVICE_URL: ${{ secrets.ML_SERVICE_URL }}
+                  EXPLAIN_ANALYTICS_URL: ${{ secrets.EXPLAIN_ANALYTICS_URL }}
+                  ROUTE_OPTIMIZER_URL: ${{ secrets.ROUTE_OPTIMIZER_URL }}
+                  OSRM_BASE_URL: ${{ secrets.OSRM_BASE_URL }}
+                  REDIS_HOST: ${{ secrets.REDIS_HOST }}
+                  REDIS_PORT: ${{ secrets.REDIS_PORT }}
+                  REDIS_USERNAME: ${{ secrets.REDIS_USERNAME }}
+                  PGHOST: ${{ secrets.PGHOST }}
+                  PGPORT: ${{ secrets.PGPORT }}
+                  PGUSER: ${{ secrets.PGUSER }}
+                  PGDATABASE: ${{ secrets.PGDATABASE }}
+                  PGSSL: ${{ secrets.PGSSL }}
+                  AWS_REGION: ${{ secrets.AWS_REGION }}
+                  AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+                  AWS_S3_URL: ${{ secrets.AWS_S3_URL }}
+                  ZOHO_SMTP_HOST: ${{ secrets.ZOHO_SMTP_HOST }}
+                  ZOHO_SMTP_PORT: ${{ secrets.ZOHO_SMTP_PORT }}
+                  ZOHO_SMTP_SECURE: ${{ secrets.ZOHO_SMTP_SECURE }}
+                  ZOHO_SMTP_USER: ${{ secrets.ZOHO_SMTP_USER }}
+                  EMAIL_ENABLED: ${{ secrets.EMAIL_ENABLED }}
+                  EMAIL_QUEUE_CONCURRENCY: ${{ secrets.EMAIL_QUEUE_CONCURRENCY }}
+                  QDRANT_URL: ${{ secrets.QDRANT_URL }}
+                  CHATBOT_QDRANT_COLLECTION_NAME: ${{ secrets.CHATBOT_QDRANT_COLLECTION_NAME }}
+                  CHATBOT_DATA_DIR: ${{ secrets.CHATBOT_DATA_DIR }}
+                  EXPLAIN_QDRANT_URL: ${{ secrets.EXPLAIN_QDRANT_URL }}
+                  EXPLAIN_QDRANT_COLLECTION: ${{ secrets.EXPLAIN_QDRANT_COLLECTION }}
+                  EXPLAIN_REDIS_URL: ${{ secrets.EXPLAIN_REDIS_URL }}
+                  EXPLAIN_BACKEND_API_URL: ${{ secrets.EXPLAIN_BACKEND_API_URL }}
+                  EXPLAIN_ENVIRONMENT: ${{ secrets.EXPLAIN_ENVIRONMENT }}
+                  EXPLAIN_RAG_ENABLED: ${{ secrets.EXPLAIN_RAG_ENABLED }}
+                  EXPLAIN_ENABLE_AGENT_MODE: ${{ secrets.EXPLAIN_ENABLE_AGENT_MODE }}
+                  FASTAPI_ENV: ${{ secrets.FASTAPI_ENV }}
+                  NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+                  CHATBOT_SERVICE_URL: ${{ secrets.CHATBOT_SERVICE_URL }}
               run: |
+                  ENV_FILE="$(mktemp)"
+                  SECRET_ARGS=""
+                  BACKEND_ORIGIN_URL="${BACKEND_URL%/api}"
+
+                  case "${{ matrix.service.name }}" in
+                    backend)
+                      cat > "$ENV_FILE" <<EOF
+                      NODE_ENV=production
+                      PORT=${{ matrix.service.port }}
+                      PGHOST=$PGHOST
+                      PGPORT=$PGPORT
+                      PGUSER=$PGUSER
+                      PGDATABASE=$PGDATABASE
+                      PGSSL=$PGSSL
+                      REDIS_HOST=$REDIS_HOST
+                      REDIS_PORT=$REDIS_PORT
+                      REDIS_USERNAME=$REDIS_USERNAME
+                      OSRM_BASE_URL=$OSRM_BASE_URL
+                      ML_SERVICE_URL=$ML_SERVICE_URL
+                      EXPLAIN_ANALYTICS_URL=$EXPLAIN_ANALYTICS_URL
+                      ROUTE_OPTIMIZER_URL=$ROUTE_OPTIMIZER_URL
+                      NEXT_FRONTEND_URL=$FRONTEND_URL
+                      FRONTEND_URL=$FRONTEND_URL
+                      AWS_REGION=$AWS_REGION
+                      AWS_S3_BUCKET=$AWS_S3_BUCKET
+                      AWS_S3_URL=$AWS_S3_URL
+                      ZOHO_SMTP_HOST=$ZOHO_SMTP_HOST
+                      ZOHO_SMTP_PORT=$ZOHO_SMTP_PORT
+                      ZOHO_SMTP_SECURE=$ZOHO_SMTP_SECURE
+                      ZOHO_SMTP_USER=$ZOHO_SMTP_USER
+                      EMAIL_ENABLED=$EMAIL_ENABLED
+                      EMAIL_QUEUE_CONCURRENCY=$EMAIL_QUEUE_CONCURRENCY
+                      EOF
+                      SECRET_ARGS="--set-secrets=JWT_SECRET=JWT_SECRET:latest,PGPASSWORD=PGPASSWORD:latest,REDIS_PASSWORD=REDIS_PASSWORD:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET=AWS_SECRET:latest,ZOHO_SMTP_PASS=ZOHO_SMTP_PASS:latest"
+                      ;;
+                    chatbot-service)
+                      cat > "$ENV_FILE" <<EOF
+                      NODE_ENV=production
+                      PORT=${{ matrix.service.port }}
+                      QDRANT_URL=$QDRANT_URL
+                      QDRANT_COLLECTION_NAME=$CHATBOT_QDRANT_COLLECTION_NAME
+                      DATA_DIR=$CHATBOT_DATA_DIR
+                      EOF
+                      SECRET_ARGS="--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest"
+                      ;;
+                    explain-analytics)
+                      cat > "$ENV_FILE" <<EOF
+                      NODE_ENV=production
+                      PORT=${{ matrix.service.port }}
+                      EXPLAIN_QDRANT_URL=$EXPLAIN_QDRANT_URL
+                      EXPLAIN_QDRANT_COLLECTION=$EXPLAIN_QDRANT_COLLECTION
+                      EXPLAIN_REDIS_URL=$EXPLAIN_REDIS_URL
+                      EXPLAIN_BACKEND_API_URL=$EXPLAIN_BACKEND_API_URL
+                      EXPLAIN_ENVIRONMENT=$EXPLAIN_ENVIRONMENT
+                      EXPLAIN_RAG_ENABLED=$EXPLAIN_RAG_ENABLED
+                      EXPLAIN_ENABLE_AGENT_MODE=$EXPLAIN_ENABLE_AGENT_MODE
+                      EOF
+                      SECRET_ARGS="--set-secrets=EXPLAIN_GEMINI_API_KEY=EXPLAIN_GEMINI_API_KEY:latest,REDIS_PASSWORD=REDIS_PASSWORD:latest"
+                      ;;
+                    route-optimizer)
+                      cat > "$ENV_FILE" <<EOF
+                      NODE_ENV=production
+                      PORT=${{ matrix.service.port }}
+                      FASTAPI_ENV=$FASTAPI_ENV
+                      EOF
+                      ;;
+                    frontend)
+                      cat > "$ENV_FILE" <<EOF
+                      NODE_ENV=production
+                      PORT=${{ matrix.service.port }}
+                      NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+                      NEXT_PUBLIC_SOCKET_URL=$BACKEND_ORIGIN_URL
+                      CHATBOT_SERVICE_URL=$CHATBOT_SERVICE_URL
+                      EOF
+                      ;;
+                  esac
+
                   gcloud run deploy epilink-${{ matrix.service.name }} \
                     --image=${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }} \
                     --region=${{ env.REGION }} \
@@ -68,7 +182,8 @@ jobs:
                     --max-instances=3 \
                     --cpu=1 \
                     --memory=${{ matrix.service.memory }} \
-                    --port=${{ matrix.service.port }} \
+                    --env-vars-file="$ENV_FILE" \
+                    $SECRET_ARGS \
                     --quiet
 
     smoke-tests:
