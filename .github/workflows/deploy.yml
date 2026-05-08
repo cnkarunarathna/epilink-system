@@ -167,6 +167,7 @@ jobs:
                         "CHATBOT_SERVICE_URL: \"$CHATBOT_SERVICE_URL\"" \
                         > "$ENV_FILE"
                       SECRET_ARGS="--set-secrets=JWT_SECRET=JWT_SECRET:latest,PGPASSWORD=PGPASSWORD:latest,REDIS_PASSWORD=REDIS_PASSWORD:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET=AWS_SECRET:latest,ZOHO_SMTP_PASS=ZOHO_SMTP_PASS:latest"
+                      VPC_ARGS="--vpc-connector=epilink-connector --vpc-egress=private-ranges-only"
                       ;;
                     chatbot-service)
                       printf '%s\n' \
