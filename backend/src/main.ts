@@ -11,7 +11,6 @@ dotenv.config();
 const requiredEnvVars = [
   'JWT_SECRET',
   'CHATBOT_SERVICE_URL',
-  'ML_SERVICE_URL',
   'ROUTE_OPTIMIZER_URL',
   'EXPLAIN_ANALYTICS_URL',
   'NEXT_FRONTEND_URL',
