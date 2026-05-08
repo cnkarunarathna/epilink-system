@@ -16,13 +16,29 @@ jobs:
             contents: read
             id-token: write
         strategy:
+            fail-fast: false
             matrix:
                 service:
-                    - { name: route-optimizer, port: 8001, memory: 512Mi }
-                    - { name: explain-analytics, port: 8010, memory: 1Gi }
-                    - { name: chatbot-service, port: 8000, memory: 1Gi }
-                    - { name: backend, port: 3001, memory: 512Mi }
-                    - { name: frontend, port: 3000, memory: 512Mi }
+                    - name: route-optimizer
+                      context: route-optimizer
+                      port: 8001
+                      memory: 512Mi
+                    - name: explain-analytics
+                      context: explain-analytics
+                      port: 8010
+                      memory: 1Gi
+                    - name: chatbot-service
+                      context: chatbot-service
+                      port: 8000
+                      memory: 1Gi
+                    - name: backend
+                      context: backend
+                      port: 3001
+                      memory: 512Mi
+                    - name: frontend
+                      context: frontend
+                      port: 3000
+                      memory: 512Mi
         steps:
             - uses: actions/checkout@v4
 
@@ -56,6 +72,27 @@ jobs:
 
             - name: Set up Cloud SDK
               uses: google-github-actions/setup-gcloud@v2
+
+            - name: Configure Docker for Artifact Registry
+              run: gcloud auth configure-docker ${{ env.GCP_REGISTRY }} --quiet
+
+            - name: Set up docker buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Build and push ${{ matrix.service.name }} image
+              uses: docker/build-push-action@v6
+              with:
+                  context: ${{ matrix.service.context }}
+                  push: true
+                  build-args: |
+                      NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+                      NEXT_PUBLIC_SOCKET_URL=${{ secrets.BACKEND_URL }}
+                      CHATBOT_SERVICE_URL=${{ secrets.CHATBOT_SERVICE_URL }}
+                  tags: |
+                      ${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }}
+                      ${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:latest
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
 
             - name: Deploy ${{ matrix.service.name }} to Cloud Run
               env:
@@ -167,7 +204,7 @@ jobs:
                   esac
 
                   gcloud run deploy epilink-${{ matrix.service.name }} \
-                    --image=${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:latest \
+                    --image=${{ env.GCP_REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }} \
                     --region=${{ env.REGION }} \
                     --platform=managed \
                     --allow-unauthenticated \
