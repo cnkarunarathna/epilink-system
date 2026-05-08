@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  push:
+  pull_request:
     branches: [ main ]
 
 jobs:
@@ -113,7 +113,10 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:3001
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SOCKET_URL: ${{ secrets.BACKEND_URL }}
+          CHATBOT_SERVICE_URL: ${{ secrets.CHATBOT_SERVICE_URL }}
 
   python-services:
     name: Python import checks
@@ -167,6 +170,10 @@ jobs:
         with:
           context: ${{ matrix.service.context }}
           push: false
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SOCKET_URL=${{ secrets.BACKEND_URL }}
+            CHATBOT_SERVICE_URL=${{ secrets.CHATBOT_SERVICE_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -209,6 +216,10 @@ jobs:
         with:
           context: ${{ matrix.service.context }}
           push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SOCKET_URL=${{ secrets.BACKEND_URL }}
+            CHATBOT_SERVICE_URL=${{ secrets.CHATBOT_SERVICE_URL }}
           tags: |
             asia-south1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:sha-${{ github.sha }}
             asia-south1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/epilink/${{ matrix.service.name }}:latest
