@@ -61,7 +61,6 @@ jobs:
               env:
                   BACKEND_URL: ${{ secrets.BACKEND_URL }}
                   FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-                  ML_SERVICE_URL: ${{ secrets.ML_SERVICE_URL }}
                   EXPLAIN_ANALYTICS_URL: ${{ secrets.EXPLAIN_ANALYTICS_URL }}
                   ROUTE_OPTIMIZER_URL: ${{ secrets.ROUTE_OPTIMIZER_URL }}
                   OSRM_BASE_URL: ${{ secrets.OSRM_BASE_URL }}
@@ -114,7 +113,6 @@ jobs:
                       REDIS_PORT=$REDIS_PORT
                       REDIS_USERNAME=$REDIS_USERNAME
                       OSRM_BASE_URL=$OSRM_BASE_URL
-                      ML_SERVICE_URL=$ML_SERVICE_URL
                       EXPLAIN_ANALYTICS_URL=$EXPLAIN_ANALYTICS_URL
                       ROUTE_OPTIMIZER_URL=$ROUTE_OPTIMIZER_URL
                       NEXT_FRONTEND_URL=$FRONTEND_URL
