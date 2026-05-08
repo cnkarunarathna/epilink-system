@@ -214,6 +214,7 @@ jobs:
                     --max-instances=3 \
                     --cpu=1 \
                     --memory=${{ matrix.service.memory }} \
+                    --port=${{ matrix.service.port }} \
                     --env-vars-file="$ENV_FILE" \
                     $SECRET_ARGS \
                     --quiet
