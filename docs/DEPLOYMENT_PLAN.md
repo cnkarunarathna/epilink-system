@@ -322,13 +322,21 @@ Deliverables:
 
 ### 5.1 Workflow files
 
-| File                                    | Trigger                 | Purpose                                    |
-| --------------------------------------- | ----------------------- | ------------------------------------------ |
-| `.github/workflows/ci.yml`              | push + PR to any branch | Test, build, verify all services           |
-| `.github/workflows/deploy.yml`          | push to `main` (new)    | Build images, push to AR, deploy Cloud Run |
-| `.github/workflows/weekly-forecast.yml` | cron Monday 02:00 UTC   | Already done — ML predictions to Heroku DB |
+| File                                    | Trigger               | Purpose                                    |
+| --------------------------------------- | --------------------- | ------------------------------------------ |
+| `.github/workflows/ci.yml`              | push to `main`        | Test, build, verify all services           |
+| `.github/workflows/deploy.yml`          | push to `deploy-gcp`  | Build images, push to AR, deploy Cloud Run |
+| `.github/workflows/weekly-forecast.yml` | cron Monday 02:00 UTC | Already done — ML predictions to Heroku DB |
 
-### 5.2 CI workflow job graph
+### 5.2 Workflow strategy
+
+**Two-branch deployment for clarity and control:**
+
+- **`main` branch**: All code commits trigger `ci.yml` to test, build, and verify every service. Images are published to Artifact Registry with the commit SHA.
+- **`deploy-gcp` branch**: Push to this branch to trigger `deploy.yml`, which deploys the latest images from Artifact Registry to Cloud Run. This gives you manual control over when deployments happen.
+- **Rollback**: To rollback, create a branch from an older commit SHA, push to `deploy-gcp`, and the workflow will redeploy that version.
+
+### 5.3 CI workflow job graph
 
 ```
 backend-unit ─┐
@@ -339,7 +347,7 @@ frontend ───────────────────────�
 python-services (matrix) ─────────┘
 ```
 
-### 5.3 Workload Identity Federation setup (no JSON keys)
+### 5.4 Workload Identity Federation setup (no JSON keys)
 
 ```bash
 # Run once in your GCP project
