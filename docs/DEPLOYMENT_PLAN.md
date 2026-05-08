@@ -328,6 +328,8 @@ Deliverables:
 | `.github/workflows/deploy.yml`          | push to `deploy-gcp`  | Build images, push to AR, deploy Cloud Run |
 | `.github/workflows/weekly-forecast.yml` | cron Monday 02:00 UTC | Already done — ML predictions to Heroku DB |
 
+**Secrets placement (current):** Critical runtime secrets (for example: `JWT_SECRET`, `PGPASSWORD`, `REDIS_PASSWORD`, `GEMINI_API_KEY`, `EXPLAIN_GEMINI_API_KEY`, AWS credentials, `ZOHO_SMTP_PASS`, etc.) are stored in Google Cloud Secret Manager and injected into Cloud Run via `--set-secrets` in `deploy.yml`. Non-secret configuration and build-time values (service endpoint URLs, `NEXT_PUBLIC_*` build args, and other environment values used by CI) are stored as GitHub Actions repository secrets and consumed by CI/deploy jobs.
+
 ### 5.2 Workflow strategy
 
 **Two-branch deployment for clarity and control:**
@@ -487,6 +489,16 @@ Stored as GitHub Actions secrets (not GCP Secret Manager):
 - `PGSSLMODE=require`
 
 These are already set in the weekly forecast workflow. No changes needed.
+
+## Next actions (now)
+
+- Ensure `GCP_PROJECT_ID` repository secret is set (if not already).
+- Push or merge `main` into `deploy-gcp` to trigger `.github/workflows/deploy.yml`.
+- Watch the GitHub Actions deploy job, resolve any missing env/secrets, and re-run failed steps as needed.
+- Verify smoke tests (backend/explain/chatbot/route/frontend health endpoints) succeed.
+- Run DB migrations and start background workers if required by the new release.
+- Confirm all 5 Cloud Run services report healthy and the frontend renders.
+- Enable monitoring, billing alerts, and Qdrant snapshot schedules.
 
 ## 8. Demo Milestones
 
