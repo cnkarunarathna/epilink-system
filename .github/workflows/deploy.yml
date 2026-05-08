@@ -135,6 +135,7 @@ jobs:
               run: |
                   ENV_FILE="$(mktemp)"
                   SECRET_ARGS=""
+                  VPC_ARGS=""
                   BACKEND_ORIGIN_URL="${BACKEND_URL%/api}"
 
                   case "${{ matrix.service.name }}" in
@@ -163,6 +164,7 @@ jobs:
                         "ZOHO_SMTP_USER: \"$ZOHO_SMTP_USER\"" \
                         "EMAIL_ENABLED: \"$EMAIL_ENABLED\"" \
                         "EMAIL_QUEUE_CONCURRENCY: \"$EMAIL_QUEUE_CONCURRENCY\"" \
+                        "CHATBOT_SERVICE_URL: \"$CHATBOT_SERVICE_URL\"" \
                         > "$ENV_FILE"
                       SECRET_ARGS="--set-secrets=JWT_SECRET=JWT_SECRET:latest,PGPASSWORD=PGPASSWORD:latest,REDIS_PASSWORD=REDIS_PASSWORD:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET=AWS_SECRET:latest,ZOHO_SMTP_PASS=ZOHO_SMTP_PASS:latest"
                       ;;
@@ -174,6 +176,7 @@ jobs:
                         "DATA_DIR: \"$CHATBOT_DATA_DIR\"" \
                         > "$ENV_FILE"
                       SECRET_ARGS="--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest"
+                      VPC_ARGS="--vpc-connector=epilink-connector --vpc-egress=private-ranges-only"
                       ;;
                     explain-analytics)
                       printf '%s\n' \
@@ -187,6 +190,7 @@ jobs:
                         "EXPLAIN_ENABLE_AGENT_MODE: \"$EXPLAIN_ENABLE_AGENT_MODE\"" \
                         > "$ENV_FILE"
                       SECRET_ARGS="--set-secrets=EXPLAIN_GEMINI_API_KEY=EXPLAIN_GEMINI_API_KEY:latest,REDIS_PASSWORD=REDIS_PASSWORD:latest"
+                      VPC_ARGS="--vpc-connector=epilink-connector --vpc-egress=private-ranges-only"
                       ;;
                     route-optimizer)
                       printf '%s\n' \
@@ -217,6 +221,7 @@ jobs:
                     --port=${{ matrix.service.port }} \
                     --env-vars-file="$ENV_FILE" \
                     $SECRET_ARGS \
+                    $VPC_ARGS \
                     --quiet
 
     smoke-tests:
