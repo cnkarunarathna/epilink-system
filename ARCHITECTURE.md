@@ -65,7 +65,7 @@ EpiLink is a full-stack, role-based dengue risk monitoring and field coordinatio
 
 ![EpiLink System Architecture](architecture_diagram.png)
 
-The diagram above illustrates the full service topology: clients at the top layer communicate through the NestJS backend, which coordinates with PostgreSQL, Redis, and S3 for persistence, and delegates to three Python microservices (ML Prediction, Explain-Analytics, and Route Optimization) for specialised computation.
+The diagram above illustrates the full service topology: clients at the top layer communicate through the NestJS backend, which coordinates with PostgreSQL, Redis, and S3 for persistence, and delegates to four Python microservices (ML Prediction, Explain-Analytics, Public Chatbot and Route Optimization) for specialised computation.
 
 ---
 
@@ -494,27 +494,68 @@ A public-facing dengue Q&A service using hybrid RAG over a curated knowledge bas
 
 ## 9. Route Optimization Microservice
 
-**Framework:** Python
+**Service name:** `route-optimizer` | **Framework:** Python | **Port:** 8001
 
-Computes optimal visit order for a PHI's daily task list using the Travelling Salesman Problem (TSP) algorithm.
+Computes optimal visit order for a PHI's daily task list using the Travelling Salesman Problem (TSP) solver backed by real-road travel times from OSRM.
+
+### Technology
+
+| Component | Technology | Role |
+|-----------|-----------|------|
+| **TSP Solver** | Google OR-Tools | Finds the minimum-cost visitation order across all task locations |
+| **Distance Matrix** | OSRM (Open Source Routing Machine) | Produces real-road travel time/distance between every pair of task coordinates — avoids straight-line distortion |
+| **API** | Python (FastAPI / Flask) | Receives task coordinate payloads from NestJS; returns ordered waypoints |
+
+### Request Flow
 
 ```
-PHI taps "Optimize Route"
+PHI taps "Optimize Route" on RouteOptimizationScreen
     │
     ▼
-routeService.optimizeRoute(taskIds, phiLocation) — NestJS internal call
+routeService.optimizeRoute(taskIds, phiLocation)        NestJS internal REST call
     │
     ▼
-Route service: fetch task coordinates → OSRM real-road distance matrix → OR-Tools TSP
+Route service fetches task coordinates from request payload
     │
     ▼
-Returns: ordered waypoints + per-leg ETAs + total distance
+OSRM real-road distance matrix computed for all location pairs
     │
     ▼
-Mobile app renders optimized route on map
+OR-Tools TSP solver finds minimum-cost visitation order
+    │
+    ▼
+Returns: ordered waypoints + per-leg ETAs + total distance + total time
+    │
+    ▼
+NestJS forwards result to mobile client
+    │
+    ▼
+RouteOptimizationScreen renders optimized route on map with per-stop ETAs
 ```
 
-The route recalculates automatically when a task is completed or an urgent task is added.
+### NestJS Integration
+
+- NestJS makes an **internal REST call** to the route optimizer, passing task coordinates and the PHI's current GPS location
+- The service is not exposed externally — all access is proxied through the NestJS backend
+- No authentication token forwarding is required (internal service boundary)
+
+### Mobile Integration
+
+The `RouteOptimizationScreen` in the PHI mobile app:
+- Displays the optimized waypoint sequence with numbered stops
+- Shows per-leg ETAs and total estimated travel time
+- Renders the route visually on an embedded map
+- Auto-recalculates when a task is **completed** or an **urgent task is added** to the PHI's active list
+
+### Deployment
+
+| Property | Value |
+|----------|-------|
+| Service name | `route-optimizer` |
+| Port | 8001 |
+| Cloud Run memory | 512 Mi |
+| Region | asia-south1 |
+| Smoke test | `curl route-optimizer /health` (runs after every deploy) |
 
 ---
 
