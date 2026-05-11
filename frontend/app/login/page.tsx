@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Sparkles,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -72,7 +73,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
+    <div className="relative min-h-screen grid lg:grid-cols-2">
+      <div className="absolute top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
       {/* Left Column - Login Form */}
       <div className="flex items-center justify-center p-8 bg-background">
         <motion.div
