@@ -19,6 +19,9 @@ import {
   Droplets,
   Cloud,
   BellRing,
+  BarChart3,
+  ClipboardList,
+  Clock,
 } from "lucide-react";
 import {
   fetchLatestPerDistrict,
@@ -28,10 +31,15 @@ import {
 import { fetchTaskStats, TaskStats } from "@/services/tasks.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { DISTRICTS } from "@/lib/constants/districts";
 import WeeklyTrendAreaChart from "@/components/dashboard/analytics/WeeklyTrendAreaChart";
 import TaskStatusDonutChart from "@/components/dashboard/analytics/TaskStatusDonutChart";
 import DistrictWeatherCorrelationChart from "@/components/dashboard/analytics/DistrictWeatherCorrelationChart";
 import DistrictOutbreakAlert from "@/components/dashboard/analytics/DistrictOutbreakAlert";
+import TaskTypeDonutChart from "@/components/dashboard/task-analytics/TaskTypeDonutChart";
+import TaskPriorityBarChart from "@/components/dashboard/task-analytics/TaskPriorityBarChart";
+import WeeklyTaskTrendChart from "@/components/dashboard/task-analytics/WeeklyTaskTrendChart";
+import OverdueTaskCards from "@/components/dashboard/task-analytics/OverdueTaskCards";
 
 interface TimeseriesPoint {
   year: number;
@@ -47,6 +55,8 @@ export default function AnalyticsPage() {
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
 
   const supervisorDistrict = user?.district || "Colombo";
+  const districtId =
+    DISTRICTS.find((d) => d.name.toLowerCase() === supervisorDistrict.toLowerCase())?.id ?? 1;
 
   const loadData = useCallback(async () => {
     try {
@@ -289,6 +299,66 @@ export default function AnalyticsPage() {
             <DistrictOutbreakAlert district={supervisorDistrict} />
           </CardContent>
         </Card>
+      </div>
+
+      {/* Task Analytics Section */}
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Task Analytics</h3>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-blue-500" />
+                Task Type Distribution
+              </CardTitle>
+              <CardDescription>Task counts by type with completion rates</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TaskTypeDonutChart districtId={districtId} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-orange-500" />
+                Task Priority Breakdown
+              </CardTitle>
+              <CardDescription>Completed vs remaining tasks by priority</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TaskPriorityBarChart districtId={districtId} />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                Weekly Task Trend
+              </CardTitle>
+              <CardDescription>Tasks created vs completed over the last 8 weeks</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <WeeklyTaskTrendChart districtId={districtId} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-red-500" />
+                Overdue Tasks
+              </CardTitle>
+              <CardDescription>Tasks past their due date in your district</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OverdueTaskCards districtId={districtId} />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

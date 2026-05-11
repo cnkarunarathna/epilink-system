@@ -31,6 +31,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('by-type')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getByType(@Query('districtId') districtId?: string) {
     return this.analyticsService.getByType(
       districtId ? parseInt(districtId, 10) : undefined,
@@ -38,6 +39,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('by-priority')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getByPriority(@Query('districtId') districtId?: string) {
     return this.analyticsService.getByPriority(
       districtId ? parseInt(districtId, 10) : undefined,
@@ -45,6 +47,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('trend')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getTrend(
     @Query('period') period?: 'day' | 'week' | 'month',
     @Query('from') from?: string,
@@ -74,6 +77,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('overdue')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getOverdueTasks(@Query('districtId') districtId?: string) {
     return this.analyticsService.getOverdueTasks(
       districtId ? parseInt(districtId, 10) : undefined,
