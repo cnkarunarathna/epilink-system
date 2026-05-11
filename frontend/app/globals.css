@@ -242,4 +242,47 @@
   .bg-gradient-radial {
     background: radial-gradient(circle at center, var(--tw-gradient-stops));
   }
+
+  /* Custom scrollbar — replaces the tailwind-scrollbar plugin classes */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.91 0.012 145 / 0.55) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: oklch(0.91 0.012 145 / 0.55);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.91 0.012 145 / 0.85);
+  }
+}
+
+/* Dark-mode scrollbar thumb */
+.dark .custom-scrollbar {
+  scrollbar-color: oklch(0.24 0.025 150 / 0.55) transparent;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: oklch(0.24 0.025 150 / 0.55);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.24 0.025 150 / 0.85);
+}
+
+/* iOS momentum scrolling for all overflow containers */
+.overflow-y-auto,
+.overflow-y-scroll {
+  -webkit-overflow-scrolling: touch;
 }
