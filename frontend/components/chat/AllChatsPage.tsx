@@ -315,7 +315,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   // Scroll focused item into view
   useEffect(() => {
     if (kbIdx >= 0) {
-      itemRefs.current[kbIdx]?.scrollIntoView({ block: "nearest" });
+      itemRefs.current[kbIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [kbIdx]);
 
@@ -450,7 +450,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-4xl bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)/0.60),transparent_32%)]">
+    <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded-4xl bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)/0.60),transparent_32%)]">
       <div className="rounded-4xl border border-border/70 bg-card/85 px-4 py-4 shadow-sm backdrop-blur-xl md:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl space-y-1">
@@ -503,6 +503,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search conversations…"
+              aria-label="Search conversations"
               className="h-10 rounded-full border-border/70 bg-background/80 pl-9 text-sm shadow-sm"
             />
           </div>
@@ -565,6 +566,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         <aside
           tabIndex={0}
           onKeyDown={handleListKeyDown}
+          aria-label="Conversation list"
           className={cn(
             "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl focus:outline-none",
             mobileView === "chat" ? "hidden md:flex" : "flex",
@@ -591,7 +593,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-thin scrollbar-thumb-border/60 scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto overscroll-contain scroll-smooth px-3 py-3 custom-scrollbar">
             {loading ? (
               <ListSkeleton />
             ) : displayedItems.length === 0 ? (
@@ -639,6 +641,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         </aside>
 
         <section
+          aria-label="Chat messages"
           className={cn(
             "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl",
             mobileView === "list" ? "hidden md:flex" : "flex",

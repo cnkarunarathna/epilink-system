@@ -49,6 +49,7 @@ export const TaskChatListItem = React.forwardRef<
     <button
       ref={ref}
       onClick={onClick}
+      aria-label={`${item.title}, ${item.status.replace("_", " ")}${hasUnread ? `, ${item.unreadCount} unread message${item.unreadCount !== 1 ? "s" : ""}` : ""}`}
       className={cn(
         "group relative w-full overflow-hidden rounded-2xl border px-3 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         isSelected
