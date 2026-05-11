@@ -15,9 +15,10 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
-  CheckCircle2,
   ThermometerSun,
   Droplets,
+  Cloud,
+  BellRing,
 } from "lucide-react";
 import {
   fetchLatestPerDistrict,
@@ -27,6 +28,10 @@ import {
 import { fetchTaskStats, TaskStats } from "@/services/tasks.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import WeeklyTrendAreaChart from "@/components/dashboard/analytics/WeeklyTrendAreaChart";
+import TaskStatusDonutChart from "@/components/dashboard/analytics/TaskStatusDonutChart";
+import DistrictWeatherCorrelationChart from "@/components/dashboard/analytics/DistrictWeatherCorrelationChart";
+import DistrictOutbreakAlert from "@/components/dashboard/analytics/DistrictOutbreakAlert";
 
 interface TimeseriesPoint {
   year: number;
@@ -57,7 +62,7 @@ export default function AnalyticsPage() {
       );
       if (myDistrict) setDistrictData(myDistrict);
 
-      setTimeseries(timeseriesData.slice(-12)); // Last 12 weeks
+      setTimeseries(timeseriesData.slice(-12));
       setTaskStats(statsData);
     } catch (error) {
       console.error("Failed to load analytics:", error);
@@ -77,13 +82,16 @@ export default function AnalyticsPage() {
     if (cases >= 50)
       return { level: "High", color: "text-orange-600", bg: "bg-orange-100" };
     if (cases >= 25)
-      return { level: "Medium", color: "text-yellow-600", bg: "bg-yellow-100" };
+      return {
+        level: "Medium",
+        color: "text-yellow-600",
+        bg: "bg-yellow-100",
+      };
     return { level: "Low", color: "text-green-600", bg: "bg-green-100" };
   };
 
   const risk = districtData ? getRiskLevel(districtData.predicted_cases) : null;
 
-  // Calculate trend from timeseries
   const trend =
     timeseries.length >= 2
       ? timeseries[timeseries.length - 1].predicted_cases -
@@ -111,7 +119,7 @@ export default function AnalyticsPage() {
         </Button>
       </div>
 
-      {/* Risk Overview */}
+      {/* Risk Overview — unchanged */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -156,8 +164,8 @@ export default function AnalyticsPage() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {trend >= 0 ? `+${trend.toFixed(0)}` : trend.toFixed(0)} from last
-              week
+              {trend >= 0 ? `+${trend.toFixed(0)}` : trend.toFixed(0)} from
+              last week
             </p>
           </CardContent>
         </Card>
@@ -201,9 +209,8 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row — upgraded from CSS to Recharts */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Weekly Trend */}
         <Card>
           <CardHeader>
             <CardTitle>Weekly Trend</CardTitle>
@@ -213,36 +220,19 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center h-48">
+              <div className="flex items-center justify-center h-56">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : timeseries.length > 0 ? (
-              <div className="h-48 flex items-end gap-1">
-                {timeseries.map((point, idx) => {
-                  const maxCases = Math.max(
-                    ...timeseries.map((p) => p.predicted_cases),
-                  );
-                  const height =
-                    maxCases > 0 ? (point.predicted_cases / maxCases) * 100 : 0;
-                  return (
-                    <div
-                      key={idx}
-                      className="flex-1 bg-primary/80 rounded-t hover:bg-primary transition-colors"
-                      style={{ height: `${height}%`, minHeight: "4px" }}
-                      title={`Week ${point.week}: ${Math.round(point.predicted_cases)} cases`}
-                    />
-                  );
-                })}
-              </div>
             ) : (
-              <div className="h-48 flex items-center justify-center text-muted-foreground">
-                No data available
-              </div>
+              <WeeklyTrendAreaChart
+                data={timeseries}
+                currentWeek={districtData?.week}
+                currentYear={districtData?.year}
+              />
             )}
           </CardContent>
         </Card>
 
-        {/* Task Completion */}
         <Card>
           <CardHeader>
             <CardTitle>Task Performance</CardTitle>
@@ -254,47 +244,49 @@ export default function AnalyticsPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : taskStats ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Completed</span>
-                  <span className="font-semibold text-green-600">
-                    {taskStats.completed}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-500 h-2 rounded-full"
-                    style={{
-                      width: `${taskStats.total > 0 ? (taskStats.completed / taskStats.total) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-4 text-center pt-4">
-                  <div>
-                    <p className="text-2xl font-bold text-yellow-600">
-                      {taskStats.inProgress}
-                    </p>
-                    <p className="text-xs text-muted-foreground">In Progress</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {taskStats.submitted}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Submitted</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-red-600">
-                      {taskStats.rejected}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Rejected</p>
-                  </div>
-                </div>
-              </div>
+              <TaskStatusDonutChart stats={taskStats} />
             ) : (
-              <div className="h-48 flex items-center justify-center text-muted-foreground">
-                No data available
+              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+                No task data available
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* New Row — weather correlation + district alert */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cloud className="h-4 w-4 text-sky-500" />
+              Weather Impact
+            </CardTitle>
+            <CardDescription>
+              How weather correlates with dengue cases in {supervisorDistrict}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DistrictWeatherCorrelationChart
+              district={supervisorDistrict}
+              currentTemp={districtData?.temperature}
+              currentPrecip={districtData?.precipitation}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BellRing className="h-4 w-4 text-red-500" />
+              Alert Status
+            </CardTitle>
+            <CardDescription>
+              Active outbreak alerts for {supervisorDistrict}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DistrictOutbreakAlert district={supervisorDistrict} />
           </CardContent>
         </Card>
       </div>
