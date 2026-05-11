@@ -22,7 +22,9 @@ import {
   BarChart3,
   ClipboardList,
   Clock,
+  Download,
 } from "lucide-react";
+import { exportToCSV } from "@/lib/export";
 import {
   fetchLatestPerDistrict,
   fetchTimeseries,
@@ -120,13 +122,33 @@ export default function AnalyticsPage() {
             {supervisorDistrict} District Insights
           </p>
         </div>
-        <Button variant="outline" onClick={loadData} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loading || timeseries.length === 0}
+            onClick={() =>
+              exportToCSV(
+                timeseries.map((p) => ({
+                  Week: p.week,
+                  Year: p.year,
+                  "Predicted Cases": p.predicted_cases,
+                })),
+                `${supervisorDistrict.toLowerCase()}-district-analytics.csv`
+              )
+            }
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Risk Overview — unchanged */}

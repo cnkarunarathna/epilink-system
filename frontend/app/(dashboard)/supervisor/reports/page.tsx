@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import {
   Card,
@@ -31,6 +31,9 @@ import {
   TrendingUp,
   BarChart2,
   Loader2,
+  LineChart as LineChartIcon,
+  PieChart as PieChartIcon,
+  MapPin,
 } from "lucide-react";
 import {
   listReports,
@@ -38,8 +41,15 @@ import {
   WeeklyReport,
 } from "@/services/reports.service";
 import ReportDetailModal from "@/components/dashboard/reports/ReportDetailModal";
+import CaseTrendChart from "@/components/dashboard/reports/CaseTrendChart";
+import ReportStatusDonut from "@/components/dashboard/reports/ReportStatusDonut";
+import HighRiskFrequencyChart from "@/components/dashboard/reports/HighRiskFrequencyChart";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function SupervisorReportsPage() {
+  const { user } = useAuth();
+  const supervisorDistrict = user?.district ?? "Colombo";
+
   const [reports, setReports] = useState<WeeklyReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -190,6 +200,66 @@ export default function SupervisorReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Reports Analytics */}
+      {!loading && reports.length > 0 && (
+        <div className="space-y-6">
+          <h3 className="text-lg font-semibold">Report Analytics</h3>
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LineChartIcon className="h-4 w-4 text-orange-500" />
+                  Case Count Trend
+                </CardTitle>
+                <CardDescription>
+                  Predicted and actual cases across all reports
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CaseTrendChart reports={reports} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChartIcon className="h-4 w-4 text-green-500" />
+                  Approval Status
+                </CardTitle>
+                <CardDescription>
+                  Breakdown of report statuses
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ReportStatusDonut reports={reports} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-red-500" />
+                High-Risk District Frequency
+              </CardTitle>
+              <CardDescription>
+                Districts flagged as high-risk or critical across reports —{" "}
+                <span className="text-orange-500 font-medium">
+                  {supervisorDistrict}
+                </span>{" "}
+                highlighted
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <HighRiskFrequencyChart
+                reports={reports}
+                supervisorDistrict={supervisorDistrict}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Reports Table */}
       <Card>
