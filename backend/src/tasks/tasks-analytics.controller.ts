@@ -70,6 +70,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('phis')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getPhiMetrics(@Query('districtId') districtId?: string) {
     return this.analyticsService.getPhiMetrics(
       districtId ? parseInt(districtId, 10) : undefined,
@@ -92,6 +93,7 @@ export class TasksAnalyticsController {
   }
 
   @Get('phi-profile')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   getPhiProfile(@Query('phiId') phiId: string) {
     return this.analyticsService.getPhiProfile(phiId);
   }

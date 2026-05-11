@@ -34,6 +34,7 @@ import {
   Ban,
   CheckCircle,
   MoreVertical,
+  BarChart3,
 } from "lucide-react";
 import {
   fetchPhisByDistrict,
@@ -45,6 +46,10 @@ import usersService from "@/services/users.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { toast } from "sonner";
+import { DISTRICTS } from "@/lib/constants/districts";
+import PhiSummaryBar from "@/components/dashboard/phi/PhiSummaryBar";
+import PhiWorkloadChart from "@/components/dashboard/phi/PhiWorkloadChart";
+import PhiSparkline from "@/components/dashboard/phi/PhiSparkline";
 
 interface PhiWithStats {
   id: string;
@@ -78,6 +83,8 @@ export default function PhisPage() {
   });
 
   const supervisorDistrict = user?.district || "Colombo";
+  const districtId =
+    DISTRICTS.find((d) => d.name.toLowerCase() === supervisorDistrict.toLowerCase())?.id ?? 1;
 
   const loadData = useCallback(async () => {
     try {
@@ -300,6 +307,9 @@ export default function PhisPage() {
         </div>
       </div>
 
+      {/* PHI Summary Bar */}
+      {!loading && <PhiSummaryBar phis={phis} />}
+
       {/* Summary */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -367,6 +377,22 @@ export default function PhisPage() {
         </Card>
       </div>
 
+      {/* PHI Workload Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-orange-500" />
+            PHI Workload Comparison
+          </CardTitle>
+          <CardDescription>
+            Completed vs remaining tasks per PHI in {supervisorDistrict}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PhiWorkloadChart districtId={districtId} />
+        </CardContent>
+      </Card>
+
       {/* PHI List */}
       <Card>
         <CardHeader>
@@ -416,6 +442,10 @@ export default function PhisPage() {
                         {phi.tasksCompleted}
                       </p>
                       <p className="text-xs text-muted-foreground">Completed</p>
+                    </div>
+                    <div className="hidden md:flex flex-col items-center gap-0.5">
+                      <PhiSparkline phiId={phi.id} />
+                      <p className="text-xs text-muted-foreground">Trend</p>
                     </div>
                     <Badge
                       variant={
