@@ -290,12 +290,21 @@ This can be used in scheduled backend jobs to auto-update district-level dashboa
 
 ---
 
-## Credits
+## Project Commands (via uv)
 
-| Role            | Name                                                               |
-| --------------- | ------------------------------------------------------------------ |
-| Model Developer | Charuka Karunarathna                                               |
-| Project         | EpiLink – Smart Dengue Risk Monitoring & Cleanup Management System |
-| Year            | Final Year Project 2025                                            |
+This project uses `uv` for script execution. Run the following from the project root:
+
+| Task                  | Command                           |
+| --------------------- | --------------------------------- |
+| Start API Server      | `uv run serve`                    |
+| Install Dependencies  | `uv sync`                         |
+| Setup Environment     | `uv run setup`                    |
+| Fetch Weather Data    | `uv run fetch-weather`            |
+| Train Enhanced Model  | `uv run train-enhanced`           |
+| Train Legacy Model    | `uv run train-legacy`             |
+| Generate Forecasts    | `uv run forecast`                 |
+| Backfill Data         | `uv run backfill`                 |
+| Check Database Health | `uv run db-health`                |
+| Test API UI           | Open `http://127.0.0.1:8000/docs` |
 
 ---
