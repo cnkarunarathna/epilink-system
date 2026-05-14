@@ -4,8 +4,6 @@
 **Total:** 244 unit tests + 33 integration tests = **277 tests**
 **CI:** GitHub Actions — runs on every push to `main`
 
-> For the full testing strategy, coverage thresholds, and CI setup see [docs/TESTING_WORKFLOW.md](docs/TESTING_WORKFLOW.md).
-
 ---
 
 ## Table of Contents
