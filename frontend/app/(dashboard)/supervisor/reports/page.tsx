@@ -306,7 +306,6 @@ export default function SupervisorReportsPage() {
 
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {/* View detail */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -317,7 +316,6 @@ export default function SupervisorReportsPage() {
                           <Eye className="h-4 w-4" />
                         </Button>
 
-                        {/* Download */}
                         {report.s3Key && (
                           <Button
                             variant="ghost"

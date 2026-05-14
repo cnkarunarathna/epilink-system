@@ -19,6 +19,7 @@ import {
 import { Menu, Activity, LayoutDashboard, BarChart3 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false);
@@ -65,6 +66,7 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center space-x-3">
+          <ThemeToggle />
           <Button
             variant="outline"
             className="shadow-sm hover:shadow-md transition-all border-primary/30 hover:border-primary hover:bg-primary/5"
@@ -126,6 +128,10 @@ export function Header() {
                 </Link>
               ))}
               <div className="pt-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Theme</span>
+                  <ThemeToggle />
+                </div>
                 <Button
                   variant="outline"
                   className="w-full border-primary/30"

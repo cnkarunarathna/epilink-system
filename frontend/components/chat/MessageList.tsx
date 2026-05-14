@@ -165,7 +165,7 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
-      className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_20%_0%,hsl(var(--muted)/0.35),transparent_35%),radial-gradient(circle_at_80%_100%,hsl(var(--muted)/0.26),transparent_40%)] px-3 py-4 scrollbar-thin scrollbar-thumb-border/60 scrollbar-track-transparent"
+      className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain scroll-smooth bg-[radial-gradient(circle_at_20%_0%,hsl(var(--muted)/0.35),transparent_35%),radial-gradient(circle_at_80%_100%,hsl(var(--muted)/0.26),transparent_40%)] px-3 py-4 custom-scrollbar"
     >
       {/* Load more */}
       {hasMore && (

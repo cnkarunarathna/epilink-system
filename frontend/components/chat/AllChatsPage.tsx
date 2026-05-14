@@ -315,7 +315,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   // Scroll focused item into view
   useEffect(() => {
     if (kbIdx >= 0) {
-      itemRefs.current[kbIdx]?.scrollIntoView({ block: "nearest" });
+      itemRefs.current[kbIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [kbIdx]);
 
@@ -450,34 +450,24 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-4xl bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)/0.60),transparent_32%)]">
-      <div className="rounded-4xl border border-border/70 bg-card/85 px-4 py-4 shadow-sm backdrop-blur-xl md:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl space-y-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              <span className="h-2 w-2 rounded-full bg-primary/70" />
-              Conversation Hub
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              All Chats
-            </h1>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-              Review task conversations in one place, with unread threads
-              prioritized and the most recent activity surfaced first.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden rounded-4xl bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)/0.60),transparent_32%)]">
+      <div className="rounded-4xl border border-border/70 bg-card/85 px-4 py-3 shadow-sm backdrop-blur-xl md:px-5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {/* Title + stats */}
+          <h1 className="text-base font-semibold tracking-tight text-foreground">
+            All Chats
+          </h1>
+          <div className="flex items-center gap-1.5">
             <Badge
               variant="secondary"
-              className="gap-1 rounded-full px-3 py-1 text-xs font-medium"
+              className="gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {items.length} loaded
+              {items.length}
             </Badge>
             <Badge
               variant="secondary"
-              className="gap-1 rounded-full px-3 py-1 text-xs font-medium"
+              className="gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
               {totalUnread} unread
@@ -486,42 +476,45 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
+                className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
                 onClick={resetFilters}
               >
                 Clear filters
               </Button>
             )}
           </div>
-        </div>
 
-        <div className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className="relative w-full lg:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              value={search}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search conversations…"
-              className="h-10 rounded-full border-border/70 bg-background/80 pl-9 text-sm shadow-sm"
-            />
-          </div>
+          {/* Spacer */}
+          <div className="flex-1" />
 
+          {/* Search + filters */}
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search conversations…"
+                aria-label="Search conversations"
+                className="h-8 w-44 rounded-full border-border/70 bg-background/80 pl-8 text-xs shadow-sm sm:w-56"
+              />
+            </div>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-10 gap-1.5 rounded-full px-4"
+                  className="h-8 gap-1.5 rounded-full px-3 text-xs"
                 >
-                  <Filter className="h-3.5 w-3.5" />
+                  <Filter className="h-3 w-3" />
                   {statusFilter.length > 0
                     ? `Status (${statusFilter.length})`
                     : "Status"}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuLabel className="text-xs">
                   Filter by status
                 </DropdownMenuLabel>
@@ -542,7 +535,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
             <Button
               variant={unreadOnly ? "default" : "outline"}
               size="sm"
-              className="h-10 rounded-full px-4 text-xs"
+              className="h-8 rounded-full px-3 text-xs"
               onClick={() => setUnreadOnly((v) => !v)}
             >
               Unread only
@@ -551,9 +544,9 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
             {taskDetailHref && (
               <a
                 href={taskDetailHref}
-                className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-4 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted lg:inline-flex"
+                className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted lg:inline-flex"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="h-3 w-3" />
                 Open task
               </a>
             )}
@@ -565,6 +558,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         <aside
           tabIndex={0}
           onKeyDown={handleListKeyDown}
+          aria-label="Conversation list"
           className={cn(
             "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl focus:outline-none",
             mobileView === "chat" ? "hidden md:flex" : "flex",
@@ -591,7 +585,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-thin scrollbar-thumb-border/60 scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto overscroll-contain scroll-smooth px-3 py-3 custom-scrollbar">
             {loading ? (
               <ListSkeleton />
             ) : displayedItems.length === 0 ? (
@@ -639,6 +633,7 @@ export function AllChatsPage({ role }: AllChatsPageProps) {
         </aside>
 
         <section
+          aria-label="Chat messages"
           className={cn(
             "flex min-h-0 flex-col overflow-hidden overscroll-none rounded-4xl border border-border/70 bg-card/90 shadow-lg shadow-black/5 backdrop-blur-xl",
             mobileView === "list" ? "hidden md:flex" : "flex",
