@@ -110,18 +110,44 @@ export default function ZoneHotspotChart({ data }: Props) {
             width={100}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: isDark ? "#1f2937" : "#ffffff",
-              border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`,
-              borderRadius: "8px",
-              fontSize: "12px",
+            content={({ active, payload }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const d = payload[0].payload as {
+                fullZone: string;
+                cases: number;
+                priority: string;
+                type: string;
+                flags: string[];
+              };
+              return (
+                <div
+                  style={{
+                    backgroundColor: isDark ? "#1f2937" : "#ffffff",
+                    border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`,
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  <p style={{ fontWeight: 600, marginBottom: 2 }}>{d.fullZone}</p>
+                  <p>
+                    {d.cases} est. cases ·{" "}
+                    {PRIORITY_LABELS[d.priority] ?? "—"} priority
+                  </p>
+                  {d.type && (
+                    <p style={{ color: isDark ? "#9ca3af" : "#6b7280", marginTop: 2 }}>
+                      {d.type}
+                    </p>
+                  )}
+                  {d.flags && d.flags.length > 0 && (
+                    <p style={{ color: isDark ? "#9ca3af" : "#6b7280" }}>
+                      {d.flags.join(" · ")}
+                    </p>
+                  )}
+                </div>
+              );
             }}
-            formatter={(value: number | undefined, _name: string | undefined, props: { payload?: { priority?: string } }) =>
-              [
-                `${value ?? 0} est. cases · ${PRIORITY_LABELS[props?.payload?.priority ?? ""] ?? "—"} priority`,
-                "",
-              ] as [string, string]
-            }
           />
           <Bar dataKey="cases" radius={[0, 4, 4, 0]} isAnimationActive={false}>
             {chartData.map((entry, i) => (

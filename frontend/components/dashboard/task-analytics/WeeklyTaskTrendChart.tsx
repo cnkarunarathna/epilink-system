@@ -21,9 +21,14 @@ interface Props {
   districtId: number;
 }
 
+const WEEK_OPTIONS = [4, 8, 12] as const;
+type WeekOption = (typeof WEEK_OPTIONS)[number];
+
 export default function WeeklyTaskTrendChart({ districtId }: Props) {
   const [data, setData] = useState<TrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [weeks, setWeeks] = useState<WeekOption>(8);
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -34,19 +39,21 @@ export default function WeeklyTaskTrendChart({ districtId }: Props) {
   const isDark = mounted && resolvedTheme === "dark";
 
   useEffect(() => {
+    setLoading(true);
+    setError(false);
     const to = new Date();
     const from = new Date();
-    from.setDate(from.getDate() - 56);
+    from.setDate(from.getDate() - weeks * 7);
     fetchTrend(
       "week",
       from.toISOString().split("T")[0],
       to.toISOString().split("T")[0],
       districtId,
     )
-      .then((points) => setData(points.slice(-8)))
-      .catch((err) => console.error("Task trend fetch failed:", err))
+      .then((points) => setData(points.slice(-weeks)))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [districtId]);
+  }, [districtId, weeks]);
 
   if (loading) {
     return (
@@ -56,10 +63,18 @@ export default function WeeklyTaskTrendChart({ districtId }: Props) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="h-48 flex items-center justify-center text-sm text-red-500">
+        Failed to load trend data. Please refresh.
+      </div>
+    );
+  }
+
   if (data.length === 0) {
     return (
       <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
-        No trend data available
+        No task activity in the last {weeks} weeks for this district
       </div>
     );
   }
@@ -69,8 +84,24 @@ export default function WeeklyTaskTrendChart({ districtId }: Props) {
   const lastPeriod = data[data.length - 1]?.period;
 
   return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-0.5">
+        {WEEK_OPTIONS.map((w) => (
+          <button
+            key={w}
+            onClick={() => setWeeks(w)}
+            className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
+              weeks === w
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {w}w
+          </button>
+        ))}
+      </div>
     <ResponsiveContainer width="100%" height={192}>
-      <LineChart data={data} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
         <XAxis
           dataKey="period"
@@ -84,6 +115,13 @@ export default function WeeklyTaskTrendChart({ districtId }: Props) {
           tickLine={false}
           axisLine={false}
           allowDecimals={false}
+          label={{
+            value: "Tasks",
+            angle: -90,
+            position: "insideLeft",
+            offset: 12,
+            style: { fontSize: 9, fill: tickColor },
+          }}
         />
         <Tooltip
           contentStyle={{
@@ -133,5 +171,6 @@ export default function WeeklyTaskTrendChart({ districtId }: Props) {
         />
       </LineChart>
     </ResponsiveContainer>
+    </div>
   );
 }

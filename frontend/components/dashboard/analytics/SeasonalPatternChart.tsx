@@ -39,6 +39,17 @@ export default function SeasonalPatternChart({ data }: Props) {
     [data.weekly_averages],
   );
 
+  const peakMultiplier = useMemo(() => {
+    const peakSet = new Set(data.peak_weeks);
+    const entries = Object.entries(data.weekly_averages);
+    const peakAvgs = entries.filter(([w]) => peakSet.has(parseInt(w))).map(([, v]) => v);
+    const offPeakAvgs = entries.filter(([w]) => !peakSet.has(parseInt(w))).map(([, v]) => v);
+    if (peakAvgs.length === 0 || offPeakAvgs.length === 0) return null;
+    const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const offMean = mean(offPeakAvgs);
+    return offMean === 0 ? null : mean(peakAvgs) / offMean;
+  }, [data.peak_weeks, data.weekly_averages]);
+
   if (chartData.length === 0) {
     return (
       <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
@@ -70,8 +81,8 @@ export default function SeasonalPatternChart({ data }: Props) {
               data.vs_baseline_pct !== null
                 ? ` is ${data.vs_baseline_pct > 0 ? "+" : ""}${data.vs_baseline_pct.toFixed(0)}% vs seasonal baseline`
                 : " is above seasonal average"
-            }`
-          : `Off-peak — W${data.current_week} · ${data.current_cases} predicted cases · baseline: ${Math.round(data.seasonal_baseline_this_week)}`}
+            }${peakMultiplier !== null ? ` · peak weeks avg ${peakMultiplier.toFixed(1)}× off-peak` : ""}`
+          : `Off-peak — W${data.current_week} · ${data.current_cases} predicted cases · baseline: ${Math.round(data.seasonal_baseline_this_week)}${peakMultiplier !== null ? ` · peak season is typically ${peakMultiplier.toFixed(1)}× higher` : ""}`}
       </div>
 
       <ResponsiveContainer width="100%" height={180}>

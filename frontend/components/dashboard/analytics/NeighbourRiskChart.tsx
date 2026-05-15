@@ -56,18 +56,22 @@ export default function NeighbourRiskChart({ data }: Props) {
       ? [data.focal_stats, ...data.neighbours]
       : data.neighbours;
     return all
-      .map((n) => ({
-        district:
+      .map((n) => {
+        const isRising = n.is_rising;
+        const truncated =
           n.district.length > 13
             ? n.district.substring(0, 13) + "…"
-            : n.district,
-        fullName: n.district,
-        cases: Math.round(n.current_cases),
-        riskLevel: n.risk_level,
-        isFocal: n.is_focal,
-        isRising: n.is_rising,
-        wowPct: n.wow_change_pct,
-      }))
+            : n.district;
+        return {
+          district: isRising ? truncated + " ↑" : truncated,
+          fullName: n.district,
+          cases: Math.round(n.current_cases),
+          riskLevel: n.risk_level,
+          isFocal: n.is_focal,
+          isRising,
+          wowPct: n.wow_change_pct,
+        };
+      })
       .sort((a, b) => b.cases - a.cases);
   }, [data]);
 

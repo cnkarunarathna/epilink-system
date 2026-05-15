@@ -33,13 +33,16 @@ function formatOverdue(hours: number): string {
 export default function OverdueTaskCards({ districtId }: Props) {
   const [tasks, setTasks] = useState<OverdueTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
+    setError(false);
     fetchOverdueTasks(districtId)
       .then((all) =>
         setTasks(all.sort((a, b) => b.hoursOverdue - a.hoursOverdue).slice(0, 5)),
       )
-      .catch((err) => console.error("Overdue tasks fetch failed:", err))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [districtId]);
 
@@ -47,6 +50,14 @@ export default function OverdueTaskCards({ districtId }: Props) {
     return (
       <div className="h-40 flex items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-40 flex items-center justify-center text-sm text-red-500">
+        Failed to load overdue tasks. Please refresh.
       </div>
     );
   }
@@ -92,10 +103,10 @@ export default function OverdueTaskCards({ districtId }: Props) {
         </div>
       ))}
       <Link
-        href="/supervisor/tasks"
+        href="/supervisor/tasks?filter=overdue"
         className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
       >
-        View all tasks <ArrowRight className="h-3 w-3" />
+        View all overdue tasks <ArrowRight className="h-3 w-3" />
       </Link>
     </div>
   );
