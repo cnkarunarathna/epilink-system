@@ -660,7 +660,7 @@ export default function AnalyticsPage() {
                     <div className="space-y-6">
                       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
                         {/* Map */}
-                        <div className="h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
+                        <div className="isolate h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
                           <SriLankaMap
                             data={predictions}
                             onDistrictClick={handleDistrictClick}
