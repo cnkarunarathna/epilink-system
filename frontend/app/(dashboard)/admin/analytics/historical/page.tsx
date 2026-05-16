@@ -108,10 +108,17 @@ export default function HistoricalAnalyticsPage() {
   // Date range filter
   const currentYear = new Date().getFullYear();
   const DATA_START_YEAR = 2006;
-  const [filterStartYear, setFilterStartYear] = useState<number>(DATA_START_YEAR);
-  const [filterStartWeek, setFilterStartWeek] = useState<number>(1);
+  const currentWeek = (() => {
+    const d = new Date();
+    const dayNum = d.getDay() || 7;
+    d.setDate(d.getDate() + 4 - dayNum);
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  })();
+  const [filterStartYear, setFilterStartYear] = useState<number>(currentYear - 3);
+  const [filterStartWeek, setFilterStartWeek] = useState<number>(currentWeek);
   const [filterEndYear, setFilterEndYear] = useState<number>(currentYear);
-  const [filterEndWeek, setFilterEndWeek] = useState<number>(52);
+  const [filterEndWeek, setFilterEndWeek] = useState<number>(currentWeek);
 
   // Available years: dengue case history from 2006, weather data from 2020
   const availableYears = Array.from(
@@ -122,10 +129,10 @@ export default function HistoricalAnalyticsPage() {
 
   const [filterOpen, setFilterOpen] = useState(false);
   const isCustomFilter =
-    filterStartYear !== DATA_START_YEAR ||
-    filterStartWeek !== 1 ||
+    filterStartYear !== currentYear - 3 ||
+    filterStartWeek !== currentWeek ||
     filterEndYear !== currentYear ||
-    filterEndWeek !== 52;
+    filterEndWeek !== currentWeek;
 
   useEffect(() => {
     loadAvailableDistricts();
@@ -178,20 +185,24 @@ export default function HistoricalAnalyticsPage() {
   };
 
   const resetFilter = () => {
-    setFilterStartYear(DATA_START_YEAR);
-    setFilterStartWeek(1);
+    setFilterStartYear(currentYear - 3);
+    setFilterStartWeek(currentWeek);
     setFilterEndYear(currentYear);
-    setFilterEndWeek(52);
-    loadAllHistoricalData(DATA_START_YEAR, 1, currentYear, 52);
+    setFilterEndWeek(currentWeek);
+    loadAllHistoricalData(currentYear - 3, currentWeek, currentYear, currentWeek);
     loadComparisonData();
   };
 
   const applyPreset = (preset: "all" | "1y" | "3y" | "5y" | "weather") => {
-    let sYear = DATA_START_YEAR, sWeek = 1, eYear = currentYear, eWeek = 52;
-    if (preset === "1y") { sYear = currentYear - 1; sWeek = 1; }
-    else if (preset === "3y") { sYear = currentYear - 3; sWeek = 1; }
-    else if (preset === "5y") { sYear = currentYear - 5; sWeek = 1; }
+    // End is always the current week — no data exists beyond today
+    const eYear = currentYear;
+    const eWeek = currentWeek;
+    let sYear = DATA_START_YEAR, sWeek = 1;
+    if (preset === "1y") { sYear = currentYear - 1; sWeek = currentWeek; }
+    else if (preset === "3y") { sYear = currentYear - 3; sWeek = currentWeek; }
+    else if (preset === "5y") { sYear = currentYear - 5; sWeek = currentWeek; }
     else if (preset === "weather") { sYear = 2020; sWeek = 1; }
+    // "all" keeps sYear = DATA_START_YEAR, sWeek = 1
     setFilterStartYear(sYear);
     setFilterStartWeek(sWeek);
     setFilterEndYear(eYear);
