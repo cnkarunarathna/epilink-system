@@ -10,7 +10,22 @@ import {
 } from "@/components/ui/card";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 import {
   Calendar,
@@ -23,6 +38,7 @@ import {
   CloudRain,
   Filter,
   RotateCcw,
+  ChevronDown,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -104,6 +120,13 @@ export default function HistoricalAnalyticsPage() {
   );
   const weekNumbers = Array.from({ length: 52 }, (_, i) => i + 1);
 
+  const [filterOpen, setFilterOpen] = useState(false);
+  const isCustomFilter =
+    filterStartYear !== DATA_START_YEAR ||
+    filterStartWeek !== 1 ||
+    filterEndYear !== currentYear ||
+    filterEndWeek !== 52;
+
   useEffect(() => {
     loadAvailableDistricts();
     loadAllHistoricalData();
@@ -160,6 +183,20 @@ export default function HistoricalAnalyticsPage() {
     setFilterEndYear(currentYear);
     setFilterEndWeek(52);
     loadAllHistoricalData(DATA_START_YEAR, 1, currentYear, 52);
+    loadComparisonData();
+  };
+
+  const applyPreset = (preset: "all" | "1y" | "3y" | "5y" | "weather") => {
+    let sYear = DATA_START_YEAR, sWeek = 1, eYear = currentYear, eWeek = 52;
+    if (preset === "1y") { sYear = currentYear - 1; sWeek = 1; }
+    else if (preset === "3y") { sYear = currentYear - 3; sWeek = 1; }
+    else if (preset === "5y") { sYear = currentYear - 5; sWeek = 1; }
+    else if (preset === "weather") { sYear = 2020; sWeek = 1; }
+    setFilterStartYear(sYear);
+    setFilterStartWeek(sWeek);
+    setFilterEndYear(eYear);
+    setFilterEndWeek(eWeek);
+    loadAllHistoricalData(sYear, sWeek, eYear, eWeek);
     loadComparisonData();
   };
 
@@ -340,7 +377,7 @@ export default function HistoricalAnalyticsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             Historical Analytics
@@ -349,81 +386,161 @@ export default function HistoricalAnalyticsPage() {
             Comprehensive analysis of dengue case trends and patterns
           </p>
         </div>
-        <Button onClick={() => loadAllHistoricalData()} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <Activity className="h-4 w-4 mr-2" />
-          )}
-          Refresh Data
-        </Button>
-      </div>
 
-      {/* Date range filter bar */}
-      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300 mr-1">
-          <Filter className="h-4 w-4" />
-          Filter Range
-        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Compact filter popover */}
+          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-2 font-normal",
+                  isCustomFilter &&
+                    "border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30",
+                )}
+              >
+                <Filter className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-xs font-mono">
+                  {filterStartYear} W{filterStartWeek}
+                  {" – "}
+                  {filterEndYear} W{filterEndWeek}
+                </span>
+                {isCustomFilter && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-40 shrink-0" />
+              </Button>
+            </PopoverTrigger>
 
-        {/* From */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground font-medium">From</span>
-          <select
-            value={filterStartYear}
-            onChange={(e) => setFilterStartYear(Number(e.target.value))}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {availableYears.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <span className="text-xs text-muted-foreground">W</span>
-          <select
-            value={filterStartWeek}
-            onChange={(e) => setFilterStartWeek(Number(e.target.value))}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {weekNumbers.map((w) => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </select>
-        </div>
+            <PopoverContent align="end" className="w-80 p-0">
+              {/* Popover header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <span className="text-sm font-semibold">Date Range</span>
+                {isCustomFilter && (
+                  <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 h-4 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400">
+                    filtered
+                  </Badge>
+                )}
+              </div>
 
-        <span className="text-muted-foreground text-xs">→</span>
+              <div className="p-4 space-y-4">
+                {/* Quick presets */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Quick Select</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: "All Time", value: "all" as const },
+                      { label: "Last Year", value: "1y" as const },
+                      { label: "3 Years", value: "3y" as const },
+                      { label: "5 Years", value: "5y" as const },
+                      { label: "Since 2020", value: "weather" as const, icon: <CloudRain className="h-3 w-3" /> },
+                    ].map(({ label, value, icon }) => (
+                      <button
+                        key={value}
+                        onClick={() => { applyPreset(value); setFilterOpen(false); }}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/40 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-        {/* To */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground font-medium">To</span>
-          <select
-            value={filterEndYear}
-            onChange={(e) => setFilterEndYear(Number(e.target.value))}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {availableYears.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <span className="text-xs text-muted-foreground">W</span>
-          <select
-            value={filterEndWeek}
-            onChange={(e) => setFilterEndWeek(Number(e.target.value))}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {weekNumbers.map((w) => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </select>
-        </div>
+                <Separator />
 
-        <div className="flex items-center gap-2 ml-auto sm:ml-0">
-          <Button size="sm" onClick={applyFilter} disabled={loading} className="h-8">
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Filter className="h-3.5 w-3.5 mr-1" />}
-            Apply
-          </Button>
-          <Button size="sm" variant="ghost" onClick={resetFilter} disabled={loading} className="h-8">
-            <RotateCcw className="h-3.5 w-3.5 mr-1" />
-            Reset
+                {/* Custom from/to */}
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Custom Range</p>
+
+                  <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-2">
+                    <span className="text-xs text-muted-foreground">From</span>
+                    <Select value={String(filterStartYear)} onValueChange={(v) => setFilterStartYear(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {availableYears.map((y) => (
+                          <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground text-center">W</span>
+                    <Select value={String(filterStartWeek)} onValueChange={(v) => setFilterStartWeek(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {weekNumbers.map((w) => (
+                          <SelectItem key={w} value={String(w)} className="text-xs">Week {w}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-2">
+                    <span className="text-xs text-muted-foreground">To</span>
+                    <Select value={String(filterEndYear)} onValueChange={(v) => setFilterEndYear(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {availableYears.map((y) => (
+                          <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground text-center">W</span>
+                    <Select value={String(filterEndWeek)} onValueChange={(v) => setFilterEndWeek(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {weekNumbers.map((w) => (
+                          <SelectItem key={w} value={String(w)} className="text-xs">Week {w}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Popover footer actions */}
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-t bg-muted/20">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { resetFilter(); setFilterOpen(false); }}
+                  disabled={loading}
+                  className="h-7 text-xs text-muted-foreground"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { applyFilter(); setFilterOpen(false); }}
+                  disabled={loading}
+                  className="h-7 text-xs"
+                >
+                  {loading
+                    ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    : <Filter className="h-3 w-3 mr-1" />}
+                  Apply
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button onClick={() => loadAllHistoricalData()} disabled={loading} size="sm" className="h-9">
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Activity className="h-4 w-4 mr-2" />
+            )}
+            Refresh Data
           </Button>
         </div>
       </div>
