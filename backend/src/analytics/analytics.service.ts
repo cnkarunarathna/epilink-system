@@ -178,6 +178,7 @@ export class AnalyticsService implements OnModuleInit {
           ORDER BY d.name;
         `);
         return latest.map((row: any) => ({
+          districtId: Number(row.district_id),
           district: row.name,
           predicted_cases: row.cases,
           year: row.year,

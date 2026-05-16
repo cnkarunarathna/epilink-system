@@ -35,11 +35,11 @@ export const DISTRICTS: DistrictMeta[] = [
   { id: 10, name: "Jaffna", code: "JAF", province: "Northern", population: 583882 },
   { id: 11, name: "Kilinochchi", code: "KIL", province: "Northern", population: 113510 },
   { id: 12, name: "Mannar", code: "MAN", province: "Northern", population: 99051 },
-  { id: 13, name: "Mullaitivu", code: "MUL", province: "Northern", population: 92238 },
-  { id: 14, name: "Vavuniya", code: "VAV", province: "Northern", population: 172081 },
+  { id: 13, name: "Vavuniya", code: "VAV", province: "Northern", population: 172081 },
+  { id: 14, name: "Mullaitivu", code: "MUL", province: "Northern", population: 92238 },
   // Eastern
-  { id: 15, name: "Ampara", code: "AMP", province: "Eastern", population: 649402 },
-  { id: 16, name: "Batticaloa", code: "BAT", province: "Eastern", population: 526567 },
+  { id: 15, name: "Batticaloa", code: "BAT", province: "Eastern", population: 526567 },
+  { id: 16, name: "Ampara", code: "AMP", province: "Eastern", population: 649402 },
   { id: 17, name: "Trincomalee", code: "TRI", province: "Eastern", population: 379541 },
   // North Western
   { id: 18, name: "Kurunegala", code: "KUR", province: "North Western", population: 1618465 },
@@ -51,6 +51,6 @@ export const DISTRICTS: DistrictMeta[] = [
   { id: 22, name: "Badulla", code: "BAD", province: "Uva", population: 895436 },
   { id: 23, name: "Monaragala", code: "MON", province: "Uva", population: 451058 },
   // Sabaragamuwa
-  { id: 24, name: "Kegalle", code: "KEG", province: "Sabaragamuwa", population: 840648 },
-  { id: 25, name: "Ratnapura", code: "RAT", province: "Sabaragamuwa", population: 1088007 },
+  { id: 24, name: "Ratnapura", code: "RAT", province: "Sabaragamuwa", population: 1088007 },
+  { id: 25, name: "Kegalle", code: "KEG", province: "Sabaragamuwa", population: 840648 },
 ];

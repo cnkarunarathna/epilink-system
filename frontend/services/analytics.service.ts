@@ -10,6 +10,7 @@ function getAuthHeaders() {
 }
 
 export interface DistrictLatest {
+  districtId: number;
   district: string;
   predicted_cases: number;
   year: number;
