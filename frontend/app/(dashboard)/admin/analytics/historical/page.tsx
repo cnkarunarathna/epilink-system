@@ -21,6 +21,8 @@ import {
   Activity,
   Loader2,
   CloudRain,
+  Filter,
+  RotateCcw,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -87,8 +89,20 @@ export default function HistoricalAnalyticsPage() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
-  // Available years for selection
-  const availableYears = [2023, 2024, 2025, 2026];
+  // Date range filter
+  const currentYear = new Date().getFullYear();
+  const DATA_START_YEAR = 2006;
+  const [filterStartYear, setFilterStartYear] = useState<number>(DATA_START_YEAR);
+  const [filterStartWeek, setFilterStartWeek] = useState<number>(1);
+  const [filterEndYear, setFilterEndYear] = useState<number>(currentYear);
+  const [filterEndWeek, setFilterEndWeek] = useState<number>(52);
+
+  // Available years: dengue case history from 2006, weather data from 2020
+  const availableYears = Array.from(
+    { length: currentYear - DATA_START_YEAR + 1 },
+    (_, i) => DATA_START_YEAR + i,
+  );
+  const weekNumbers = Array.from({ length: 52 }, (_, i) => i + 1);
 
   useEffect(() => {
     loadAvailableDistricts();
@@ -117,10 +131,15 @@ export default function HistoricalAnalyticsPage() {
     }
   };
 
-  const loadAllHistoricalData = async () => {
+  const loadAllHistoricalData = async (
+    sYear = filterStartYear,
+    sWeek = filterStartWeek,
+    eYear = filterEndYear,
+    eWeek = filterEndWeek,
+  ) => {
     try {
       setLoading(true);
-      const data = await fetchHistoricalRange();
+      const data = await fetchHistoricalRange(sYear, sWeek, eYear, eWeek);
       setHistoricalData(data);
     } catch (error: any) {
       toast.error("Failed to load historical data");
@@ -128,6 +147,20 @@ export default function HistoricalAnalyticsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilter = () => {
+    loadAllHistoricalData(filterStartYear, filterStartWeek, filterEndYear, filterEndWeek);
+    loadComparisonData();
+  };
+
+  const resetFilter = () => {
+    setFilterStartYear(DATA_START_YEAR);
+    setFilterStartWeek(1);
+    setFilterEndYear(currentYear);
+    setFilterEndWeek(52);
+    loadAllHistoricalData(DATA_START_YEAR, 1, currentYear, 52);
+    loadComparisonData();
   };
 
   const loadYearlySummary = async (year: number) => {
@@ -148,11 +181,22 @@ export default function HistoricalAnalyticsPage() {
     }
   };
 
+  // Comparison data filtered to the selected date range (client-side)
+  const filteredComparisonData = comparisonData.filter((item) => {
+    const afterStart =
+      item.year > filterStartYear ||
+      (item.year === filterStartYear && item.week >= filterStartWeek);
+    const beforeEnd =
+      item.year < filterEndYear ||
+      (item.year === filterEndYear && item.week <= filterEndWeek);
+    return afterStart && beforeEnd;
+  });
+
   // Process data for time series chart
   const processTimeSeriesData = () => {
     const groupedByWeek: Record<string, any> = {};
 
-    comparisonData.forEach((item) => {
+    filteredComparisonData.forEach((item) => {
       const key = `${item.year}-W${item.week}`;
       if (!groupedByWeek[key]) {
         groupedByWeek[key] = {
@@ -235,7 +279,7 @@ export default function HistoricalAnalyticsPage() {
     // Only use comparison data for selected districts to show cases vs weather
     const groupedByWeek: Record<string, any> = {};
 
-    comparisonData.forEach((item) => {
+    filteredComparisonData.forEach((item) => {
       const key = `${item.year}-W${item.week}`;
       if (!groupedByWeek[key]) {
         groupedByWeek[key] = {
@@ -305,7 +349,7 @@ export default function HistoricalAnalyticsPage() {
             Comprehensive analysis of dengue case trends and patterns
           </p>
         </div>
-        <Button onClick={loadAllHistoricalData} disabled={loading}>
+        <Button onClick={() => loadAllHistoricalData()} disabled={loading}>
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : (
@@ -313,6 +357,75 @@ export default function HistoricalAnalyticsPage() {
           )}
           Refresh Data
         </Button>
+      </div>
+
+      {/* Date range filter bar */}
+      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300 mr-1">
+          <Filter className="h-4 w-4" />
+          Filter Range
+        </div>
+
+        {/* From */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground font-medium">From</span>
+          <select
+            value={filterStartYear}
+            onChange={(e) => setFilterStartYear(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {availableYears.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">W</span>
+          <select
+            value={filterStartWeek}
+            onChange={(e) => setFilterStartWeek(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {weekNumbers.map((w) => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
+        </div>
+
+        <span className="text-muted-foreground text-xs">→</span>
+
+        {/* To */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground font-medium">To</span>
+          <select
+            value={filterEndYear}
+            onChange={(e) => setFilterEndYear(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {availableYears.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">W</span>
+          <select
+            value={filterEndWeek}
+            onChange={(e) => setFilterEndWeek(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {weekNumbers.map((w) => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto sm:ml-0">
+          <Button size="sm" onClick={applyFilter} disabled={loading} className="h-8">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Filter className="h-3.5 w-3.5 mr-1" />}
+            Apply
+          </Button>
+          <Button size="sm" variant="ghost" onClick={resetFilter} disabled={loading} className="h-8">
+            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+            Reset
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="trends" className="space-y-6">

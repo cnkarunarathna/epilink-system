@@ -153,6 +153,21 @@ export interface ColomboDsBreakdownResponse {
   ds_breakdown: DsDivisionBreakdown[];
 }
 
+export async function fetchDistrictsByWeek(
+  year: number,
+  week: number,
+): Promise<{ district: string; predicted_cases: number }[]> {
+  const data: any[] = await fetchHistoricalRange(year, week, year, week);
+  const byDistrict = new Map<string, number>();
+  for (const row of data) {
+    byDistrict.set(row.district, (byDistrict.get(row.district) ?? 0) + (row.cases || 0));
+  }
+  return Array.from(byDistrict.entries()).map(([district, predicted_cases]) => ({
+    district,
+    predicted_cases,
+  }));
+}
+
 export async function fetchColomboDsBreakdown(
   year?: number,
   week?: number,
