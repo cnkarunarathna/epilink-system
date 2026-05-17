@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -6,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -84,6 +90,51 @@ export class AuthService {
       name: user.name,
       role: user.role,
       district: user.district,
+    };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (dto.newPassword) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException(
+          'Current password is required to set a new password',
+        );
+      }
+      const valid = await bcrypt.compare(dto.currentPassword, user.password);
+      if (!valid) {
+        throw new UnauthorizedException('Current password is incorrect');
+      }
+      user.password = await bcrypt.hash(dto.newPassword, 10);
+    }
+
+    if (dto.name) {
+      user.name = dto.name;
+    }
+
+    if (dto.email && dto.email !== user.email) {
+      const existing = await this.userRepository.findOne({
+        where: { email: dto.email },
+      });
+      if (existing) {
+        throw new ConflictException('Email is already in use');
+      }
+      user.email = dto.email;
+    }
+
+    const updated = await this.userRepository.save(user);
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role,
+      district: updated.district,
     };
   }
 }

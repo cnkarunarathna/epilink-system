@@ -45,6 +45,7 @@ import {
   fetchPublicDashboardSummary,
   fetchPublicTrends,
 } from "@/services/public-analytics.service";
+import settingsService from "@/services/settings.service";
 
 interface DistrictPrediction {
   district: string;
@@ -88,13 +89,24 @@ export default function PublicRiskMapPage() {
   >([]);
   const [showListView, setShowListView] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [dashboardEnabled, setDashboardEnabled] = useState<boolean | null>(null);
 
   const hasFetchedRef = useRef(false);
 
   useEffect(() => {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
-    loadDashboardData();
+    settingsService
+      .getPublic()
+      .then(({ publicDashboard }) => {
+        setDashboardEnabled(publicDashboard);
+        if (publicDashboard) loadDashboardData();
+      })
+      .catch(() => {
+        // If we can't reach the settings endpoint, assume enabled
+        setDashboardEnabled(true);
+        loadDashboardData();
+      });
   }, []);
 
   useEffect(() => {
@@ -201,6 +213,43 @@ export default function PublicRiskMapPage() {
       description: "Situation is calm",
     };
   };
+
+  if (dashboardEnabled === null) {
+    return (
+      <PublicLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (!dashboardEnabled) {
+    return (
+      <PublicLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 px-4 text-center">
+          <div className="p-4 bg-muted rounded-full">
+            <Shield className="h-12 w-12 text-muted-foreground" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold">Dashboard Temporarily Unavailable</h2>
+            <p className="text-muted-foreground max-w-md">
+              The public dengue risk dashboard has been temporarily disabled by the administrator.
+              Please check back later or contact the Ministry of Health for updates.
+            </p>
+          </div>
+          <a
+            href="https://www.epid.gov.lk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm underline text-muted-foreground hover:text-foreground"
+          >
+            Visit the Epidemiology Unit of Sri Lanka
+          </a>
+        </div>
+      </PublicLayout>
+    );
+  }
 
   return (
     <PublicLayout>
