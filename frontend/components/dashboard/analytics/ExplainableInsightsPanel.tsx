@@ -35,6 +35,8 @@ import {
   Gauge,
   GitMerge,
   Clock,
+  Activity,
+  MapPin,
 } from "lucide-react";
 import {
   fetchExplainableInsight,
@@ -93,16 +95,40 @@ const trendLabels = {
   stable: { text: "Stable", color: "text-blue-600 dark:text-blue-400" },
 };
 
+interface NationalSummaryData {
+  total_cases: number;
+  change_percent: number;
+  high_risk_districts: number;
+  current_week: { year: number; week: number };
+}
+
+interface TopDistrict {
+  district: string;
+  predicted_cases: number;
+}
+
+function getRiskTier(cases: number): { label: string; badge: string; dot: string } {
+  if (cases >= 100) return { label: "Very High", badge: "bg-red-600 text-white border-red-700",          dot: "bg-red-600" };
+  if (cases >= 50)  return { label: "High",      badge: "bg-orange-500 text-white border-orange-600",   dot: "bg-orange-500" };
+  if (cases >= 25)  return { label: "Medium",    badge: "bg-amber-400 text-amber-950 border-amber-500", dot: "bg-amber-400" };
+  if (cases >= 10)  return { label: "Low",       badge: "bg-sky-400 text-sky-950 border-sky-500",       dot: "bg-sky-400" };
+  return              { label: "Very Low",  badge: "bg-emerald-400 text-emerald-950 border-emerald-500", dot: "bg-emerald-400" };
+}
+
 interface Props {
   district: string | null;
   districts?: string[];
   onDistrictChange?: (district: string) => void;
+  nationalSummary?: NationalSummaryData | null;
+  topDistricts?: TopDistrict[];
 }
 
 export default function ExplainableInsightsPanel({
   district,
   districts = [],
   onDistrictChange,
+  nationalSummary = null,
+  topDistricts = [],
 }: Props) {
   const [insight, setInsight] = useState<ExplainInsightResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -144,7 +170,7 @@ export default function ExplainableInsightsPanel({
   if (!district) {
     return (
       <div className="space-y-4">
-        {/* District picker when no district selected */}
+        {/* District picker */}
         {districts.length > 0 && (
           <div className="flex items-center gap-3">
             <Select onValueChange={(v) => onDistrictChange?.(v)}>
@@ -161,21 +187,158 @@ export default function ExplainableInsightsPanel({
             </Select>
           </div>
         )}
-        <Card className="border-2 border-dashed border-purple-200 dark:border-purple-800/50">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="p-4 bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/40 dark:to-indigo-900/40 rounded-2xl mb-4 shadow-lg shadow-purple-200/30 dark:shadow-purple-900/20">
-              <Brain className="h-10 w-10 text-purple-600 dark:text-purple-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-purple-900 dark:text-purple-200 mb-1">
-              AI-Powered Explainable Insights
-            </h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Select a district above or from the map to generate an AI-driven
-              explanation of the current dengue risk assessment with actionable
-              recommendations.
-            </p>
-          </CardContent>
-        </Card>
+
+        {/* National snapshot */}
+        {nationalSummary ? (
+          <Card className="border-2 border-purple-200 dark:border-purple-800/50 shadow-lg overflow-hidden">
+            {/* Header */}
+            <CardHeader className="bg-linear-to-r from-purple-50 to-indigo-50 dark:from-purple-950/50 dark:to-indigo-950/50 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shadow-lg">
+                    <Brain className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">National Snapshot</CardTitle>
+                    <CardDescription>
+                      Week {nationalSummary.current_week.week},{" "}
+                      {nationalSummary.current_week.year} — select a district to
+                      generate AI risk analysis
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-xs gap-1 shrink-0">
+                  <Sparkles className="h-3 w-3" />
+                  EpiLink XAI
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-5 space-y-5">
+              {/* KPI row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    <Activity className="h-3.5 w-3.5 text-slate-500" />
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                      Total Cases
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {nationalSummary.total_cases.toLocaleString()}
+                  </div>
+                  <div
+                    className={`text-xs font-semibold mt-1 flex items-center justify-center gap-0.5 ${
+                      nationalSummary.change_percent >= 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    }`}
+                  >
+                    {nationalSummary.change_percent >= 0 ? (
+                      <TrendingUp className="h-3 w-3" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3" />
+                    )}
+                    {Math.abs(nationalSummary.change_percent).toFixed(1)}% WoW
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 text-slate-500" />
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                      High Risk
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                    {nationalSummary.high_risk_districts}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">districts</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-500" />
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                      Tracked
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold">{districts.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">districts</p>
+                </div>
+              </div>
+
+              {/* Top districts */}
+              {topDistricts.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5" />
+                    Top Risk Districts — click to analyze
+                  </h4>
+                  <div className="space-y-1.5">
+                    {topDistricts.slice(0, 5).map((d, idx) => {
+                      const risk = getRiskTier(d.predicted_cases);
+                      return (
+                        <button
+                          key={d.district}
+                          onClick={() => onDistrictChange?.(d.district)}
+                          className="w-full flex items-center gap-3 p-3 rounded-lg border border-transparent hover:border-purple-200 dark:hover:border-purple-800 hover:bg-purple-50/50 dark:hover:bg-purple-950/20 transition-all group text-left"
+                        >
+                          <span className="text-xs font-bold text-muted-foreground w-4 shrink-0 tabular-nums">
+                            {idx + 1}
+                          </span>
+                          <span
+                            className={`h-2 w-2 rounded-full shrink-0 ${risk.dot}`}
+                          />
+                          <span className="flex-1 text-sm font-medium">
+                            {d.district}
+                          </span>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {d.predicted_cases.toLocaleString()} cases
+                          </span>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded border font-medium ${risk.badge}`}
+                          >
+                            {risk.label}
+                          </span>
+                          <Sparkles className="h-3.5 w-3.5 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* CTA */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/40">
+                <div className="p-1.5 bg-linear-to-br from-purple-500 to-indigo-600 rounded-lg shrink-0">
+                  <Brain className="h-4 w-4 text-white" />
+                </div>
+                <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed">
+                  Select any district above or from the map to generate an
+                  AI-driven risk explanation with key drivers, recommendations,
+                  and MoH document references.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-2 border-dashed border-purple-200 dark:border-purple-800/50">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="p-4 bg-linear-to-br from-purple-100 to-indigo-100 dark:from-purple-900/40 dark:to-indigo-900/40 rounded-2xl mb-4 shadow-lg shadow-purple-200/30 dark:shadow-purple-900/20">
+                <Brain className="h-10 w-10 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-purple-900 dark:text-purple-200 mb-1">
+                AI-Powered Explainable Insights
+              </h3>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                Select a district above or from the map to generate an AI-driven
+                explanation of the current dengue risk assessment with actionable
+                recommendations.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }

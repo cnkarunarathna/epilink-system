@@ -1183,6 +1183,8 @@ export default function AnalyticsPage() {
                   setSelectedDistrict(d);
                   handleDistrictClick(d);
                 }}
+                nationalSummary={summary}
+                topDistricts={predictions.slice(0, 5)}
               />
               <AdvancedAnalyticsPanel
                 districts={predictions.map((p) => p.district)}
