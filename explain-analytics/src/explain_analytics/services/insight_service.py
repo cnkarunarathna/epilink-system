@@ -869,6 +869,72 @@ def _build_gemini_tools():
                 ),
             ),
             _t.FunctionDeclaration(
+                name="get_national_weekly_trend",
+                description="Aggregated national dengue case totals per week for all Sri Lanka, with WoW% and overall trend direction. Prefer this over compare_districts('') for national temporal questions.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "weeks": _t.Schema(type=_t.Type.INTEGER, description="Recent weeks to include (default 8, max 16)."),
+                    },
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="compare_periods",
+                description="Compare a district's most recent N-week period vs the prior N-week period (auto-split, no date math). Returns avg cases, peak, total change%, and improving/stable/worsening verdict.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": district_param,
+                        "window_weeks": _t.Schema(type=_t.Type.INTEGER, description="Weeks per comparison period (default 4, max 8)."),
+                    },
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="rank_districts_by_metric",
+                description="Rank all districts by a chosen metric: 'cases' (current), 'wow' (WoW% change), 'avg' (4-week avg), or 'score' (composite). Use order='asc' to find safest/most-improved.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "metric": _t.Schema(type=_t.Type.STRING, description="Metric: 'cases', 'wow', 'avg', or 'score' (default 'cases')."),
+                        "top_n": _t.Schema(type=_t.Type.INTEGER, description="Districts to return (default 10, max 26)."),
+                        "order": _t.Schema(type=_t.Type.STRING, description="'desc' = highest first (default); 'asc' = lowest first."),
+                    },
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_weekly_delta_briefing",
+                description="Identifies biggest WoW risers and fallers across all districts this week. Use for 'what changed this week?', 'which districts spiked/dropped?', or delta-change briefings.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "top_n": _t.Schema(type=_t.Type.INTEGER, description="Top movers per direction to return (default 5, max 10)."),
+                    },
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="get_districts_by_burden_tier",
+                description="Groups all districts by risk tier: critical (≥100 cases), high (50–99), moderate (25–49), low (<25). Filter by specific tier or get all tiers grouped.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "tier": _t.Schema(type=_t.Type.STRING, description="'critical', 'high', 'moderate', 'low', or 'all' (default)."),
+                    },
+                ),
+            ),
+            _t.FunctionDeclaration(
+                name="compare_same_week_across_years",
+                description="Compares current ISO week case count to the same week in prior years. Use for 'is this week worse than last year?', 'is this a historically bad week?', or same-week benchmarking.",
+                parameters=_t.Schema(
+                    type=_t.Type.OBJECT,
+                    properties={
+                        "district": district_param,
+                        "years": _t.Schema(type=_t.Type.INTEGER, description="Prior years to include (default 3, max 5)."),
+                    },
+                    required=["district"],
+                ),
+            ),
+            _t.FunctionDeclaration(
                 name="search_knowledge_base",
                 description="Search the dengue knowledge base for clinical guidelines, protocols, vector biology, and factual dengue information.",
                 parameters=_t.Schema(
@@ -912,6 +978,12 @@ def _build_tool_map():
         get_field_response_capacity,
         evaluate_national_intervention_effectiveness,
         year_over_year,
+        get_national_weekly_trend,
+        compare_periods,
+        rank_districts_by_metric,
+        get_weekly_delta_briefing,
+        get_districts_by_burden_tier,
+        compare_same_week_across_years,
     )
     return {
         "compare_districts": compare_districts,
@@ -933,6 +1005,12 @@ def _build_tool_map():
         "get_colombo_ds_breakdown": get_colombo_ds_breakdown,
         "get_field_response_capacity": get_field_response_capacity,
         "evaluate_national_intervention_effectiveness": evaluate_national_intervention_effectiveness,
+        "get_national_weekly_trend": get_national_weekly_trend,
+        "compare_periods": compare_periods,
+        "rank_districts_by_metric": rank_districts_by_metric,
+        "get_weekly_delta_briefing": get_weekly_delta_briefing,
+        "get_districts_by_burden_tier": get_districts_by_burden_tier,
+        "compare_same_week_across_years": compare_same_week_across_years,
     }
 
 
