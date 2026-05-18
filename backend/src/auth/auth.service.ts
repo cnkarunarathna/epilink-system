@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,8 +13,14 @@ import { User } from '../entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { CacheHelperService } from '../cache/cache-helper.service';
+import { EmailService } from '../email/email.service';
+
+const OTP_TTL_MINUTES = 10;
 
 @Injectable()
 export class AuthService {
@@ -23,6 +30,7 @@ export class AuthService {
     private jwtService: JwtService,
     private eventsGateway: EventsGateway,
     private cacheHelper: CacheHelperService,
+    private emailService: EmailService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -96,6 +104,77 @@ export class AuthService {
       district: user.district,
       createdAt: user.createdAt,
     };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    // Always respond the same way to prevent email enumeration
+    if (!user || !user.isActive) return;
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = await bcrypt.hash(otp, 10);
+    const expiry = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+    user.passwordResetOtp = hashedOtp;
+    user.passwordResetExpiry = expiry;
+    await this.userRepository.save(user);
+
+    await this.emailService.send({
+      to: user.email,
+      subject: 'EpiLink – Password Reset OTP',
+      template: 'forgot-password',
+      context: {
+        name: user.name,
+        otp,
+        expiryMinutes: OTP_TTL_MINUTES,
+      },
+    });
+  }
+
+  async verifyOtp(dto: VerifyOtpDto): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (!user || !user.passwordResetOtp || !user.passwordResetExpiry) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (new Date() > user.passwordResetExpiry) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    const valid = await bcrypt.compare(dto.otp, user.passwordResetOtp);
+    if (!valid) {
+      throw new BadRequestException('Invalid OTP');
+    }
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (!user || !user.passwordResetOtp || !user.passwordResetExpiry) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (new Date() > user.passwordResetExpiry) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    const valid = await bcrypt.compare(dto.otp, user.passwordResetOtp);
+    if (!valid) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    user.password = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordResetOtp = null;
+    user.passwordResetExpiry = null;
+    await this.userRepository.save(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
