@@ -68,6 +68,7 @@ import { broadcastToDistrict } from "@/services/chat.service";
 import { toast } from "sonner";
 import TasksMap from "@/components/tasks/TasksMap";
 import { RouteMap } from "@/components/tasks/RouteMap";
+import { WeatherWarning } from "@/components/tasks/WeatherWarning";
 import { useSocketEvent } from "@/hooks/useSocket";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUnread } from "@/contexts/UnreadContext";
@@ -197,6 +198,11 @@ export default function TasksListPage() {
           t.latitude !== null &&
           t.longitude !== null,
       ),
+    [tasks, selectedIds],
+  );
+
+  const selectedTasks = useMemo(
+    () => tasks.filter((t) => selectedIds.has(t.id)),
     [tasks, selectedIds],
   );
 
@@ -531,6 +537,13 @@ export default function TasksListPage() {
                 location — route preview requires ≥2 tasks with coordinates.
               </p>
             )}
+
+            {/* Weather check for direct-assign path (no route preview available) */}
+            {selectedIds.size > 0 && selectedPhiId && selectedTasksWithLocation.length < 2 && (
+              <div className="mt-3">
+                <WeatherWarning tasks={selectedTasks} />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -689,10 +702,12 @@ export default function TasksListPage() {
             <RouteMap
               tasks={tasks.filter((t) => selectedIds.has(t.id))}
               routeResult={previewRoute}
-              height={420}
+              height={340}
               basePath="/supervisor/tasks"
             />
           )}
+
+          <WeatherWarning tasks={selectedTasks} />
 
           <DialogFooter className="gap-2">
             <Button

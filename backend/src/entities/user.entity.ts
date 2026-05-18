@@ -44,6 +44,12 @@ export class User {
   @Column({ name: 'fcm_token', type: 'varchar', length: 512, nullable: true })
   fcmToken: string | null;
 
+  @Column({ name: 'password_reset_otp', type: 'varchar', nullable: true })
+  passwordResetOtp: string | null;
+
+  @Column({ name: 'password_reset_expiry', type: 'timestamptz', nullable: true })
+  passwordResetExpiry: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

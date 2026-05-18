@@ -109,7 +109,7 @@ const apiToDisplayName: Record<string, string> = Object.entries(
 );
 
 /* ── Map HTML ─────────────────────────────────────────────────────────────── */
-function buildMapHTML(predictions: DistrictPrediction[]): string {
+function buildMapHTML(predictions: DistrictPrediction[], bottomPadding: number): string {
   const colorEntries = Object.entries(districtNameMapping)
     .map(([geoName, apiName]) => {
       const d = predictions.find((p) => p.district === apiName);
@@ -254,17 +254,22 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
         ]
       },
       center: [80.7718, 7.8731],
-      zoom: 6.8,
+      zoom: 6.5,
       minZoom: 5.5,
       maxZoom: 13,
-      maxBounds: [[77.5, 4.5], [83.5, 11.5]],
+      maxBounds: [[60.0, -10.0], [110.0, 30.0]],
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false
     });
 
+    // Sri Lanka bounding box + viewport padding so the full island is
+    // visible above the bottom sheet peek.
+    var SL_BOUNDS = [[79.4, 5.7], [82.0, 9.9]];
+    var MAP_PAD = { top: 16, right: 56, bottom: ${bottomPadding} + 20, left: 16 };
+
     function resetView() {
-      map.flyTo({ center: [80.7718, 7.8731], zoom: 6.8, duration: 800 });
+      map.fitBounds(SL_BOUNDS, { padding: MAP_PAD, duration: 800 });
     }
 
     var popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: "240px", offset: 10 });
@@ -278,6 +283,9 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
     var selectedId = null;
 
     map.on("load", function() {
+      // Fit Sri Lanka fully above the bottom sheet (no animation on initial load).
+      map.fitBounds(SL_BOUNDS, { padding: MAP_PAD, animate: false });
+
       geoData.features = geoData.features.map(function(f, i) {
         return Object.assign({}, f, { id: i });
       });
@@ -327,17 +335,22 @@ function buildMapHTML(predictions: DistrictPrediction[]): string {
         id: "districts-labels",
         type: "symbol",
         source: "districts",
-        minzoom: 7,
         layout: {
-          "text-field": ["get", "ADM2_EN"],
-          "text-size": ["interpolate", ["linear"], ["zoom"], 7, 9, 10, 12],
-          "text-font": ["Open Sans Regular"],
-          "text-allow-overlap": false
+          "text-field": ["step", ["zoom"],
+            ["get", "shortName"],
+            8, ["get", "ADM2_EN"]
+          ],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 6, 9, 8, 11, 10, 13],
+          "text-font": ["Open Sans Bold", "Open Sans Regular"],
+          "text-allow-overlap": false,
+          "text-padding": 2,
+          "text-max-width": 5,
+          "symbol-sort-key": ["-", ["get", "riskCases"]]
         },
         paint: {
-          "text-color": "#1f2937",
-          "text-halo-color": "rgba(255,255,255,0.95)",
-          "text-halo-width": 2
+          "text-color": "#ffffff",
+          "text-halo-color": "rgba(0,0,0,0.55)",
+          "text-halo-width": 1.5
         }
       });
 
@@ -456,16 +469,16 @@ export const RiskMapScreen: React.FC = () => {
   const isLandscape = windowWidth > windowHeight;
   const sheetHeight = Math.round(
     Math.min(
-      isLandscape ? 420 : 560,
-      windowHeight * (isLandscape ? 0.72 : 0.58),
+      isLandscape ? 440 : 580,
+      windowHeight * (isLandscape ? 0.75 : 0.62),
     ),
   );
   const peekHeight = Math.round(
     Math.min(
-      isLandscape ? 150 : 184,
+      isLandscape ? 200 : 272,
       Math.max(
-        isLandscape ? 132 : 160,
-        windowHeight * (isLandscape ? 0.24 : 0.2),
+        isLandscape ? 176 : 240,
+        windowHeight * (isLandscape ? 0.3 : 0.32),
       ),
     ),
   );
@@ -729,9 +742,7 @@ export const RiskMapScreen: React.FC = () => {
 
   const sheetBottom = TAB_BAR_HEIGHT + insets.bottom;
   const headerTop = insets.top + spacing.sm;
-  const chipsTop = headerTop + 52 + spacing.sm;
-  const legendTop = chipsTop + 48;
-  const controlsTop = legendTop + 8;
+  const controlsTop = headerTop + 64;
   const mapReadyToShow = predictions.length > 0;
 
   /* ── Render ── */
@@ -741,7 +752,7 @@ export const RiskMapScreen: React.FC = () => {
       {mapReadyToShow ? (
         <WebView
           ref={webViewRef}
-          source={{ html: buildMapHTML(predictions) }}
+          source={{ html: buildMapHTML(predictions, peekHeight) }}
           style={StyleSheet.absoluteFill}
           originWhitelist={["*"]}
           javaScriptEnabled
@@ -793,7 +804,7 @@ export const RiskMapScreen: React.FC = () => {
       <Animated.View
         style={[
           styles.loadingOverlay,
-          { opacity: showLoading ? loadingOpacity : 0 },
+          { opacity: showLoading ? loadingOpacity : 0, paddingBottom: peekHeight },
         ]}
         pointerEvents={showLoading ? "auto" : "none"}
       >
@@ -818,27 +829,23 @@ export const RiskMapScreen: React.FC = () => {
         </View>
       </Animated.View>
 
-      {/* Compact legend */}
-      {mapReadyToShow && (
-        <View
-          style={[styles.legendRail, { top: legendTop }]}
-          pointerEvents="box-none"
+      {/* Tap-hint pill — left of controls, disappears once a district is selected */}
+      {mapReadyToShow && !spotlightDistrict && (
+        <Animated.View
+          style={[
+            styles.mapHintPill,
+            { top: controlsTop + 6 },
+            { opacity: headerAnim },
+          ]}
+          pointerEvents="none"
         >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.legendStrip}
-          >
-            {riskLegendItems.map((item) => (
-              <View key={item.label} style={styles.legendPill}>
-                <View
-                  style={[styles.legendDot, { backgroundColor: item.color }]}
-                />
-                <Text style={styles.legendText}>{item.label}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+          <MaterialCommunityIcons
+            name="gesture-tap"
+            size={13}
+            color={colors.primary}
+          />
+          <Text style={styles.mapHintText}>Tap a district to explore</Text>
+        </Animated.View>
       )}
 
       {/* Map action rail */}
@@ -938,42 +945,6 @@ export const RiskMapScreen: React.FC = () => {
         </LinearGradient>
       </Animated.View>
 
-      {/* Floating stat chips */}
-      {statChips.length > 0 && (
-        <Animated.View
-          style={[
-            styles.statChipsRow,
-            { top: chipsTop },
-            {
-              opacity: statsAnim,
-              transform: [
-                {
-                  translateY: statsAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [10, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          {statChips.map((chip) => (
-            <View key={chip.label} style={styles.statChip}>
-              <MaterialCommunityIcons
-                name={chip.icon}
-                size={14}
-                color={chip.color}
-              />
-              <Text style={[styles.statChipValue, { color: chip.color }]}>
-                {chip.value}
-              </Text>
-              <Text style={styles.statChipLabel}>{chip.label}</Text>
-            </View>
-          ))}
-        </Animated.View>
-      )}
-
       {/* Bottom sheet */}
       <Animated.View
         style={[
@@ -1019,6 +990,48 @@ export const RiskMapScreen: React.FC = () => {
             />
           </TouchableOpacity>
         </View>
+
+        {/* Legend strip — inside sheet so it never gets clipped */}
+        {!spotlightDistrict && (
+          <View style={styles.sheetLegendRail}>
+            {riskLegendItems.map((item) => (
+              <View key={item.label} style={styles.sheetLegendPill}>
+                <View style={[styles.sheetLegendDot, { backgroundColor: item.color }]} />
+                <Text style={styles.sheetLegendText}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Summary stat chips — inside sheet */}
+        {!spotlightDistrict && statChips.length > 0 && (
+          <Animated.View
+            style={[
+              styles.sheetStatsRow,
+              {
+                opacity: statsAnim,
+                transform: [
+                  {
+                    translateY: statsAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [8, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {statChips.map((chip) => (
+              <View key={chip.label} style={styles.sheetStatChip}>
+                <MaterialCommunityIcons name={chip.icon} size={16} color={chip.color} />
+                <Text style={[styles.sheetStatValue, { color: chip.color }]}>
+                  {chip.value}
+                </Text>
+                <Text style={styles.sheetStatLabel}>{chip.label}</Text>
+              </View>
+            ))}
+          </Animated.View>
+        )}
 
         {/* Spotlight district banner */}
         {spotlightDistrict && (
@@ -1444,98 +1457,35 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
   },
 
-  /* Map guidance */
-  mapGuideCard: {
+  /* Map hint pill */
+  mapHintPill: {
     position: "absolute",
     left: spacing.md,
-    right: 72,
+    right: 66,
     zIndex: 18,
-    padding: spacing.sm,
-    borderRadius: borderRadius["2xl"],
-    backgroundColor: colors.glass.background,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
-        shadowRadius: 16,
-      },
-      android: { elevation: 4 },
-    }),
-  },
-  mapGuideHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  mapGuideIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primary + "10",
-  },
-  mapGuideTextWrap: {
-    flex: 1,
-  },
-  mapGuideTitle: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
-  },
-  mapGuideText: {
-    marginTop: 1,
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  legendStrip: {
     gap: 6,
-    paddingRight: spacing.xs,
-  },
-  legendRail: {
-    position: "absolute",
-    left: spacing.md,
-    right: 72,
-    zIndex: 18,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.sm + 2,
     borderRadius: borderRadius.full,
     backgroundColor: colors.glass.background,
     borderWidth: 1,
     borderColor: colors.glass.border,
+    alignSelf: "flex-start",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
-        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
       },
-      android: { elevation: 4 },
+      android: { elevation: 3 },
     }),
   },
-  legendPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 10,
-    color: colors.textSecondary,
+  mapHintText: {
+    fontSize: 12,
+    color: colors.primary,
     fontWeight: typography.fontWeight.medium,
   },
 
@@ -1651,47 +1601,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  /* Stat chips */
-  statChipsRow: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    flexDirection: "row",
-    gap: spacing.xs,
-    zIndex: 15,
-  },
-  statChip: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 4,
-    backgroundColor: "rgba(255,255,255,0.93)",
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
-    gap: 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-      },
-      android: { elevation: 3 },
-    }),
-  },
-  statChipValue: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    lineHeight: 16,
-  },
-  statChipLabel: {
-    fontSize: 9,
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeight.medium,
-    textAlign: "center",
-  },
-
   /* Bottom sheet */
   sheet: {
     position: "absolute",
@@ -1706,20 +1615,23 @@ const styles = StyleSheet.create({
   },
   sheetHandleArea: {
     alignItems: "center",
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   handleBar: {
-    width: 36,
+    width: 44,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: "#d1d5db",
   },
   sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: 0,
   },
   sheetTitleRow: {
     flex: 1,
@@ -1734,7 +1646,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   sheetTitle: {
-    fontSize: typography.fontSize.base,
+    fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     flex: 1,
@@ -1751,9 +1663,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   sheetToggleBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.muted,
     alignItems: "center",
     justifyContent: "center",
@@ -1762,6 +1674,7 @@ const styles = StyleSheet.create({
   /* Spotlight card */
   spotlightCard: {
     marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
     marginBottom: spacing.sm,
     borderRadius: borderRadius.xl,
     overflow: "hidden",
@@ -1771,7 +1684,8 @@ const styles = StyleSheet.create({
   spotlightInner: {
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     gap: spacing.sm,
   },
   spotlightAccentBar: {
@@ -1811,13 +1725,14 @@ const styles = StyleSheet.create({
   },
   spotlightCases: { alignItems: "center" },
   spotlightCasesNum: {
-    fontSize: typography.fontSize["2xl"],
+    fontSize: 30,
     fontWeight: typography.fontWeight.bold,
-    lineHeight: 28,
+    lineHeight: 34,
   },
   spotlightCasesLabel: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
   },
   spotlightDismiss: {
     position: "absolute",
@@ -1835,19 +1750,20 @@ const styles = StyleSheet.create({
   rankingsList: { flex: 1 },
   rankingsContent: {
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
-    gap: spacing.xs,
+    gap: 6,
   },
   rankRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm + 2,
-    paddingBottom: spacing.sm + 4,
+    paddingTop: 12,
+    paddingBottom: 14,
     gap: spacing.sm,
     overflow: "hidden",
   },
@@ -1859,49 +1775,49 @@ const styles = StyleSheet.create({
     width: 4,
   },
   rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   rankNumber: {
-    fontSize: typography.fontSize.xs,
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
     color: colors.textSecondary,
   },
   rankInfo: { flex: 1 },
   rankName: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
     color: colors.text,
   },
   rankMeta: {
     flexDirection: "row",
     gap: spacing.sm,
-    marginTop: 2,
+    marginTop: 3,
   },
   rankMetaItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: 3,
   },
   rankMetaText: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
   },
-  rankRight: { alignItems: "flex-end", gap: 3 },
+  rankRight: { alignItems: "flex-end", gap: 4 },
   rankCases: {
-    fontSize: typography.fontSize.base,
+    fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
   },
   riskLabel: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: borderRadius.full,
   },
   riskLabelText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: typography.fontWeight.bold,
   },
   rankBarTrack: {
@@ -1909,12 +1825,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 2,
+    height: 3,
     backgroundColor: colors.border,
   },
   rankBarFill: {
     height: "100%",
-    borderRadius: 1,
+    borderRadius: 2,
   },
 
   /* Disclaimer */
@@ -1934,5 +1850,78 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     lineHeight: 16,
+  },
+
+  /* Sheet legend strip */
+  sheetLegendRail: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sheetLegendPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sheetLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sheetLegendText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+
+  /* Sheet summary stats */
+  sheetStatsRow: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sheetStatChip: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  sheetStatValue: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: 18,
+  },
+  sheetStatLabel: {
+    fontSize: 9,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+    textAlign: "center",
   },
 });

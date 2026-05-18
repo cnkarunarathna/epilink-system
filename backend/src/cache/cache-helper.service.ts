@@ -85,12 +85,25 @@ export class CacheHelperService {
 
   /** Delete all keys matching a glob pattern (e.g. 'tasks:*'). */
   async delByPattern(pattern: string): Promise<void> {
-    if (!this.redisClient) return;
+    if (!this.redisClient) {
+      // No direct Redis client — clear the entire in-process cache so stale
+      // entries don't persist until their TTL expires.
+      try {
+        await this.cacheManager.clear();
+      } catch (err) {
+        this.logger.warn(
+          `delByPattern("${pattern}"): in-process cache clear failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      return;
+    }
     try {
       const keys: string[] = await this.redisClient.keys(pattern);
       if (keys.length > 0) await this.redisClient.del(...keys);
-    } catch {
-      // Non-fatal: cache invalidation failure should never break a write path
+    } catch (err) {
+      this.logger.warn(
+        `Cache invalidation failed for pattern "${pattern}": ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
