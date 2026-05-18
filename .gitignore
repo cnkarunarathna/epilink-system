@@ -29,7 +29,6 @@ Desktop.ini
 # Reports / Exports (root level only; components/reports/ is needed for code)
 /reports/
 /docs/
-*.pdf
 *.xlsx
 *.csv
 
