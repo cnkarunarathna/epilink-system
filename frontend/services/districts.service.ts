@@ -2,16 +2,8 @@ import axios from "axios";
 import type { DistrictMeta } from "@/lib/constants/districts";
 import type { RiskLevel } from "@/lib/types";
 
-axios.defaults.withCredentials = true;
-
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_BASE = RAW_BASE.endsWith("/api") ? RAW_BASE : `${RAW_BASE}/api`;
-
-function getAuthHeaders() {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export interface DistrictRow extends DistrictMeta {
   riskLevel: RiskLevel | null;
@@ -35,7 +27,7 @@ export async function fetchDistrictRows(): Promise<DistrictRow[]> {
 
   const { data } = await axios.get<DistrictRow[]>(
     `${API_BASE}/admin/districts/summary`,
-    { headers: getAuthHeaders() },
+    { withCredentials: true },
   );
 
   _cache = { data, fetchedAt: Date.now() };

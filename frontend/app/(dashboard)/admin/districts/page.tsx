@@ -435,7 +435,7 @@ export default function DistrictsPage() {
       </Card>
 
       {/* Map Placeholder */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>District Map</CardTitle>
           <CardDescription>
@@ -453,7 +453,7 @@ export default function DistrictsPage() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* District detail drawer */}
       <DistrictDetailSheet

@@ -40,6 +40,7 @@ import {
   ChevronRight as BreadcrumbChevron,
   Shield,
   MessageSquare,
+  Home,
 } from "lucide-react";
 import { useUnread } from "@/contexts/UnreadContext";
 import { useRouter as useAppRouter } from "next/navigation";
@@ -709,6 +710,20 @@ export default function DashboardLayout({
                   </div>
 
                   <ConnectionStatus />
+
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link href="/">
+                          <Button variant="ghost" size="icon" aria-label="Go to homepage">
+                            <Home className="h-5 w-5" />
+                          </Button>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent>Homepage</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
                   <ThemeToggle />
 
                   {/* Notifications */}
@@ -770,6 +785,20 @@ export default function DashboardLayout({
                   </div>
 
                   <ConnectionStatus />
+
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link href="/">
+                          <Button variant="ghost" size="icon" aria-label="Go to homepage">
+                            <Home className="h-5 w-5" />
+                          </Button>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent>Homepage</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
                   <ThemeToggle />
 
                   <NotificationBell role={role} />
