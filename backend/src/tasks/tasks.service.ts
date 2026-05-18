@@ -133,14 +133,16 @@ export class TasksService {
 
     const savedTask = await this.taskRepository.save(task);
 
+    // Invalidate immediately after the DB write so any concurrent findAll()
+    // query hits the DB fresh and sees the new task.
+    await this.invalidateTaskCaches();
+
     // Fetch with relations for WebSocket
     const taskWithRelations = await this.findOne(savedTask.id);
     this.eventsGateway.emitTaskCreated(
       taskWithRelations,
       taskWithRelations.district?.name,
     );
-
-    await this.invalidateTaskCaches();
 
     // Email PHI on assignment (if assigned at creation time)
     if (taskWithRelations.assignedPhi) {
@@ -217,7 +219,7 @@ export class TasksService {
     }
 
     const result = await query.getMany();
-    await this.cacheHelper.set(cacheKey, result, 120000); // 2 minutes
+    await this.cacheHelper.set(cacheKey, result, 30000); // 30 seconds
     return result;
   }
 
@@ -563,7 +565,7 @@ export class TasksService {
       ).length,
     };
 
-    await this.cacheHelper.set(cacheKey, result, 120000); // 2 minutes
+    await this.cacheHelper.set(cacheKey, result, 30000); // 30 seconds
     return result;
   }
 

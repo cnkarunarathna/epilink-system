@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import LocationPicker, {
   LocationPickerValue,
 } from "@/components/tasks/LocationPicker";
+import { WeatherWarning } from "@/components/tasks/WeatherWarning";
 
 export default function CreateTaskPage() {
   const router = useRouter();
@@ -136,6 +137,7 @@ export default function CreateTaskPage() {
       });
       toast.success("Task created successfully");
       router.push("/supervisor/tasks");
+      router.refresh();
     } catch (error: any) {
       console.error("Failed to create task:", error);
       toast.error(error.response?.data?.message || "Failed to create task");
@@ -329,6 +331,18 @@ export default function CreateTaskPage() {
                   min={new Date().toISOString().split("T")[0]}
                 />
               </div>
+
+              {formData.latitude !== null && formData.longitude !== null && formData.dueDate && (
+                <WeatherWarning
+                  tasks={[{
+                    id: "new-task",
+                    title: formData.title || "New task",
+                    latitude: formData.latitude,
+                    longitude: formData.longitude,
+                    dueDate: formData.dueDate,
+                  }]}
+                />
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="notes">Additional Notes</Label>
