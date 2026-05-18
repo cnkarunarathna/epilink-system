@@ -16,7 +16,7 @@ import { useTheme } from "next-themes";
 interface TimeseriesPoint {
   year: number;
   week: number;
-  predicted_cases: number;
+  cases: number;
 }
 
 interface Props {
@@ -33,17 +33,17 @@ export default function YearOverYearChart({ data }: Props) {
   }, []);
   const isDark = mounted && resolvedTheme === "dark";
 
-  const { chartData, years } = useMemo(() => {
-    if (data.length === 0) return { chartData: [], years: [] as number[] };
+  const { chartData, years, yoyGrowth } = useMemo(() => {
+    if (data.length === 0) return { chartData: [], years: [] as number[], yoyGrowth: null };
 
     const byYear: Record<number, Record<number, number>> = {};
     for (const pt of data) {
       if (!byYear[pt.year]) byYear[pt.year] = {};
-      byYear[pt.year][pt.week] = pt.predicted_cases;
+      byYear[pt.year][pt.week] = pt.cases;
     }
 
     const distinctYears = Object.keys(byYear).map(Number).sort();
-    if (distinctYears.length < 2) return { chartData: [], years: [] as number[] };
+    if (distinctYears.length < 2) return { chartData: [], years: [] as number[], yoyGrowth: null };
 
     const allWeeks = [...new Set(data.map((d) => d.week))].sort((a, b) => a - b);
 
@@ -58,7 +58,27 @@ export default function YearOverYearChart({ data }: Props) {
       return point;
     });
 
-    return { chartData: mapped, years: distinctYears };
+    const latestYear = distinctYears[distinctYears.length - 1];
+    const prevYear = distinctYears[distinctYears.length - 2];
+    const commonWeeks = allWeeks.filter(
+      (w) => byYear[latestYear]?.[w] !== undefined && byYear[prevYear]?.[w] !== undefined,
+    );
+    const latestCommonWeek = commonWeeks[commonWeeks.length - 1];
+    let yoyGrowth: { week: number; pct: number; latestYear: number; prevYear: number } | null = null;
+    if (latestCommonWeek !== undefined) {
+      const latestVal = byYear[latestYear][latestCommonWeek];
+      const prevVal = byYear[prevYear][latestCommonWeek];
+      if (prevVal > 0) {
+        yoyGrowth = {
+          week: latestCommonWeek,
+          pct: Math.round((latestVal / prevVal - 1) * 100),
+          latestYear,
+          prevYear,
+        };
+      }
+    }
+
+    return { chartData: mapped, years: distinctYears, yoyGrowth };
   }, [data]);
 
   if (chartData.length === 0) {
@@ -73,10 +93,29 @@ export default function YearOverYearChart({ data }: Props) {
   const tickColor = isDark ? "#9ca3af" : "#6b7280";
 
   return (
+    <div className="space-y-2">
+      {yoyGrowth && (
+        <div className="text-xs text-muted-foreground">
+          W{yoyGrowth.week}: {yoyGrowth.latestYear} is{" "}
+          <span
+            className={
+              yoyGrowth.pct > 0
+                ? "font-semibold text-red-500"
+                : yoyGrowth.pct < 0
+                  ? "font-semibold text-green-500"
+                  : "font-semibold"
+            }
+          >
+            {yoyGrowth.pct > 0 ? "+" : ""}{yoyGrowth.pct}%
+          </span>{" "}
+          {yoyGrowth.pct > 0 ? "above" : yoyGrowth.pct < 0 ? "below" : "inline with"}{" "}
+          {yoyGrowth.prevYear} at the same week
+        </div>
+      )}
     <ResponsiveContainer width="100%" height={220}>
       <LineChart
         data={chartData}
-        margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+        margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
         <XAxis
@@ -90,6 +129,13 @@ export default function YearOverYearChart({ data }: Props) {
           tickLine={false}
           axisLine={false}
           width={40}
+          label={{
+            value: "Cases",
+            angle: -90,
+            position: "insideLeft",
+            offset: 10,
+            style: { fontSize: 9, fill: tickColor },
+          }}
         />
         <Tooltip
           contentStyle={{
@@ -99,7 +145,7 @@ export default function YearOverYearChart({ data }: Props) {
             fontSize: "12px",
           }}
           formatter={(value: number | undefined) =>
-            [`${value ?? 0} predicted cases`, ""] as [string, string]
+            [`${value ?? 0} cases`, ""] as [string, string]
           }
         />
         <Legend wrapperStyle={{ fontSize: "11px" }} />
@@ -116,5 +162,6 @@ export default function YearOverYearChart({ data }: Props) {
         ))}
       </LineChart>
     </ResponsiveContainer>
+    </div>
   );
 }

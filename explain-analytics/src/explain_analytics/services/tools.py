@@ -2356,6 +2356,540 @@ def evaluate_national_intervention_effectiveness(top_n: int = 5) -> str:
     )
 
 
+def get_national_weekly_trend(weeks: int = 8) -> str:
+    """Get aggregated weekly dengue case totals across all Sri Lanka districts.
+
+    Use when asked about the national dengue trajectory: "Is the overall situation
+    improving?", "Show me national trends", "How has Sri Lanka's dengue been trending
+    over the past 2 months?", or any question about country-level temporal change.
+    Prefer this over compare_districts('') when you only need national totals, not
+    per-district breakdown.
+
+    Args:
+        weeks: Number of recent weeks to include (default 8, max 16).
+    """
+    weeks = max(2, min(int(weeks), 16))
+    data = _api_get("/analytics/historical/districts/compare")
+    if not data:
+        return json.dumps({"error": "Failed to fetch national trend data"})
+
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        return json.dumps({"info": "No national data available"})
+
+    # Aggregate cases by ISO week key across all districts
+    week_totals: dict[str, dict] = {}
+    for row in rows:
+        y = row.get("year", 0)
+        w = row.get("week", 0)
+        if not y or not w:
+            continue
+        key = f"{y}-W{w:02d}"
+        if key not in week_totals:
+            week_totals[key] = {
+                "year": y, "week": w, "total_cases": 0, "districts_reporting": 0
+            }
+        cases = row.get("cases", 0) or 0
+        week_totals[key]["total_cases"] += cases
+        if cases > 0:
+            week_totals[key]["districts_reporting"] += 1
+
+    sorted_weeks = sorted(week_totals.values(), key=lambda r: (r["year"], r["week"]))
+    recent = sorted_weeks[-weeks:] if len(sorted_weeks) > weeks else sorted_weeks
+
+    # Compute WoW national change
+    for i, entry in enumerate(recent):
+        prev = recent[i - 1]["total_cases"] if i > 0 else None
+        entry["wow_pct"] = (
+            round(((entry["total_cases"] - prev) / prev) * 100, 1)
+            if prev and prev > 0
+            else None
+        )
+
+    # Overall trend (first half vs second half avg)
+    trend = "stable"
+    if len(recent) >= 4:
+        mid = len(recent) // 2
+        first_avg = sum(r["total_cases"] for r in recent[:mid]) / mid
+        second_avg = sum(r["total_cases"] for r in recent[mid:]) / max(len(recent) - mid, 1)
+        if second_avg > first_avg * 1.10:
+            trend = "rising"
+        elif second_avg < first_avg * 0.90:
+            trend = "falling"
+
+    first_total = recent[0]["total_cases"] if recent else 0
+    last_total = recent[-1]["total_cases"] if recent else 0
+    period_change = (
+        round(((last_total - first_total) / max(first_total, 1)) * 100, 1)
+        if first_total > 0 else 0.0
+    )
+    peak = max(recent, key=lambda r: r["total_cases"]) if recent else None
+
+    summary = (
+        f"National {len(recent)}-week trend: {first_total} → {last_total} cases/week "
+        f"({'+' if period_change >= 0 else ''}{period_change}% overall, trend: {trend})."
+        + (
+            f" Peak: {peak['year']}-W{peak['week']:02d} ({peak['total_cases']} cases)."
+            if peak else ""
+        )
+    )
+
+    return json.dumps(
+        {
+            "weeks_analyzed": len(recent),
+            "overall_trend": trend,
+            "period_change_pct": period_change,
+            "weekly_totals": recent,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def compare_periods(district: str, window_weeks: int = 4) -> str:
+    """Compare a district's most recent N-week period against the prior N-week period.
+
+    Use when asked: "has X gotten better or worse recently?", "compare Colombo's
+    last 4 weeks to the 4 weeks before", "is the situation improving compared to
+    last month?", or any intra-district before/after comparison without exact dates.
+    More convenient than get_historical_range for relative recent comparisons.
+
+    Args:
+        district: District name, e.g. "Colombo".
+        window_weeks: Weeks per comparison period (default 4, max 8).
+    """
+    window_weeks = max(2, min(int(window_weeks), 8))
+    data = _api_get(f"/analytics/districts/{district}/timeseries")
+    if not data:
+        return json.dumps({"error": f"No timeseries data for {district}"})
+
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        return json.dumps({"info": f"No historical data available for {district}"})
+
+    rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+    needed = window_weeks * 2
+    if len(rows) < needed:
+        window_weeks = max(1, len(rows) // 2)
+        needed = window_weeks * 2
+
+    window = rows[-needed:]
+    period_a = window[:window_weeks]   # older
+    period_b = window[window_weeks:]   # recent
+
+    def _stats(p: list[dict]) -> dict:
+        cases_list = [r.get("cases", 0) or 0 for r in p]
+        total = sum(cases_list)
+        return {
+            "label": (
+                f"{p[0].get('year')}-W{p[0].get('week'):02d}"
+                f" → {p[-1].get('year')}-W{p[-1].get('week'):02d}"
+            ),
+            "total_cases": total,
+            "avg_weekly": round(total / len(cases_list), 1) if cases_list else 0,
+            "peak_cases": max(cases_list) if cases_list else 0,
+            "weeks": len(p),
+        }
+
+    stats_a = _stats(period_a)
+    stats_b = _stats(period_b)
+
+    case_change = stats_b["total_cases"] - stats_a["total_cases"]
+    change_pct = round((case_change / max(stats_a["total_cases"], 1)) * 100, 1)
+    avg_change_pct = round(
+        ((stats_b["avg_weekly"] - stats_a["avg_weekly"]) / max(stats_a["avg_weekly"], 0.1)) * 100, 1
+    )
+    verdict = "improving" if change_pct < -10 else "worsening" if change_pct > 10 else "stable"
+
+    summary = (
+        f"{district} {window_weeks}-week comparison: recent avg {stats_b['avg_weekly']} "
+        f"cases/wk vs prior {stats_a['avg_weekly']} cases/wk "
+        f"({'+' if avg_change_pct >= 0 else ''}{avg_change_pct}%). Verdict: {verdict}."
+    )
+
+    return json.dumps(
+        {
+            "district": district,
+            "window_weeks": window_weeks,
+            "prior_period": stats_a,
+            "recent_period": stats_b,
+            "total_change": case_change,
+            "total_change_pct": change_pct,
+            "avg_weekly_change_pct": avg_change_pct,
+            "verdict": verdict,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def rank_districts_by_metric(
+    metric: str = "cases", top_n: int = 10, order: str = "desc"
+) -> str:
+    """Rank all Sri Lanka districts by a specific dengue metric.
+
+    Use when the user wants a flexible ranked list: "which 5 districts have the
+    lowest cases?", "rank all districts by growth rate", "top districts improving
+    fastest", "which districts are declining?". More flexible than get_rapid_hotspots
+    which only uses a composite score.
+
+    Args:
+        metric: Metric to sort by:
+            'cases'  — current week case count across ALL districts (default)
+            'wow'    — week-on-week % change; only districts with ≥25 cases
+            'score'  — composite hotspot score (70% burden + 30% trajectory); ≥25 cases only
+        top_n: Districts to return (default 10, max 26).
+        order: 'desc' = highest first (default); 'asc' = lowest first (e.g. for
+               finding safest/most-improved districts).
+    """
+    top_n = max(1, min(int(top_n), 26))
+    if metric not in {"cases", "wow", "score"}:
+        metric = "cases"
+    ascending = order.strip().lower() == "asc"
+
+    if metric == "cases":
+        # Use /districts/latest — returns ALL 26 districts regardless of case count.
+        # Field: predicted_cases (actual latest week cases, despite the name).
+        data = _api_get("/analytics/districts/latest")
+        if not data:
+            return json.dumps({"error": "Failed to fetch district data"})
+        rows = data if isinstance(data, list) else [data]
+        if not rows:
+            return json.dumps({"info": "No district data available"})
+        parsed = []
+        for row in rows:
+            cases = int(float(row.get("predicted_cases") or row.get("cases", 0) or 0))
+            risk = (
+                "critical" if cases >= 100 else "high" if cases >= 50
+                else "moderate" if cases >= 25 else "low"
+            )
+            parsed.append({
+                "district": row.get("district", "Unknown"),
+                "cases": cases,
+                "risk": risk,
+            })
+        sort_key = "cases"
+    else:
+        # wow / score — use hotspots endpoint (moderate/high/critical only, ≥25 cases).
+        # growth_rate is the actual WoW % field returned by the backend.
+        data = _api_get("/analytics/advanced/hotspots")
+        if not data:
+            return json.dumps({"error": "Failed to fetch hotspot data"})
+        rows = data if isinstance(data, list) else [data]
+        if not rows:
+            return json.dumps({"info": "No hotspot data available"})
+        parsed = []
+        for row in rows:
+            cases = float(
+                row.get("current_cases") or row.get("cases", 0) or 0
+            )
+            # Backend returns WoW as growth_rate (not wow_change_pct)
+            wow = float(row.get("growth_rate") or row.get("wow_change_pct") or 0)
+            wow_norm = min(abs(wow) / 100.0, 1.0)
+            score = round(0.70 + 0.30 * wow_norm, 3)  # burden component fixed at 1.0 (all are ≥25)
+            risk = (
+                "critical" if cases >= 100 else "high" if cases >= 50
+                else "moderate" if cases >= 25 else "low"
+            )
+            parsed.append({
+                "district": row.get("district", "Unknown"),
+                "cases": int(cases),
+                "wow_pct": round(wow, 1),
+                "score": score,
+                "risk": risk,
+            })
+        sort_key = "wow_pct" if metric == "wow" else "score"
+
+    parsed.sort(key=lambda r: r[sort_key], reverse=not ascending)
+    ranked = [{"rank": i + 1, **r} for i, r in enumerate(parsed[:top_n])]
+
+    direction = "lowest" if ascending else "highest"
+    top3 = ", ".join(f"{r['district']} ({r[sort_key]})" for r in ranked[:3])
+    note = "" if metric == "cases" else " (districts with ≥25 cases only)"
+    summary = f"Top {len(ranked)} districts by {metric}{note} ({direction} first): {top3}."
+
+    return json.dumps(
+        {
+            "metric": metric,
+            "order": order,
+            "total_districts": len(ranked),
+            "ranked": ranked,
+            "summary": summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_weekly_delta_briefing(top_n: int = 5) -> str:
+    """Identify which districts changed most significantly compared to last week.
+
+    Use when asked: "what changed this week?", "which districts spiked?", "where
+    did cases drop?", "give me a delta briefing", "what's new since last week?".
+    Surfaces the top risers AND top fallers in one compact call — no need to call
+    compare_districts or year_over_year for a change-detection overview.
+
+    Args:
+        top_n: Top movers to return in each direction (default 5, max 10).
+    """
+    top_n = max(1, min(int(top_n), 10))
+    data = _api_get("/analytics/advanced/hotspots")
+    if not data:
+        return json.dumps({"error": "Failed to fetch weekly delta data"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No district data available"})
+
+    parsed = []
+    for row in rows:
+        cases = int(
+            row.get("current_cases") or row.get("currentCases") or row.get("cases", 0) or 0
+        )
+        # Backend returns WoW as growth_rate on the hotspots endpoint
+        wow = round(float(
+            row.get("growth_rate") or row.get("wow_change_pct")
+            or row.get("wowChangePct") or 0
+        ), 1)
+        risk = (
+            "critical" if cases >= 100 else "high" if cases >= 50
+            else "moderate" if cases >= 25 else "low"
+        )
+        parsed.append({
+            "district": row.get("district", "Unknown"),
+            "cases": cases,
+            "wow_pct": wow,
+            "risk": risk,
+        })
+
+    rising = sorted(
+        [r for r in parsed if r["wow_pct"] > 0], key=lambda r: r["wow_pct"], reverse=True
+    )[:top_n]
+    falling = sorted(
+        [r for r in parsed if r["wow_pct"] < 0], key=lambda r: r["wow_pct"]
+    )[:top_n]
+
+    sig_rises = sum(1 for r in parsed if r["wow_pct"] >= 15)
+    sig_drops = sum(1 for r in parsed if r["wow_pct"] <= -15)
+    stable_count = sum(1 for r in parsed if r["wow_pct"] == 0)
+
+    parts = [
+        f"Weekly delta ({len(parsed)} districts): "
+        f"{sig_rises} rose ≥15% WoW, {sig_drops} dropped ≥15%, {stable_count} unchanged."
+    ]
+    if rising:
+        parts.append(
+            f"Biggest surge: {rising[0]['district']} +{rising[0]['wow_pct']}% "
+            f"({rising[0]['cases']} cases)."
+        )
+    if falling:
+        parts.append(
+            f"Biggest drop: {falling[0]['district']} {falling[0]['wow_pct']}% "
+            f"({falling[0]['cases']} cases)."
+        )
+
+    return json.dumps(
+        {
+            "districts_analyzed": len(parsed),
+            "significant_rises": sig_rises,
+            "significant_drops": sig_drops,
+            "stable_count": stable_count,
+            "top_rising": rising,
+            "top_falling": falling,
+            "summary": " ".join(parts),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def get_districts_by_burden_tier(tier: str = "all") -> str:
+    """Get all districts grouped or filtered by their current dengue burden tier.
+
+    Use when asked: "which districts are at critical level?", "list the safe/low-risk
+    districts", "how many districts are at high risk?", "give me a tier breakdown",
+    "which areas can we deprioritize?". Returns a compact categorical grouping —
+    faster than iterating get_district_details for every district.
+
+    Args:
+        tier: 'critical' (≥100 cases), 'high' (50–99), 'moderate' (25–49),
+              'low' (<25), or 'all' (returns all tiers grouped, default).
+    """
+    if tier not in {"critical", "high", "moderate", "low", "all"}:
+        tier = "all"
+
+    # Use /districts/latest — returns ALL 26 districts (no ≥25 case threshold).
+    # The hotspots endpoint silently drops low-burden districts, making the "low"
+    # tier always empty.  predicted_cases holds the latest actual week cases.
+    data = _api_get("/analytics/districts/latest")
+    if not data:
+        return json.dumps({"error": "Failed to fetch district tier data"})
+
+    rows = data if isinstance(data, list) else [data]
+    if not rows:
+        return json.dumps({"info": "No district data available"})
+
+    buckets: dict[str, list[dict]] = {
+        "critical": [], "high": [], "moderate": [], "low": []
+    }
+    for row in rows:
+        cases = int(float(
+            row.get("predicted_cases") or row.get("current_cases") or row.get("cases", 0) or 0
+        ))
+        risk = (
+            "critical" if cases >= 100 else "high" if cases >= 50
+            else "moderate" if cases >= 25 else "low"
+        )
+        buckets[risk].append({
+            "district": row.get("district", "Unknown"),
+            "cases": cases,
+        })
+
+    for k in buckets:
+        buckets[k].sort(key=lambda r: r["cases"], reverse=True)
+
+    counts = {k: len(v) for k, v in buckets.items()}
+    total = sum(counts.values())
+    tier_summary = (
+        f"Burden tiers ({total} districts): "
+        f"Critical ≥100: {counts['critical']}, "
+        f"High 50–99: {counts['high']}, "
+        f"Moderate 25–49: {counts['moderate']}, "
+        f"Low <25: {counts['low']}."
+    )
+
+    if tier != "all":
+        districts = buckets[tier]
+        names = ", ".join(r["district"] for r in districts) if districts else "none"
+        return json.dumps(
+            {
+                "tier": tier,
+                "count": counts[tier],
+                "districts": districts,
+                "summary": f"{counts[tier]} district(s) at {tier} tier: {names}.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    return json.dumps(
+        {
+            "total_districts": total,
+            "tier_counts": counts,
+            "tiers": buckets,
+            "summary": tier_summary,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def compare_same_week_across_years(district: str, years: int = 3) -> str:
+    """Compare this week's cases to the same ISO calendar week in prior years.
+
+    Use when asked: "is this week worse than the same week last year?", "how does
+    this compare historically?", "is week 20 typically bad for Colombo?", or any
+    question benchmarking the current week against the same-week historical baseline.
+    Complements get_year_over_year_comparison (annual totals) with week-level precision.
+
+    Args:
+        district: District name, e.g. "Colombo".
+        years: Prior years to compare against (default 3, max 5).
+    """
+    years = max(1, min(int(years), 5))
+
+    ts_data = _api_get(f"/analytics/districts/{district}/timeseries")
+    if not ts_data:
+        return json.dumps({"error": f"No data for district '{district}'"})
+
+    ts_rows = ts_data if isinstance(ts_data, list) else []
+    if not ts_rows:
+        return json.dumps({"info": f"No historical data available for {district}"})
+
+    ts_rows.sort(key=lambda r: (r.get("year", 0), r.get("week", 0)))
+    latest = ts_rows[-1]
+    current_year = latest.get("year", 0)
+    current_week = latest.get("week", 0)
+    current_cases = latest.get("cases", 0) or 0
+
+    if not current_year or not current_week:
+        return json.dumps({"error": "Could not determine current week from data"})
+
+    # Collect same-week data from prior years via historical range
+    points = [
+        {
+            "year": current_year, "week": current_week,
+            "cases": current_cases, "is_current": True, "vs_current_pct": None,
+        }
+    ]
+    for offset in range(1, years + 1):
+        target_year = current_year - offset
+        range_data = _api_get(
+            "/analytics/historical/range",
+            {
+                "startYear": target_year, "startWeek": current_week,
+                "endYear": target_year, "endWeek": current_week,
+            },
+        )
+        if not range_data:
+            continue
+        target_rows = range_data if isinstance(range_data, list) else []
+        dist_row = next(
+            (r for r in target_rows
+             if r.get("district", "").lower() == district.strip().lower()),
+            None,
+        )
+        if dist_row:
+            prior_cases = dist_row.get("cases", 0) or 0
+            vs_pct = (
+                round(((current_cases - prior_cases) / max(prior_cases, 1)) * 100, 1)
+                if prior_cases > 0 else None
+            )  # positive = current is higher than that year
+            points.append({
+                "year": target_year, "week": current_week,
+                "cases": prior_cases, "is_current": False, "vs_current_pct": vs_pct,
+            })
+
+    points.sort(key=lambda r: r["year"])
+    historical = [p for p in points if not p["is_current"]]
+
+    hist_avg: float | None = None
+    vs_avg_pct: float | None = None
+    context: str
+    if historical:
+        hist_avg = round(sum(p["cases"] for p in historical) / len(historical), 1)
+        vs_avg_pct = round(((current_cases - hist_avg) / max(hist_avg, 1)) * 100, 1)
+        worst_prior = max(historical, key=lambda p: p["cases"])
+        best_prior = min(historical, key=lambda p: p["cases"])
+        context = (
+            f"{district} W{current_week:02d}/{current_year}: {current_cases} cases. "
+            f"Historical avg (same week, {len(historical)} prior yr): {hist_avg} "
+            f"({'+' if vs_avg_pct >= 0 else ''}{vs_avg_pct}% vs avg). "
+            f"Worst prior: {worst_prior['year']} ({worst_prior['cases']}). "
+            f"Best prior: {best_prior['year']} ({best_prior['cases']})."
+        )
+    else:
+        context = (
+            f"{district} W{current_week:02d}/{current_year}: {current_cases} cases. "
+            "No prior-year same-week data available."
+        )
+
+    return json.dumps(
+        {
+            "district": district,
+            "reference_week": current_week,
+            "year_comparison": points,
+            "historical_avg_same_week": hist_avg,
+            "current_vs_hist_avg_pct": vs_avg_pct,
+            "summary": context,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 # All tools available to the agent
 ALL_TOOLS = [
     compare_districts,
@@ -2377,4 +2911,10 @@ ALL_TOOLS = [
     get_colombo_ds_breakdown,
     get_field_response_capacity,
     evaluate_national_intervention_effectiveness,
+    get_national_weekly_trend,
+    compare_periods,
+    rank_districts_by_metric,
+    get_weekly_delta_briefing,
+    get_districts_by_burden_tier,
+    compare_same_week_across_years,
 ]

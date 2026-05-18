@@ -37,6 +37,7 @@ interface Props {
 export default function TaskPriorityBarChart({ districtId }: Props) {
   const [data, setData] = useState<PriorityPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -47,9 +48,11 @@ export default function TaskPriorityBarChart({ districtId }: Props) {
   const isDark = mounted && resolvedTheme === "dark";
 
   useEffect(() => {
+    setLoading(true);
+    setError(false);
     fetchByPriority(districtId)
-      .then(setData)
-      .catch((err) => console.error("Task priority fetch failed:", err))
+      .then((d) => { setData(d); })
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [districtId]);
 
@@ -73,10 +76,18 @@ export default function TaskPriorityBarChart({ districtId }: Props) {
     };
   }).filter((d) => d.completed + d.remaining > 0);
 
+  if (error) {
+    return (
+      <div className="h-40 flex items-center justify-center text-sm text-red-500">
+        Failed to load priority data. Please refresh.
+      </div>
+    );
+  }
+
   if (chartData.length === 0) {
     return (
       <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-        No tasks found
+        No tasks found for this district
       </div>
     );
   }

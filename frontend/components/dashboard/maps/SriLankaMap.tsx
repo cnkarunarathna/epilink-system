@@ -98,7 +98,7 @@ function ResetViewButton() {
       }
       title="Reset view — show all of Sri Lanka"
       className="
-        absolute bottom-[120px] right-4 z-1000
+        absolute bottom-40 right-4 z-1000
         flex items-center justify-center
         w-9 h-9 rounded-lg shadow-md
         bg-card/95 border border-border

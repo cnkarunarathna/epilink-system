@@ -22,6 +22,7 @@ export interface User {
   name: string;
   role: UserRole;
   district?: string;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -29,6 +30,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -171,6 +173,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshUser = useCallback(async () => {
+    await validateSession();
+  }, [validateSession]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -178,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         login,
         logout,
+        refreshUser,
         isAuthenticated: !!user,
       }}
     >

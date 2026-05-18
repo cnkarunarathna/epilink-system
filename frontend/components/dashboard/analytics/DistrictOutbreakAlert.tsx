@@ -47,6 +47,7 @@ const SEVERITY_STYLES = {
 
 export default function DistrictOutbreakAlert({ district }: Props) {
   const [alert, setAlert] = useState<Alert | null | undefined>(undefined);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetchOutbreakAlerts()
@@ -58,6 +59,7 @@ export default function DistrictOutbreakAlert({ district }: Props) {
       })
       .catch((err) => {
         console.error("Outbreak alerts fetch failed:", err);
+        setError(true);
         setAlert(null);
       });
   }, [district]);
@@ -71,10 +73,26 @@ export default function DistrictOutbreakAlert({ district }: Props) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center gap-3 p-3.5 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800">
+        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">
+            Alert Status Unavailable
+          </p>
+          <p className="text-xs text-yellow-600/80 dark:text-yellow-400/80">
+            Could not check district alert status — verify your connection
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (alert === null) {
     return (
       <div className="flex items-center gap-3 p-3.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
         <div>
           <p className="text-sm font-semibold text-green-700 dark:text-green-300">
             No Active Alerts
@@ -105,7 +123,7 @@ export default function DistrictOutbreakAlert({ district }: Props) {
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <AlertTriangle className={`h-4 w-4 ${style.text} flex-shrink-0`} />
+          <AlertTriangle className={`h-4 w-4 ${style.text} shrink-0`} />
           <span className={`text-sm font-semibold ${style.text}`}>
             District Alert Active
           </span>

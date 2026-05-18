@@ -100,20 +100,46 @@ export default function OutbreakHistoryChart({ data }: Props) {
             tickLine={false}
             axisLine={false}
             width={40}
+            label={{
+              value: "Peak cases",
+              angle: -90,
+              position: "insideLeft",
+              offset: 10,
+              style: { fontSize: 9, fill: tickColor },
+            }}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: isDark ? "#1f2937" : "#ffffff",
-              border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`,
-              borderRadius: "8px",
-              fontSize: "12px",
-            }}
-            formatter={(value: number | undefined, _name: string | undefined, props: { payload?: { declinePct?: number; weekRecovery?: number; effectiveness?: string } }) => {
-              const p = props?.payload ?? {};
-              return [
-                `${value ?? 0} peak cases · −${p.declinePct ?? 0}% decline · ${p.weekRecovery ?? "?"} weeks to recovery`,
-                p.effectiveness ?? "",
-              ] as [string, string];
+            content={({ active, payload, label }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const d = payload[0].payload as {
+                peakCases: number;
+                weekRecovery: number;
+                effectiveness: string;
+                declinePct: number;
+                inferredAction: string;
+              };
+              return (
+                <div
+                  style={{
+                    backgroundColor: isDark ? "#1f2937" : "#ffffff",
+                    border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`,
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  <p style={{ fontWeight: 600, marginBottom: 2 }}>{label}</p>
+                  <p>
+                    {d.peakCases} peak cases · −{d.declinePct}% decline · {d.weekRecovery ?? "?"} weeks to recovery
+                  </p>
+                  {d.inferredAction && (
+                    <p style={{ color: isDark ? "#9ca3af" : "#6b7280", marginTop: 2 }}>
+                      Action: {d.inferredAction}
+                    </p>
+                  )}
+                </div>
+              );
             }}
           />
           <Bar

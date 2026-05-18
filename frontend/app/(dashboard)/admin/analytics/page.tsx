@@ -30,6 +30,8 @@ import {
   Globe,
   X,
   MessageSquare,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import SriLankaMap from "@/components/dashboard/maps/SriLankaMap";
@@ -47,6 +49,7 @@ import {
   fetchDashboardSummary,
   fetchTrends,
   fetchColomboDsBreakdown,
+  fetchDistrictsByWeek,
   type ColomboDsBreakdownResponse,
 } from "@/services/analytics.service";
 import ColomboDsBreakdownModal from "@/components/dashboard/analytics/ColomboDsBreakdownModal";
@@ -166,6 +169,11 @@ export default function AnalyticsPage() {
   const [dsBreakdown, setDsBreakdown] = useState<ColomboDsBreakdownResponse | null>(null);
   const [dsBreakdownLoading, setDsBreakdownLoading] = useState(false);
 
+  // Historical map week navigation
+  const [mapWeek, setMapWeek] = useState<{ year: number; week: number } | null>(null);
+  const [historicalMapData, setHistoricalMapData] = useState<DistrictPrediction[] | null>(null);
+  const [historicalMapLoading, setHistoricalMapLoading] = useState(false);
+
   const { isConnected } = useSocket();
   const hasFetchedRef = useRef(false);
 
@@ -266,6 +274,52 @@ export default function AnalyticsPage() {
     }
   };
 
+  // Fetch data when the admin navigates to a historical week
+  useEffect(() => {
+    if (!mapWeek) {
+      setHistoricalMapData(null);
+      return;
+    }
+    let cancelled = false;
+    setHistoricalMapLoading(true);
+    fetchDistrictsByWeek(mapWeek.year, mapWeek.week)
+      .then((data) => { if (!cancelled) setHistoricalMapData(data); })
+      .catch(() => toast.error("Failed to load historical map data"))
+      .finally(() => { if (!cancelled) setHistoricalMapLoading(false); });
+    return () => { cancelled = true; };
+  }, [mapWeek]);
+
+  const navigateMapWeek = useCallback(
+    (direction: "prev" | "next" | "live") => {
+      if (direction === "live") {
+        setMapWeek(null);
+        setHistoricalMapData(null);
+        return;
+      }
+      const base = mapWeek ?? summary?.current_week;
+      if (!base) return;
+      if (direction === "next") {
+        const cur = summary?.current_week;
+        if (cur && base.year === cur.year && base.week >= cur.week) return;
+      }
+      const w =
+        direction === "prev"
+          ? base.week === 1
+            ? { year: base.year - 1, week: 52 }
+            : { year: base.year, week: base.week - 1 }
+          : base.week === 52
+            ? { year: base.year + 1, week: 1 }
+            : { year: base.year, week: base.week + 1 };
+      setMapWeek(w);
+    },
+    [mapWeek, summary],
+  );
+
+  const isHistoricalView = mapWeek !== null;
+  const displayedWeek = mapWeek ?? summary?.current_week ?? null;
+  const mapDisplayData =
+    isHistoricalView && historicalMapData != null ? historicalMapData : predictions;
+
   const topRiskDistricts = predictions.slice(0, 10);
 
   const getRiskLevel = (cases: number): { level: string; color: string } => {
@@ -311,7 +365,7 @@ export default function AnalyticsPage() {
   };
 
   const selectedPrediction = selectedDistrict
-    ? (predictions.find((p) => p.district === selectedDistrict) ?? null)
+    ? (mapDisplayData.find((p) => p.district === selectedDistrict) ?? null)
     : null;
 
   return (
@@ -631,18 +685,90 @@ export default function AnalyticsPage() {
             <div className="space-y-6 animate-in fade-in-50 duration-300">
               <Card className="border-2 border-primary/20 shadow-xl bg-linear-to-br from-slate-50 to-white dark:from-slate-900 dark:to-gray-900">
                 <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-lg">
-                      <MapPin className="h-6 w-6 text-white" />
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-linear-to-br from-emerald-500 to-green-700 rounded-lg shadow-lg shrink-0">
+                        <MapPin className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl">
+                          Interactive Risk Map
+                        </CardTitle>
+                        <CardDescription className="text-base mt-1">
+                          {isHistoricalView
+                            ? `Viewing historical data — Week ${displayedWeek?.week}, ${displayedWeek?.year}`
+                            : "Click on any district to view detailed analysis and historical trends"}
+                        </CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-2xl">
-                        Interactive Risk Map
-                      </CardTitle>
-                      <CardDescription className="text-base mt-1">
-                        Click on any district to view detailed analysis and
-                        historical trends
-                      </CardDescription>
+
+                    {/* Week navigation toolbar */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => navigateMapWeek("prev")}
+                        disabled={!summary || historicalMapLoading}
+                        title="Previous week"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <div
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold border min-w-[110px] justify-center h-8 ${
+                          isHistoricalView
+                            ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+                            : "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300"
+                        }`}
+                      >
+                        {historicalMapLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            {isHistoricalView ? (
+                              <History className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span>
+                              {isHistoricalView
+                                ? `W${displayedWeek?.week} · ${displayedWeek?.year}`
+                                : "Live"}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => navigateMapWeek("next")}
+                        disabled={
+                          !summary ||
+                          historicalMapLoading ||
+                          (!isHistoricalView) ||
+                          (!!mapWeek && !!summary &&
+                            mapWeek.year === summary.current_week.year &&
+                            mapWeek.week >= summary.current_week.week)
+                        }
+                        title="Next week"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      {isHistoricalView && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                          onClick={() => navigateMapWeek("live")}
+                        >
+                          <Zap className="h-3.5 w-3.5 mr-1" />
+                          Live
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -660,11 +786,29 @@ export default function AnalyticsPage() {
                     <div className="space-y-6">
                       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
                         {/* Map */}
-                        <div className="h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
+                        <div className="relative isolate h-[480px] sm:h-[560px] lg:h-[640px] w-full rounded-xl overflow-hidden border border-border shadow-inner">
                           <SriLankaMap
-                            data={predictions}
+                            data={mapDisplayData}
                             onDistrictClick={handleDistrictClick}
                           />
+                          {/* Historical loading overlay */}
+                          {historicalMapLoading && (
+                            <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl">
+                              <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <p className="text-sm font-medium text-foreground">
+                                  Loading W{mapWeek?.week}, {mapWeek?.year}…
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {/* Historical mode badge */}
+                          {isHistoricalView && !historicalMapLoading && (
+                            <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/90 text-white text-xs font-semibold shadow-md backdrop-blur-sm">
+                              <History className="h-3 w-3" />
+                              Historical · W{displayedWeek?.week}, {displayedWeek?.year}
+                            </div>
+                          )}
                         </div>
 
                         {/* District list sidebar */}
@@ -673,7 +817,7 @@ export default function AnalyticsPage() {
                             All Districts
                           </h4>
                           <div className="space-y-1 overflow-y-auto lg:max-h-[640px] pr-0.5">
-                            {predictions.map((district) => {
+                            {mapDisplayData.map((district) => {
                               const risk = getRiskLevel(
                                 district.predicted_cases,
                               );
@@ -1039,6 +1183,8 @@ export default function AnalyticsPage() {
                   setSelectedDistrict(d);
                   handleDistrictClick(d);
                 }}
+                nationalSummary={summary}
+                topDistricts={predictions.slice(0, 5)}
               />
               <AdvancedAnalyticsPanel
                 districts={predictions.map((p) => p.district)}

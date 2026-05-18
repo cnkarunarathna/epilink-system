@@ -3,7 +3,8 @@ services:
     image: redis:8-alpine
     container_name: epilink-redis
     restart: unless-stopped
-    command: [ "redis-server", "--requirepass", "ZytgpWDhcFeosIzeheccQsRj4Sq1BOqx" ]
+    command:
+      ["redis-server", "--requirepass", "ZytgpWDhcFeosIzeheccQsRj4Sq1BOqx"]
     ports:
       - "11801:6379"
     volumes:
@@ -69,7 +70,7 @@ services:
     depends_on:
       - qdrant
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1" ]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -82,13 +83,12 @@ services:
     container_name: epilink-route-optimizer
     restart: unless-stopped
     healthcheck:
-      test:
-        [
+      test: [
           "CMD",
           "python",
           "-c",
           "import urllib.request;
-            urllib.request.urlopen('http://localhost:8001/health')",
+          urllib.request.urlopen('http://localhost:8001/health')",
         ]
       interval: 30s
       timeout: 5s

@@ -84,8 +84,8 @@ export default function CreateTaskPage() {
 
         // Fetch districts for district selector
         const districtsData = await fetchLatestPerDistrict();
-        const districtList = districtsData.map((d, idx) => ({
-          id: idx + 1, // Assuming sequential IDs
+        const districtList = districtsData.map((d) => ({
+          id: d.districtId,
           name: d.district,
         }));
         setDistricts(districtList);

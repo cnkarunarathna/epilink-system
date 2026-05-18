@@ -14,6 +14,7 @@ import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
+  Activity,
   Loader2,
   AlertTriangle,
   ThermometerSun,
@@ -67,11 +68,12 @@ import SeasonalPatternChart from "@/components/dashboard/analytics/SeasonalPatte
 import NeighbourRiskChart from "@/components/dashboard/analytics/NeighbourRiskChart";
 import ZoneHotspotChart from "@/components/dashboard/analytics/ZoneHotspotChart";
 import OutbreakHistoryChart from "@/components/dashboard/analytics/OutbreakHistoryChart";
+import ModelPerformanceCard from "@/components/dashboard/analytics/ModelPerformanceCard";
 
 interface TimeseriesPoint {
   year: number;
   week: number;
-  predicted_cases: number;
+  cases: number;
 }
 
 export default function AnalyticsPage() {
@@ -86,6 +88,8 @@ export default function AnalyticsPage() {
   const [spilloverData, setSpilloverData] = useState<SpilloverResponse | null>(null);
   const [interventionData, setInterventionData] = useState<InterventionHistoryResponse | null>(null);
   const [zoneData, setZoneData] = useState<DemographicHotspotsResponse | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [, setRefreshTick] = useState(0);
 
   const supervisorDistrict = user?.district || "Colombo";
   const districtId =
@@ -127,6 +131,7 @@ export default function AnalyticsPage() {
       setSpilloverData(spillover);
       setInterventionData(intervention);
       setZoneData(zone);
+      setLastRefreshed(new Date());
     } catch (error) {
       console.error("Failed to load analytics:", error);
       toast.error("Failed to load analytics");
@@ -138,6 +143,21 @@ export default function AnalyticsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!lastRefreshed) return;
+    const id = setInterval(() => setRefreshTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [lastRefreshed]);
+
+  function formatTimeAgo(date: Date): string {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes === 1) return "1 minute ago";
+    if (minutes < 60) return `${minutes} minutes ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
+  }
 
   const getRiskLevel = (cases: number) => {
     if (cases >= 90)
@@ -153,8 +173,8 @@ export default function AnalyticsPage() {
 
   const trend =
     timeseries.length >= 2
-      ? timeseries[timeseries.length - 1].predicted_cases -
-        timeseries[timeseries.length - 2].predicted_cases
+      ? timeseries[timeseries.length - 1].cases -
+        timeseries[timeseries.length - 2].cases
       : 0;
 
   return (
@@ -166,6 +186,11 @@ export default function AnalyticsPage() {
           <p className="text-muted-foreground">
             {supervisorDistrict} District Insights
           </p>
+          {lastRefreshed && (
+            <p className="text-xs text-muted-foreground/70 mt-0.5">
+              Last updated: {formatTimeAgo(lastRefreshed)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -177,7 +202,7 @@ export default function AnalyticsPage() {
                 timeseries.map((p) => ({
                   Week: p.week,
                   Year: p.year,
-                  "Predicted Cases": p.predicted_cases,
+                  "Cases": p.cases,
                 })),
                 `${supervisorDistrict.toLowerCase()}-district-analytics.csv`
               )
@@ -288,7 +313,7 @@ export default function AnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Weekly Trend</CardTitle>
-                <CardDescription>Predicted cases over the last 12 weeks</CardDescription>
+                <CardDescription>Reported cases over the last 12 weeks</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -497,8 +522,8 @@ export default function AnalyticsPage() {
 
         {/* ── Tab 4: Disease Intelligence ── */}
         <TabsContent value="disease" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
+          <div className="grid gap-6 md:grid-cols-3">
+            <Card className="md:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-indigo-500" />
@@ -519,6 +544,23 @@ export default function AnalyticsPage() {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-violet-500" />
+                  Model Performance
+                </CardTitle>
+                <CardDescription>
+                  Prediction accuracy for {supervisorDistrict} vs naive baseline
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ModelPerformanceCard district={supervisorDistrict} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -543,9 +585,7 @@ export default function AnalyticsPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

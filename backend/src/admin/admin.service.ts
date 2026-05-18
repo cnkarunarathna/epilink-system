@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TasksAnalyticsService } from '../tasks/tasks-analytics.service';
 import { UsersService } from '../users/users.service';
 import { CacheHelperService } from '../cache/cache-helper.service';
+import { SystemSettings } from '../entities/system-settings.entity';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
 
 const DISTRICTS: Array<{
   id: number;
@@ -59,7 +63,27 @@ export class AdminService {
     private readonly tasksAnalyticsService: TasksAnalyticsService,
     private readonly usersService: UsersService,
     private readonly cache: CacheHelperService,
+    @InjectRepository(SystemSettings)
+    private readonly settingsRepo: Repository<SystemSettings>,
   ) {}
+
+  async getSettings(): Promise<SystemSettings> {
+    let settings = await this.settingsRepo.findOne({ where: { id: 1 } });
+    if (!settings) {
+      settings = this.settingsRepo.create({ id: 1 });
+      await this.settingsRepo.save(settings);
+    }
+    return settings;
+  }
+
+  async updateSettings(dto: UpdateSettingsDto): Promise<SystemSettings> {
+    let settings = await this.settingsRepo.findOne({ where: { id: 1 } });
+    if (!settings) {
+      settings = this.settingsRepo.create({ id: 1 });
+    }
+    Object.assign(settings, dto);
+    return this.settingsRepo.save(settings);
+  }
 
   getDistrictsSummary() {
     return this.cache.getOrRefresh(

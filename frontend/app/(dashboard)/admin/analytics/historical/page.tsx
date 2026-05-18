@@ -10,7 +10,22 @@ import {
 } from "@/components/ui/card";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 import {
   Calendar,
@@ -21,6 +36,9 @@ import {
   Activity,
   Loader2,
   CloudRain,
+  Filter,
+  RotateCcw,
+  ChevronDown,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -87,8 +105,34 @@ export default function HistoricalAnalyticsPage() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
-  // Available years for selection
-  const availableYears = [2023, 2024, 2025, 2026];
+  // Date range filter
+  const currentYear = new Date().getFullYear();
+  const DATA_START_YEAR = 2006;
+  const currentWeek = (() => {
+    const d = new Date();
+    const dayNum = d.getDay() || 7;
+    d.setDate(d.getDate() + 4 - dayNum);
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  })();
+  const [filterStartYear, setFilterStartYear] = useState<number>(currentYear - 3);
+  const [filterStartWeek, setFilterStartWeek] = useState<number>(currentWeek);
+  const [filterEndYear, setFilterEndYear] = useState<number>(currentYear);
+  const [filterEndWeek, setFilterEndWeek] = useState<number>(currentWeek);
+
+  // Available years: dengue case history from 2006, weather data from 2020
+  const availableYears = Array.from(
+    { length: currentYear - DATA_START_YEAR + 1 },
+    (_, i) => DATA_START_YEAR + i,
+  );
+  const weekNumbers = Array.from({ length: 52 }, (_, i) => i + 1);
+
+  const [filterOpen, setFilterOpen] = useState(false);
+  const isCustomFilter =
+    filterStartYear !== currentYear - 3 ||
+    filterStartWeek !== currentWeek ||
+    filterEndYear !== currentYear ||
+    filterEndWeek !== currentWeek;
 
   useEffect(() => {
     loadAvailableDistricts();
@@ -117,10 +161,15 @@ export default function HistoricalAnalyticsPage() {
     }
   };
 
-  const loadAllHistoricalData = async () => {
+  const loadAllHistoricalData = async (
+    sYear = filterStartYear,
+    sWeek = filterStartWeek,
+    eYear = filterEndYear,
+    eWeek = filterEndWeek,
+  ) => {
     try {
       setLoading(true);
-      const data = await fetchHistoricalRange();
+      const data = await fetchHistoricalRange(sYear, sWeek, eYear, eWeek);
       setHistoricalData(data);
     } catch (error: any) {
       toast.error("Failed to load historical data");
@@ -128,6 +177,38 @@ export default function HistoricalAnalyticsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilter = () => {
+    loadAllHistoricalData(filterStartYear, filterStartWeek, filterEndYear, filterEndWeek);
+    loadComparisonData();
+  };
+
+  const resetFilter = () => {
+    setFilterStartYear(currentYear - 3);
+    setFilterStartWeek(currentWeek);
+    setFilterEndYear(currentYear);
+    setFilterEndWeek(currentWeek);
+    loadAllHistoricalData(currentYear - 3, currentWeek, currentYear, currentWeek);
+    loadComparisonData();
+  };
+
+  const applyPreset = (preset: "all" | "1y" | "3y" | "5y" | "weather") => {
+    // End is always the current week — no data exists beyond today
+    const eYear = currentYear;
+    const eWeek = currentWeek;
+    let sYear = DATA_START_YEAR, sWeek = 1;
+    if (preset === "1y") { sYear = currentYear - 1; sWeek = currentWeek; }
+    else if (preset === "3y") { sYear = currentYear - 3; sWeek = currentWeek; }
+    else if (preset === "5y") { sYear = currentYear - 5; sWeek = currentWeek; }
+    else if (preset === "weather") { sYear = 2020; sWeek = 1; }
+    // "all" keeps sYear = DATA_START_YEAR, sWeek = 1
+    setFilterStartYear(sYear);
+    setFilterStartWeek(sWeek);
+    setFilterEndYear(eYear);
+    setFilterEndWeek(eWeek);
+    loadAllHistoricalData(sYear, sWeek, eYear, eWeek);
+    loadComparisonData();
   };
 
   const loadYearlySummary = async (year: number) => {
@@ -148,11 +229,22 @@ export default function HistoricalAnalyticsPage() {
     }
   };
 
+  // Comparison data filtered to the selected date range (client-side)
+  const filteredComparisonData = comparisonData.filter((item) => {
+    const afterStart =
+      item.year > filterStartYear ||
+      (item.year === filterStartYear && item.week >= filterStartWeek);
+    const beforeEnd =
+      item.year < filterEndYear ||
+      (item.year === filterEndYear && item.week <= filterEndWeek);
+    return afterStart && beforeEnd;
+  });
+
   // Process data for time series chart
   const processTimeSeriesData = () => {
     const groupedByWeek: Record<string, any> = {};
 
-    comparisonData.forEach((item) => {
+    filteredComparisonData.forEach((item) => {
       const key = `${item.year}-W${item.week}`;
       if (!groupedByWeek[key]) {
         groupedByWeek[key] = {
@@ -235,7 +327,7 @@ export default function HistoricalAnalyticsPage() {
     // Only use comparison data for selected districts to show cases vs weather
     const groupedByWeek: Record<string, any> = {};
 
-    comparisonData.forEach((item) => {
+    filteredComparisonData.forEach((item) => {
       const key = `${item.year}-W${item.week}`;
       if (!groupedByWeek[key]) {
         groupedByWeek[key] = {
@@ -296,7 +388,7 @@ export default function HistoricalAnalyticsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             Historical Analytics
@@ -305,14 +397,163 @@ export default function HistoricalAnalyticsPage() {
             Comprehensive analysis of dengue case trends and patterns
           </p>
         </div>
-        <Button onClick={loadAllHistoricalData} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <Activity className="h-4 w-4 mr-2" />
-          )}
-          Refresh Data
-        </Button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Compact filter popover */}
+          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-2 font-normal",
+                  isCustomFilter &&
+                    "border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30",
+                )}
+              >
+                <Filter className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-xs font-mono">
+                  {filterStartYear} W{filterStartWeek}
+                  {" – "}
+                  {filterEndYear} W{filterEndWeek}
+                </span>
+                {isCustomFilter && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-40 shrink-0" />
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent align="end" className="w-80 p-0">
+              {/* Popover header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <span className="text-sm font-semibold">Date Range</span>
+                {isCustomFilter && (
+                  <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 h-4 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400">
+                    filtered
+                  </Badge>
+                )}
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* Quick presets */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Quick Select</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: "All Time", value: "all" as const },
+                      { label: "Last Year", value: "1y" as const },
+                      { label: "3 Years", value: "3y" as const },
+                      { label: "5 Years", value: "5y" as const },
+                      { label: "Since 2020", value: "weather" as const, icon: <CloudRain className="h-3 w-3" /> },
+                    ].map(({ label, value, icon }) => (
+                      <button
+                        key={value}
+                        onClick={() => { applyPreset(value); setFilterOpen(false); }}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/40 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Custom from/to */}
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Custom Range</p>
+
+                  <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-2">
+                    <span className="text-xs text-muted-foreground">From</span>
+                    <Select value={String(filterStartYear)} onValueChange={(v) => setFilterStartYear(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {availableYears.map((y) => (
+                          <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground text-center">W</span>
+                    <Select value={String(filterStartWeek)} onValueChange={(v) => setFilterStartWeek(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {weekNumbers.map((w) => (
+                          <SelectItem key={w} value={String(w)} className="text-xs">Week {w}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-2">
+                    <span className="text-xs text-muted-foreground">To</span>
+                    <Select value={String(filterEndYear)} onValueChange={(v) => setFilterEndYear(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {availableYears.map((y) => (
+                          <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground text-center">W</span>
+                    <Select value={String(filterEndWeek)} onValueChange={(v) => setFilterEndWeek(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {weekNumbers.map((w) => (
+                          <SelectItem key={w} value={String(w)} className="text-xs">Week {w}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Popover footer actions */}
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-t bg-muted/20">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { resetFilter(); setFilterOpen(false); }}
+                  disabled={loading}
+                  className="h-7 text-xs text-muted-foreground"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { applyFilter(); setFilterOpen(false); }}
+                  disabled={loading}
+                  className="h-7 text-xs"
+                >
+                  {loading
+                    ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    : <Filter className="h-3 w-3 mr-1" />}
+                  Apply
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button onClick={() => loadAllHistoricalData()} disabled={loading} size="sm" className="h-9">
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Activity className="h-4 w-4 mr-2" />
+            )}
+            Refresh Data
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="trends" className="space-y-6">

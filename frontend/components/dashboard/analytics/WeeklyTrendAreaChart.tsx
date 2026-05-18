@@ -16,7 +16,7 @@ import {
 interface TimeseriesPoint {
   year: number;
   week: number;
-  predicted_cases: number;
+  cases: number;
 }
 
 interface ChartPoint {
@@ -44,7 +44,7 @@ export default function WeeklyTrendAreaChart({ data, currentWeek, currentYear }:
 
   const chartData: ChartPoint[] = data.map((p) => ({
     label: `W${p.week} '${String(p.year).slice(2)}`,
-    cases: Math.round(p.predicted_cases),
+    cases: Math.round(p.cases),
   }));
 
   const currentLabel =
@@ -64,7 +64,7 @@ export default function WeeklyTrendAreaChart({ data, currentWeek, currentYear }:
 
   return (
     <ResponsiveContainer width="100%" height={224}>
-      <AreaChart data={chartData} margin={{ top: 12, right: 8, left: -24, bottom: 0 }}>
+      <AreaChart data={chartData} margin={{ top: 12, right: 8, left: -16, bottom: 0 }}>
         <defs>
           <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#6366f1" stopOpacity={0.5} />
@@ -84,6 +84,13 @@ export default function WeeklyTrendAreaChart({ data, currentWeek, currentYear }:
           tickLine={false}
           axisLine={false}
           allowDecimals={false}
+          label={{
+            value: "Cases",
+            angle: -90,
+            position: "insideLeft",
+            offset: 12,
+            style: { fontSize: 9, fill: tickColor },
+          }}
         />
         <Tooltip
           contentStyle={{
@@ -93,7 +100,7 @@ export default function WeeklyTrendAreaChart({ data, currentWeek, currentYear }:
             fontSize: "12px",
           }}
           labelStyle={{ fontWeight: 600, color: isDark ? "#f9fafb" : "#111827" }}
-          formatter={(value: number | undefined) => [`${value ?? 0} cases`, "Predicted"]}
+          formatter={(value: number | undefined) => [`${value ?? 0} cases`, "Cases"]}
         />
         {matchedCurrent && (
           <ReferenceLine

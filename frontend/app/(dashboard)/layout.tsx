@@ -324,8 +324,12 @@ function DesktopSidebar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    href="/profile"
-                    className="flex justify-center mx-1 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors"
+                    href={`/${role}/profile`}
+                    className={`flex justify-center mx-1 py-2.5 rounded-lg transition-colors ${
+                      pathname === `/${role}/profile`
+                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                    }`}
                   >
                     <User className="h-5 w-5" />
                   </Link>
@@ -369,8 +373,12 @@ function DesktopSidebar({
               </div>
 
               <Link
-                href="/profile"
-                className="flex items-center gap-3 mx-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors text-sm"
+                href={`/${role}/profile`}
+                className={`flex items-center gap-3 mx-2 px-3 py-2 rounded-lg transition-colors text-sm ${
+                  pathname === `/${role}/profile`
+                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                }`}
               >
                 <User className="h-4 w-4 shrink-0" />
                 <span>Profile</span>
@@ -477,9 +485,13 @@ function MobileSidebar({
             </div>
 
             <Link
-              href="/profile"
+              href={`/${role}/profile`}
               onClick={() => onOpenChange(false)}
-              className="flex items-center gap-3 mx-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors text-sm"
+              className={`flex items-center gap-3 mx-2 px-3 py-2 rounded-lg transition-colors text-sm ${
+                pathname === `/${role}/profile`
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/70"
+              }`}
             >
               <User className="h-4 w-4 shrink-0" />
               <span>Profile</span>
@@ -703,11 +715,13 @@ export default function DashboardLayout({
                   <NotificationBell role={role} />
 
                   {/* User avatar */}
-                  <Avatar className="h-8 w-8 cursor-pointer">
-                    <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
-                      {getInitials(user?.name)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <Link href={`/${role}/profile`}>
+                    <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all rounded-full">
+                      <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
+                        {getInitials(user?.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Link>
                 </div>
               </header>
 

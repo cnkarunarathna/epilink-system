@@ -21,6 +21,7 @@ interface Props {
 export default function TaskTypeDonutChart({ districtId }: Props) {
   const [data, setData] = useState<TypePoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -31,9 +32,11 @@ export default function TaskTypeDonutChart({ districtId }: Props) {
   const isDark = mounted && resolvedTheme === "dark";
 
   useEffect(() => {
+    setLoading(true);
+    setError(false);
     fetchByType(districtId)
-      .then(setData)
-      .catch((err) => console.error("Task type fetch failed:", err))
+      .then((d) => { setData(d); })
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [districtId]);
 
@@ -52,10 +55,18 @@ export default function TaskTypeDonutChart({ districtId }: Props) {
 
   const total = chartData.reduce((s, d) => s + d.value, 0);
 
+  if (error) {
+    return (
+      <div className="h-48 flex items-center justify-center text-sm text-red-500">
+        Failed to load task types. Please refresh.
+      </div>
+    );
+  }
+
   if (total === 0) {
     return (
       <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
-        No tasks found
+        No tasks found for this district
       </div>
     );
   }
