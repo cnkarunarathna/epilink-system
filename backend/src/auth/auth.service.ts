@@ -12,6 +12,8 @@ import { User } from '../entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +21,8 @@ export class AuthService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
+    private eventsGateway: EventsGateway,
+    private cacheHelper: CacheHelperService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -90,6 +94,7 @@ export class AuthService {
       name: user.name,
       role: user.role,
       district: user.district,
+      createdAt: user.createdAt,
     };
   }
 
@@ -129,12 +134,22 @@ export class AuthService {
 
     const updated = await this.userRepository.save(user);
 
+    const { password: _pw, ...safe } = updated;
+
+    this.eventsGateway.emitUserUpdated(safe);
+
+    await Promise.all([
+      this.cacheHelper.delByPattern('users:*'),
+      this.cacheHelper.delByPattern('admin:*'),
+    ]);
+
     return {
       id: updated.id,
       email: updated.email,
       name: updated.name,
       role: updated.role,
       district: updated.district,
+      createdAt: updated.createdAt,
     };
   }
 }

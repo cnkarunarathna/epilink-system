@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Save, Loader2, KeyRound, UserCircle } from "lucide-react";
+import { Save, Loader2, KeyRound, UserCircle, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
@@ -143,6 +143,16 @@ export default function ProfilePage() {
                   </Badge>
                 )}
               </div>
+              {user.createdAt && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Member since{" "}
+                  {new Date(user.createdAt).toLocaleDateString("en-US", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              )}
             </div>
           </div>
         </CardContent>

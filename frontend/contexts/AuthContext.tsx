@@ -22,6 +22,7 @@ export interface User {
   name: string;
   role: UserRole;
   district?: string;
+  createdAt?: string;
 }
 
 interface AuthContextType {
