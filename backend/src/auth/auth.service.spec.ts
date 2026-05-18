@@ -7,6 +7,9 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User, UserRole } from '../entities/user.entity';
 import { LoginDto } from './dto/login.dto';
+import { EventsGateway } from '../events/events.gateway';
+import { CacheHelperService } from '../cache/cache-helper.service';
+import { EmailService } from '../email/email.service';
 
 // Mock bcrypt
 jest.mock('bcrypt');
@@ -53,6 +56,18 @@ describe('AuthService', () => {
         {
           provide: JwtService,
           useValue: mockJwtService,
+        },
+        {
+          provide: EventsGateway,
+          useValue: { emitUserUpdated: jest.fn() },
+        },
+        {
+          provide: CacheHelperService,
+          useValue: { delByPattern: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: EmailService,
+          useValue: { send: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
