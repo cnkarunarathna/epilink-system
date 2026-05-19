@@ -3,14 +3,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, MapPin, Route, X } from "lucide-react";
+import { Loader2, RefreshCw, MapPin, Route, X, Clock } from "lucide-react";
 import {
   fetchTasks,
   getOptimizedRoute,
   Task,
   TaskStatus,
+  TaskPriority,
   RouteResult,
+  getPriorityColor,
+  getStatusColor,
 } from "@/services/tasks.service";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import { TasksMap } from "@/components/tasks/TasksMap";
 import { RouteMap } from "@/components/tasks/RouteMap";
 import { useAuth } from "@/contexts/AuthContext";
@@ -269,6 +274,73 @@ export default function PHIMapViewPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Prioritized task list — only shown in route mode */}
+      {routeMode && routeResult && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+              Stop Order
+            </h3>
+            <ol className="space-y-2">
+              {routeResult.orderedTaskIds.map((id, index) => {
+                const task = activeTasks.find((t) => t.id === id);
+                if (!task) return null;
+                const leg = routeResult.legs[index];
+                const distKm =
+                  leg && leg.distanceMeters != null
+                    ? (leg.distanceMeters / 1000).toFixed(1)
+                    : null;
+                const durationMin =
+                  leg && leg.durationSecs != null
+                    ? Math.round(leg.durationSecs / 60)
+                    : null;
+                return (
+                  <li key={id} className="flex items-start gap-3">
+                    <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">
+                      {index + 1}
+                    </span>
+                    <Link
+                      href={`/phi/tasks/${task.id}`}
+                      className="flex-1 min-w-0 group"
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                        <span className="font-medium text-sm group-hover:underline truncate">
+                          {task.title}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold capitalize ${getPriorityColor(task.priority)}`}
+                        >
+                          {task.priority}
+                        </span>
+                        <Badge
+                          className={`text-xs px-1.5 py-0 ${getStatusColor(task.status)}`}
+                        >
+                          {task.status.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {task.address && (
+                          <span className="flex items-center gap-1 truncate">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {task.address}
+                          </span>
+                        )}
+                        {distKm && durationMin != null && (
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Clock className="h-3 w-3" />
+                            {durationMin} min · {distKm} km
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
