@@ -26,12 +26,15 @@ export class StorageService {
   private readonly bucketUrlPrefix: string;
 
   constructor(private readonly configService: ConfigService) {
+    const endpoint = this.configService.get<string>('AWS_S3_ENDPOINT');
     this.s3 = new S3Client({
       region: this.configService.getOrThrow<string>('AWS_REGION'),
       credentials: {
         accessKeyId: this.configService.getOrThrow<string>('AWS_ACCESS_KEY_ID'),
         secretAccessKey: this.configService.getOrThrow<string>('AWS_SECRET'),
       },
+      // AWS_S3_ENDPOINT + forcePathStyle let this point at LocalStack in dev
+      ...(endpoint && { endpoint, forcePathStyle: true }),
     });
 
     this.bucket = this.configService.getOrThrow<string>('AWS_S3_BUCKET');

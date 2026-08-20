@@ -31,6 +31,48 @@ services:
     ports:
       - "5000:5000"
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: epilink-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: epilink
+      POSTGRES_PASSWORD: epilink
+      POSTGRES_DB: epilink
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U epilink -d epilink"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Local S3 replacement (replicates the Lightsail/AWS S3 bucket for dev)
+  localstack:
+    # Pinned: newer tags require a LocalStack auth token even for S3
+    image: localstack/localstack:3.8.1
+    container_name: epilink-localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ap-southeast-1
+      PERSISTENCE: 1
+      AWS_S3_BUCKET: epilink-system
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstackdata:/var/lib/localstack
+      - ./scripts/localstack-init:/etc/localstack/init/ready.d
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   redisdata:
   qdrantdata:
+  pgdata:
+  localstackdata:

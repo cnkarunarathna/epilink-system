@@ -44,12 +44,12 @@ Main stack commands (docker-compose.yml):
 	ps                 Show full stack container status
 
 Infra-only commands (docker-compose.infra.yml):
-	dev                Start redis + qdrant in detached mode
+	dev                Start redis + qdrant + osrm + postgres + localstack (S3) in detached mode
 	dev-start          Start infra containers (no recreate/build)
 	dev-stop           Stop infra containers
 	dev-down           Stop and remove infra containers
 	dev-restart        Restart infra (dev-down + dev)
-	dev-logs [svc]     Tail infra logs (optionally redis or qdrant)
+	dev-logs [svc]     Tail infra logs (e.g. redis, qdrant, postgres, localstack)
 	dev-ps             Show infra container status
 
 Maintenance commands:
@@ -68,7 +68,7 @@ Development tips:
 Examples:
 	./docker.sh up                    # starts full stack with hot-reload via override.yml
 	./docker.sh logs backend          # tail backend logs
-	./docker.sh dev                   # start only redis + qdrant
+	./docker.sh dev                   # start local infra (redis, qdrant, osrm, postgres, localstack)
 	./docker.sh dev-logs redis        # tail redis logs
 	./docker.sh clean-volumes         # remove all volumes
 EOF
