@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddTasksAndEvidence1770531280267 implements MigrationInterface {
-  name = 'AddTasksAndEvidence1770531280267';
+export class AddTasksAndEvidence1704391200001 implements MigrationInterface {
+  name = 'AddTasksAndEvidence1704391200001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Create enums for tasks
